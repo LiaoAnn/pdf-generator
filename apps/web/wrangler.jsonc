@@ -12,7 +12,12 @@
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
+    // Days a finished batch's results are kept before the daily cron deletes
+    // them (src/batch/retention.ts). A positive whole number; anything else
+    // deletes nothing.
+    "BATCH_RETENTION_DAYS": "30",
   },
+  "triggers": { "crons": ["17 3 * * *"] },
   // Template packs, generated fixtures and their metadata. T15 and T16 add
   // their tables in src/db/schema.ts and their objects under their own key
   // prefixes. database_id is a placeholder until the remote database exists;

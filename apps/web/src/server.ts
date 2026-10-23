@@ -7,6 +7,7 @@ import {
 import type { LocalAccess } from './access/local.ts';
 import { accessConfigFromEnv } from './access/verify.ts';
 import { consumeFixtures } from './batch/queue.ts';
+import { deleteExpiredBatches } from './batch/retention.ts';
 import { createFetchHandler } from './worker.ts';
 
 export { BatchWorkflow } from './batch/workflow.ts';
@@ -35,4 +36,7 @@ const handle = createFetchHandler({
 export default {
   ...createServerEntry({ fetch: request => handle(request, env) }),
   queue: consumeFixtures,
+  async scheduled(controller: ScheduledController, workerEnv: Env) {
+    await deleteExpiredBatches(workerEnv, new Date(controller.scheduledTime));
+  },
 };

@@ -48,7 +48,7 @@ export function fixtureKey(
   return `${batchPrefix(batchId)}${String(index).padStart(4, '0')}/${file}`;
 }
 
-function batchPrefix(batchId: string): string {
+export function batchPrefix(batchId: string): string {
   return `batches/${batchId}/`;
 }
 
