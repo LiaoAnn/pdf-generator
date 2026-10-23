@@ -357,6 +357,91 @@ function tableDocument(
 }
 
 describe('ground truth table fragments', () => {
+  test('preserves printed 是/否 cell options, their checked states and supplied order', () => {
+    const value = tableDocument(
+      {},
+      {
+        text: '□是 □否',
+        checkboxes: [
+          { checked: true, text: '是', bbox: [2.5, 0, 10.5, 8] },
+          { checked: false, text: '否', bbox: [30, 0, 38, 8] },
+        ],
+      },
+    );
+    expect(gtSchema.parse(value)).toEqual(value);
+  });
+
+  test.each([
+    ['missing checked state', { text: '是', bbox: [2, 0, 10, 8] }, ['checked']],
+    [
+      'coerced checked state',
+      { checked: 'false', text: '是', bbox: [2, 0, 10, 8] },
+      ['checked'],
+    ],
+    ['missing label', { checked: false, bbox: [2, 0, 10, 8] }, ['text']],
+    [
+      'non-string label',
+      { checked: false, text: 1, bbox: [2, 0, 10, 8] },
+      ['text'],
+    ],
+    ['missing box', { checked: false, text: '是' }, ['bbox']],
+    [
+      'unknown entry key',
+      { checked: false, text: '是', bbox: [2, 0, 10, 8], typo: true },
+      [],
+    ],
+    ['non-object entry', null, []],
+  ])('reports %s inside the checkbox entry', (_label, entry, suffix) => {
+    expect(
+      issuePaths(gtSchema, tableDocument({}, { checkboxes: [entry] })),
+    ).toContainEqual([
+      'blocks',
+      0,
+      'table',
+      'cells',
+      0,
+      'checkboxes',
+      0,
+      ...suffix,
+    ]);
+  });
+
+  test.each([
+    ['short tuple', [2, 0, 10]],
+    ['long tuple', [2, 0, 10, 8, 9]],
+    ['negative coordinate', [-1, 0, 10, 8]],
+    ['coerced coordinate', ['2', 0, 10, 8]],
+    ['nonfinite coordinate', [2, 0, Infinity, 8]],
+    ['zero width', [2, 0, 2, 8]],
+    ['reversed horizontal edges', [10, 0, 2, 8]],
+    ['zero height', [2, 8, 10, 8]],
+    ['reversed vertical edges', [2, 8, 10, 0]],
+  ])('rejects checkbox box with %s at its geometry', (_label, bbox) => {
+    const paths = issuePaths(
+      gtSchema,
+      tableDocument({}, { checkboxes: [{ checked: false, text: '是', bbox }] }),
+    );
+    expect(paths.map(path => path.slice(0, 8))).toContainEqual([
+      'blocks',
+      0,
+      'table',
+      'cells',
+      0,
+      'checkboxes',
+      0,
+      'bbox',
+    ]);
+  });
+
+  test.each([null, {}, '是'])(
+    'rejects non-array cell checkboxes %j at the field',
+    checkboxes => {
+      expect(
+        issuePaths(gtSchema, tableDocument({}, { checkboxes })),
+      ).toContainEqual(['blocks', 0, 'table', 'cells', 0, 'checkboxes']);
+    },
+  );
+
   test('accepts cell spans ending exactly at grid boundaries and empty cell arrays', () => {
     for (const value of [tableDocument(), tableDocument({ cells: [] })])
       expect(gtSchema.parse(value)).toEqual(value);

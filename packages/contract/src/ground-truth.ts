@@ -38,6 +38,20 @@ const cellSchema = z.strictObject({
     .describe('A header cell (repeated on every page it is printed on).'),
   text: z.string(),
   bbox: bboxSchema,
+  checkboxes: z
+    .array(
+      z.strictObject({
+        checked: z.boolean(),
+        text: z
+          .string()
+          .describe("The option's label, e.g. 是 for a box printed as □是."),
+        bbox: bboxSchema,
+      }),
+    )
+    .optional()
+    .describe(
+      'Checkboxes printed inside the cell, in the order they appear in it; bbox is the box of the checkbox element itself.',
+    ),
 });
 
 const gtBlockSchema = z.discriminatedUnion('type', [

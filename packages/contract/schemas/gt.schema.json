@@ -280,6 +280,53 @@
                           "minItems": 4,
                           "maxItems": 4,
                           "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+                        },
+                        "checkboxes": {
+                          "description": "Checkboxes printed inside the cell, in the order they appear in it; bbox is the box of the checkbox element itself.",
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "checked": {
+                                "type": "boolean"
+                              },
+                              "text": {
+                                "type": "string",
+                                "description": "The option's label, e.g. 是 for a box printed as □是."
+                              },
+                              "bbox": {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  }
+                                ],
+                                "items": false,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+                              }
+                            },
+                            "required": [
+                              "checked",
+                              "text",
+                              "bbox"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
