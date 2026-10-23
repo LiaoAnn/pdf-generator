@@ -11,6 +11,10 @@
     "typecheck": "tsc"
   },
   "devDependencies": {
+    "@types/node": "^24.13.6",
+    "esbuild": "^0.28.2",
+    "pagedjs": "0.4.3",
+    "playwright-core": "1.63.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

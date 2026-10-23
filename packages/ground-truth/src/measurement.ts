@@ -39,10 +39,20 @@ export interface MeasuredElement {
   details?: unknown;
 }
 
+/** A `.pagedjs_page` border box. */
+export interface MeasuredPage extends Rect {
+  /**
+   * The page size the document declares (`@page { size }`), in CSS px. Layout
+   * snaps the box to 1/64 px (an A4 page measures 595.27 pt wide, not 595.28),
+   * so when present this is the page size reported.
+   */
+  size?: { width: number; height: number };
+}
+
 /** Everything the collector read from one paginated document. */
 export interface Measurement {
-  /** Every `.pagedjs_page` border box, in document order. */
-  pages: Rect[];
+  /** Every `.pagedjs_page`, in document order. */
+  pages: MeasuredPage[];
   /** Every visible `data-gt` element, in document order. */
   elements: MeasuredElement[];
 }

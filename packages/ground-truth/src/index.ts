@@ -9,7 +9,9 @@ export {
 } from './build.ts';
 export type {
   MeasuredElement,
+  MeasuredPage,
   Measurement,
   Rect,
   Region,
 } from './measurement.ts';
+export { type EvaluatingPage, readGroundTruth } from './read.ts';

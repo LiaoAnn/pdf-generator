@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The collector runs in the browser; the tests drive Playwright from Node.
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"]
+  },
   "include": ["src"]
 }

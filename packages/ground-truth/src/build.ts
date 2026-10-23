@@ -100,7 +100,7 @@ export function buildGroundTruth(
       problems.push(`${where}: unknown block type "${element.type}"`);
     }
     if (element.nested) {
-      problems.push(`${where}: lies inside another data-gt element`);
+      problems.push(`${where}: is nested inside another data-gt element`);
     }
     const reader = isBlockType(element.type)
       ? readers[element.type]
@@ -158,8 +158,8 @@ export function buildGroundTruth(
     schemaVersion: 1,
     source,
     pages: measurement.pages.map(page => ({
-      width: toPt(page.width),
-      height: toPt(page.height),
+      width: toPt(page.size?.width ?? page.width),
+      height: toPt(page.size?.height ?? page.height),
     })),
     blocks,
   });

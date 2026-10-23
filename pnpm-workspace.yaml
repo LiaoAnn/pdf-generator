@@ -12,5 +12,9 @@ catalog:
   wrangler: ^4.152.0
 
 allowBuilds:
+  # pagedjs's dependencies (ground-truth tests): their install scripts only
+  # print banners; nothing needs them.
+  core-js: false
+  es5-ext: false
   esbuild: true
   workerd: true
