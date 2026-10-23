@@ -98,28 +98,30 @@ export function createRng(seed: string, path: string): Rng {
       return items[below(items.length)] as T;
     },
     weighted<T>(items: readonly T[], weights: readonly number[]): T {
-      let total = 0;
+      let largest = 0;
       for (const weight of weights) {
         if (!Number.isFinite(weight) || weight < 0) {
           throw new RangeError(`invalid weight ${weight}`);
         }
-        total += weight;
+        largest = Math.max(largest, weight);
       }
       if (
         items.length === 0 ||
         weights.length !== items.length ||
-        !(total > 0) ||
-        !Number.isFinite(total)
+        largest === 0
       ) {
         throw new RangeError(
           'weights need one finite entry per item and a positive sum',
         );
       }
+      // Relative to the largest weight, so the total cannot overflow.
+      const scaled = weights.map(weight => weight / largest);
+      const total = scaled.reduce((sum, weight) => sum + weight, 0);
       const target = (below(twoTo53) / twoTo53) * total;
       let last = 0;
       let cumulative = 0;
-      for (let i = 0; i < weights.length; i++) {
-        const weight = weights[i] as number;
+      for (let i = 0; i < scaled.length; i++) {
+        const weight = scaled[i] as number;
         if (weight === 0) continue;
         last = i;
         cumulative += weight;

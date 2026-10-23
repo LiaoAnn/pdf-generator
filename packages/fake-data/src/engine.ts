@@ -125,6 +125,26 @@ function impossible(field: RuleField): Issue[] {
   }
 }
 
+/** The most values one record may hold, so a small rule file cannot exhaust a Worker. */
+const maxValues = 100_000;
+
+/** How many values `field` generates at most: arrays multiply, objects add. */
+function valueCount(field: RuleField): number {
+  switch (field.type) {
+    case 'object':
+      return Object.values(field.fields).reduce(
+        (sum, child) => sum + valueCount(child),
+        0,
+      );
+    case 'array':
+      return field.maxItems === 0
+        ? 0
+        : field.maxItems * valueCount(field.items);
+    default:
+      return 1;
+  }
+}
+
 /** Every unsupported feature and impossible range in the rule file. */
 function check(rules: Rules) {
   const features: Unsupported[] = [];
@@ -151,6 +171,13 @@ function check(rules: Rules) {
   };
   for (const [key, field] of Object.entries(rules.fields)) {
     visit(field, key, ['fields', key]);
+  }
+  const count = valueCount({ type: 'object', fields: rules.fields });
+  if (count > maxValues) {
+    issues.push({
+      path: ['fields'],
+      message: `a record would hold up to ${count} values; the limit is ${maxValues}`,
+    });
   }
   return { features, issues };
 }

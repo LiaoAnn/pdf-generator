@@ -98,6 +98,16 @@ export function decimalRange(
     );
   }
   const scale = 10 ** decimals;
+  // Beyond 2^53 neighbouring integers collapse and the adjustments below
+  // would never finish, so reject such ranges first.
+  if (
+    !Number.isSafeInteger(Math.round(min * scale)) ||
+    !Number.isSafeInteger(Math.round(max * scale))
+  ) {
+    throw new RangeError(
+      `[${min}, ${max}] to ${decimals} places is too wide to draw from`,
+    );
+  }
   let low = Math.round(min * scale);
   while (low / scale < min) low++;
   while ((low - 1) / scale >= min) low--;
@@ -109,11 +119,7 @@ export function decimalRange(
       `no value in [${min}, ${max}] has ${decimals} decimal places`,
     );
   }
-  if (
-    !Number.isSafeInteger(low) ||
-    !Number.isSafeInteger(high) ||
-    !Number.isSafeInteger(high - low)
-  ) {
+  if (!Number.isSafeInteger(high - low)) {
     throw new RangeError(
       `[${min}, ${max}] to ${decimals} places is too wide to draw from`,
     );
