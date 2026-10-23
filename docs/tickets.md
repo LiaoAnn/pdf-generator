@@ -50,6 +50,15 @@
 - **不做**：任何功能
 - **預估行數**：900
 
+### T01-1 開發環境小修
+- **目標**：本機 dev cron 排程器拿掉自動探測（掃 socket、探 port、猜哪個是 wrangler dev），改成只照 `.devcontainer/cron-targets.jsonc` 明列的網址觸發（每個 Worker 的 port 是固定的）；沒列網址的 Worker 不排程並印出提示；`.devcontainer/docker-compose.yml` 的 `app` service 加 `init: true`；README 的 cron 說明跟著改
+- **Blocked by**：T01
+- **Blocks**：—
+- **撞車風險**：無（只動 `.devcontainer/`、README）；merge 後各 worktree 要重跑 `wt-up` 才生效
+- **驗收測試**：排程器不再對任何 port 發探測（workerd 不再印 RPC 警告）；照表觸發 `/cdn-cgi/local/scheduled` 有測試；`localhost` 先解析成 IPv6 時也能照表觸發；停掉 dev server 後沒有 `<defunct>` 程序
+- **不做**：新增平台的 cron；改 VM／homelab 設定
+- **預估行數**：400（刪除為主，小於 300 行的規則對這張例外）
+
 ### T02 共用契約
 - **目標**：zod 定義樣板包 manifest、規則檔格式、gt.json、區塊清單、API 型別；匯出 JSON Schema 給本機服務用
 - **Blocked by**：T01
