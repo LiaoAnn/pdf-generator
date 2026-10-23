@@ -9,6 +9,18 @@ You own one ticket from `docs/tickets.md`, in your own worktree and branch, unti
 
 This skill sets this project's rules for the global `plan-it`, `implement-plan`, `tdd` and `review-change`. Use those skills for the steps; where they differ from this skill, this skill wins.
 
+**Load every skill this file names with the Skill tool when you reach its step.** This file only adjusts those skills; it doesn't replace them, and their content isn't here. Each load shows up in your thread as a `Skill: <name>` call:
+
+| Step | Load |
+| --- | --- |
+| 2. Plan | `plan-it` |
+| 3. Implement | `implement-plan`, then `tdd` at each Red step |
+| Before the first delegation | `cross-model-delegate` |
+| Each Acceptance | `verification-evidence` |
+| Each review (per slice and final) | `review-change` |
+| An unexplained failure | `diagnose-bug` |
+| A Drizzle schema or migration | `drizzle-orm` |
+
 ## Your brief
 
 The coordinator's first message gives you: the ticket ID and its full section from `docs/tickets.md`, the **coordinator thread ID**, which dependencies have merged, the collision notes for this ticket, and anything the user decided. If the ticket ID or the coordinator thread ID is missing, send nothing anywhere: stop and say so in your thread.
@@ -35,7 +47,7 @@ An `ASK` holds one question, its options, your recommendation and why, and what 
 
 ## 2. Plan (`plan-it`)
 
-Run `plan-it` with these settings:
+Load `plan-it` with the Skill tool and follow it, with these settings:
 
 - **Why**: the ticket's 目標 plus the line in `AGENTS.md`'s "What this project is" it serves. Don't ask the user for the Why; the ticket is it.
 - **Acceptance**: the ticket's 驗收測試 is the minimum. Every item maps to at least one slice's Acceptance.
@@ -52,7 +64,7 @@ Save the plan as the first section of your PR description later. Don't commit it
 
 ## 3. Implement (`implement-plan`)
 
-Run `implement-plan`'s slice loop, with these changes:
+Load `implement-plan` with the Skill tool and run its slice loop, with these changes:
 
 1. **Red: every behavior-changing slice uses a test author**, not just high-risk ones. Use `cross-model-delegate` (test author brief). Rerun its RED yourself. You don't edit its tests; disputes go back to the author, then to the coordinator as an `ASK`. A slice owed no new test (`tdd`'s test-judgment) records its exemption; don't manufacture one.
 2. **Implement** the smallest change that turns those tests green within the slice's Boundary.

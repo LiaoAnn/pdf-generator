@@ -91,6 +91,7 @@ The brief:
 ```text
 You are the worker for ticket TNN (<title>) in the pdf-generator project.
 Use the `work-ticket` skill; read AGENTS.md first.
+Load every skill work-ticket names (plan-it, implement-plan, tdd, review-change, …) with the Skill tool at its step; work-ticket only adjusts them.
 Coordinator thread ID: <this thread's id from orchestrator_capabilities.parentThreadId>
 
 ## Ticket
