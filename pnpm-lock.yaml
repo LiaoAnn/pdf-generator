@@ -236,6 +236,9 @@ importers:
       '@pdf-generator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@pdf-generator/fake-data':
+        specifier: workspace:*
+        version: link:../../packages/fake-data
       '@tanstack/react-router':
         specifier: ^1.160.0
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
