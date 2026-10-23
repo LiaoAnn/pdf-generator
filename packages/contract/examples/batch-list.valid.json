@@ -1,0 +1,14 @@
+{
+  "batches": [
+    {
+      "id": "Batch_01-a",
+      "templateId": "monthly-report",
+      "templateVersion": 1,
+      "count": 2,
+      "seed": "Seed_01-a",
+      "status": "queued",
+      "progress": { "completed": 0, "failed": 0 },
+      "createdAt": "2026-10-23T15:46:22.998Z"
+    }
+  ]
+}

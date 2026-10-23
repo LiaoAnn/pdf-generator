@@ -1,0 +1,179 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "company-monthly-report",
+    "templateVersion": 1,
+    "seed": "T02_demo-3",
+    "index": 0
+  },
+  "pages": [
+    {
+      "width": 595.28,
+      "height": 841.89
+    },
+    {
+      "width": 595.28,
+      "height": 841.89
+    }
+  ],
+  "blocks": [
+    {
+      "id": "title",
+      "type": "title",
+      "page": 1,
+      "bbox": [36, 36, 559, 66],
+      "order": 0,
+      "text": "臺灣示範股份有限公司 月報"
+    },
+    {
+      "id": "intro",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [36, 80, 559, 110],
+      "order": 1,
+      "text": "本月營運資料如下。"
+    },
+    {
+      "id": "table-first",
+      "type": "table",
+      "page": 1,
+      "bbox": [36, 130, 559, 190],
+      "order": 2,
+      "text": "項目 金額\n營收 1000",
+      "table": {
+        "rows": 2,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "項目",
+            "bbox": [36, 130, 300, 160]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "金額",
+            "bbox": [300, 130, 559, 160]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "營收",
+            "bbox": [36, 160, 300, 190]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "1000",
+            "bbox": [300, 160, 559, 190]
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-1",
+      "type": "page_number",
+      "page": 1,
+      "bbox": [290, 800, 305, 820],
+      "order": 3,
+      "text": "1"
+    },
+    {
+      "id": "table-second",
+      "type": "table",
+      "page": 2,
+      "bbox": [36, 36, 559, 96],
+      "order": 4,
+      "text": "項目 金額\n備註：已核對",
+      "continues": "table-first",
+      "table": {
+        "rows": 2,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "項目",
+            "bbox": [36, 36, 300, 66]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "金額",
+            "bbox": [300, 36, 559, 66]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 2,
+            "header": false,
+            "text": "備註：已核對",
+            "bbox": [36, 66, 559, 96]
+          }
+        ]
+      }
+    },
+    {
+      "id": "approved",
+      "type": "checkbox",
+      "page": 2,
+      "bbox": [36, 120, 52, 136],
+      "order": 5,
+      "text": "已核對",
+      "checked": true
+    },
+    {
+      "id": "equation",
+      "type": "formula",
+      "page": 2,
+      "bbox": [36, 150, 220, 180],
+      "order": 6,
+      "text": "總額 = 單價 × 數量",
+      "latex": "\\mathrm{total} = p \\times q"
+    },
+    {
+      "id": "signature",
+      "type": "field",
+      "page": 2,
+      "bbox": [36, 200, 200, 230],
+      "order": 7,
+      "text": ""
+    },
+    {
+      "id": "stamp",
+      "type": "image",
+      "page": 2,
+      "bbox": [400, 200, 500, 300],
+      "order": 8,
+      "text": "示範公司章"
+    },
+    {
+      "id": "page-2",
+      "type": "page_number",
+      "page": 2,
+      "bbox": [290, 800, 305, 820],
+      "order": 9,
+      "text": "2"
+    }
+  ]
+}

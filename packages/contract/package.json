@@ -7,11 +7,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "schemas": "node src/export-json-schemas.ts",
     "test": "vitest run",
     "typecheck": "tsc"
   },
   "devDependencies": {
+    "@types/node": "^24.13.6",
+    "ajv": "^8.20.0",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   }
 }

@@ -1,0 +1,143 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Stable identifier of the template."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200,
+      "pattern": "\\S",
+      "description": "Display name, e.g. 公司月報."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 2000
+    },
+    "page": {
+      "type": "object",
+      "properties": {
+        "size": {
+          "type": "string",
+          "const": "A4"
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "portrait",
+            "landscape"
+          ]
+        }
+      },
+      "required": [
+        "size",
+        "orientation"
+      ],
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "object",
+      "properties": {
+        "template": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "allOf": [
+            {
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+            },
+            {
+              "pattern": "\\.hbs$"
+            }
+          ],
+          "description": "Handlebars template that renders the whole document."
+        },
+        "styles": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "allOf": [
+              {
+                "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+              },
+              {
+                "pattern": "\\.css$"
+              }
+            ],
+            "description": "Path relative to the template pack root, '/'-separated, with no leading '/', empty, '.' or '..' segment, backslash or control character."
+          },
+          "description": "Stylesheets, applied in this order."
+        },
+        "rules": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "allOf": [
+            {
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+            },
+            {
+              "pattern": "\\.json$"
+            }
+          ],
+          "description": "Fake-data rule file (the `rules` contract)."
+        },
+        "sample": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255,
+          "allOf": [
+            {
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+            },
+            {
+              "pattern": "\\.json$"
+            }
+          ],
+          "description": "Sample record the template renders without the fake-data engine."
+        },
+        "assets": {
+          "description": "Other files the template references: images, fonts.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$",
+            "description": "Path relative to the template pack root, '/'-separated, with no leading '/', empty, '.' or '..' segment, backslash or control character."
+          }
+        }
+      },
+      "required": [
+        "template",
+        "styles",
+        "rules",
+        "sample"
+      ],
+      "additionalProperties": false,
+      "description": "Files of the pack, as paths relative to the pack root."
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "id",
+    "name",
+    "page",
+    "files"
+  ],
+  "additionalProperties": false,
+  "title": "Template pack manifest",
+  "description": "manifest.json at the root of a template pack zip. Not expressible in JSON Schema: no file path may be listed twice."
+}

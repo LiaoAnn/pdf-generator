@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "batchId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Index of the fixture in its batch."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "completed",
+              "failed"
+            ]
+          },
+          "error": {
+            "description": "Why it failed.",
+            "type": "string",
+            "minLength": 1
+          },
+          "check": {
+            "description": "Self-check of the PDF against its gt.json.",
+            "type": "object",
+            "properties": {
+              "passed": {
+                "type": "boolean"
+              },
+              "differences": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "passed",
+              "differences"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "index",
+          "status"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "batchId",
+    "fixtures"
+  ],
+  "additionalProperties": false,
+  "title": "Fixture list",
+  "description": "The fixtures of one batch. Not expressible in JSON Schema: indexes are unique; error is present exactly when status is failed; check only when status is completed; a passed check has 0 differences."
+}

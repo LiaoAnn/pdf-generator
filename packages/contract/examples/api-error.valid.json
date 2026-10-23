@@ -1,0 +1,16 @@
+{
+  "error": {
+    "code": "invalid_template_pack",
+    "message": "樣板包驗證失敗",
+    "details": [
+      {
+        "message": "規則值無效",
+        "file": "data/rules.json",
+        "line": 12,
+        "column": 3,
+        "path": ["fields", 0, "type"]
+      },
+      { "message": "缺少樣板檔案" }
+    ]
+  }
+}

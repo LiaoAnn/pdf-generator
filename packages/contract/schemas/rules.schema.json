@@ -1,0 +1,725 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "fields": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string",
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/RuleField"
+      },
+      "description": "Field rules by key; keys are usable as Handlebars identifiers.",
+      "minProperties": 1
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "fields"
+  ],
+  "additionalProperties": false,
+  "title": "Fake-data rule file",
+  "description": "rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields.",
+  "$defs": {
+    "RuleField": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "name"
+            },
+            "gender": {
+              "type": "string",
+              "enum": [
+                "male",
+                "female",
+                "any"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "Chinese full name (string)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "nationalId"
+            },
+            "gender": {
+              "type": "string",
+              "enum": [
+                "male",
+                "female",
+                "any"
+              ]
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "身分證字號 with a valid check digit (string)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "businessId"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "統一編號 with a valid check digit (string)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "address"
+            },
+            "cities": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "臺北市",
+                  "新北市",
+                  "桃園市",
+                  "臺中市",
+                  "臺南市",
+                  "高雄市",
+                  "基隆市",
+                  "新竹市",
+                  "嘉義市",
+                  "新竹縣",
+                  "苗栗縣",
+                  "彰化縣",
+                  "南投縣",
+                  "雲林縣",
+                  "嘉義縣",
+                  "屏東縣",
+                  "宜蘭縣",
+                  "花蓮縣",
+                  "臺東縣",
+                  "澎湖縣",
+                  "金門縣",
+                  "連江縣"
+                ]
+              }
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "Taiwanese postal address (string), in one of `cities`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "phone"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "mobile",
+                "landline"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "kind"
+          ],
+          "additionalProperties": false,
+          "description": "Taiwanese phone number (string)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "company"
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "Company name (string)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "date"
+            },
+            "min": {
+              "type": "string",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$",
+              "description": "YYYY-MM-DD"
+            },
+            "max": {
+              "type": "string",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$",
+              "description": "YYYY-MM-DD"
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "Date between min and max inclusive (string, YYYY-MM-DD)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "money"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "Amount in TWD (number)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "integer"
+            },
+            "min": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "max": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max"
+          ],
+          "additionalProperties": false,
+          "description": "Integer between min and max inclusive."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "number"
+            },
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            }
+          },
+          "required": [
+            "type",
+            "min",
+            "max",
+            "decimals"
+          ],
+          "additionalProperties": false,
+          "description": "Number between min and max, rounded to `decimals`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "choice"
+            },
+            "options": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  }
+                ]
+              }
+            },
+            "weights": {
+              "type": "array",
+              "items": {
+                "type": "number",
+                "minimum": 0
+              }
+            }
+          },
+          "required": [
+            "type",
+            "options"
+          ],
+          "additionalProperties": false,
+          "description": "One of `options`, picked by `weights` (uniform without)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "text"
+            },
+            "lang": {
+              "type": "string",
+              "enum": [
+                "zh",
+                "en",
+                "mixed"
+              ]
+            },
+            "minLength": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991
+            },
+            "maxLength": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          },
+          "required": [
+            "type",
+            "lang",
+            "minLength",
+            "maxLength"
+          ],
+          "additionalProperties": false,
+          "description": "Filler text (string), length in characters."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "checkbox"
+            },
+            "probability": {
+              "description": "Chance it is checked.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "required": [
+            "type"
+          ],
+          "additionalProperties": false,
+          "description": "Checkbox state (boolean)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "constant"
+            },
+            "value": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "value"
+          ],
+          "additionalProperties": false,
+          "description": "Always `value`."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "object"
+            },
+            "fields": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/RuleField"
+              },
+              "description": "Field rules by key; keys are usable as Handlebars identifiers.",
+              "minProperties": 1
+            }
+          },
+          "required": [
+            "type",
+            "fields"
+          ],
+          "additionalProperties": false,
+          "description": "Nested object."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "array"
+            },
+            "minItems": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxItems": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "items": {
+              "$ref": "#/$defs/RuleField"
+            }
+          },
+          "required": [
+            "type",
+            "minItems",
+            "maxItems",
+            "items"
+          ],
+          "additionalProperties": false,
+          "description": "Array of minItems to maxItems values, e.g. table rows."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "sum"
+            },
+            "of": {
+              "minItems": 1,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+              }
+            }
+          },
+          "required": [
+            "type",
+            "of"
+          ],
+          "additionalProperties": false,
+          "description": "Sum of the referenced values (number); a path through an array adds every item; null counts as 0."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "runningBalance"
+            },
+            "opening": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+            },
+            "add": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+              }
+            },
+            "subtract": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+              }
+            }
+          },
+          "required": [
+            "type",
+            "opening",
+            "add",
+            "subtract"
+          ],
+          "additionalProperties": false,
+          "description": "Inside an array item: row i = opening + Σ add − Σ subtract over rows 0..i (number)."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "description": {
+              "type": "string"
+            },
+            "blankProbability": {
+              "description": "Chance the value is null, printed blank.",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "type": {
+              "type": "string",
+              "const": "percentage"
+            },
+            "part": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+            },
+            "whole": {
+              "type": "string",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`."
+            },
+            "decimals": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 6
+            }
+          },
+          "required": [
+            "type",
+            "part",
+            "whole",
+            "decimals"
+          ],
+          "additionalProperties": false,
+          "description": "part / whole × 100, rounded to `decimals` (number)."
+        }
+      ]
+    }
+  }
+}

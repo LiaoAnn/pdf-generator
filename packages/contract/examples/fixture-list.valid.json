@@ -1,0 +1,17 @@
+{
+  "batchId": "Batch_01-a",
+  "fixtures": [
+    { "index": 0, "status": "pending" },
+    {
+      "index": 1,
+      "status": "completed",
+      "check": { "passed": true, "differences": 0 }
+    },
+    {
+      "index": 2,
+      "status": "completed",
+      "check": { "passed": false, "differences": 2 }
+    },
+    { "index": 3, "status": "failed", "error": "PDF 列印失敗" }
+  ]
+}

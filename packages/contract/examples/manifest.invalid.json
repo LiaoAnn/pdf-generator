@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "company-monthly-report",
+  "name": "公司月報",
+  "description": "用於 OCR 測試的虛構公司月報。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "templates/report.html",
+    "styles": ["styles/base.css", "styles/report.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": ["assets/logo.png", "assets/fonts/report.woff2"]
+  }
+}

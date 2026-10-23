@@ -1,0 +1,131 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "holder": {
+      "type": "name",
+      "gender": "any",
+      "description": " 帳戶持有人 "
+    },
+    "nationalId": {
+      "type": "nationalId",
+      "gender": "female"
+    },
+    "businessId": {
+      "type": "businessId"
+    },
+    "address": {
+      "type": "address",
+      "cities": ["臺北市", "金門縣"]
+    },
+    "mobile": {
+      "type": "phone",
+      "kind": "mobile"
+    },
+    "landline": {
+      "type": "phone",
+      "kind": "landline"
+    },
+    "company": {
+      "type": "company"
+    },
+    "period": {
+      "type": "date",
+      "min": "2026-01-01",
+      "max": "2026-12-31"
+    },
+    "openingBalance": {
+      "type": "money",
+      "min": 10000,
+      "max": 50000,
+      "decimals": 2
+    },
+    "branchCode": {
+      "type": "integer",
+      "min": 1,
+      "max": 999
+    },
+    "interestRate": {
+      "type": "number",
+      "min": 0,
+      "max": 0.05,
+      "decimals": 6
+    },
+    "accountType": {
+      "type": "choice",
+      "options": ["活期", 1, true],
+      "weights": [2, 1, 0]
+    },
+    "memo": {
+      "type": "text",
+      "lang": "mixed",
+      "minLength": 10,
+      "maxLength": 80,
+      "blankProbability": 0.2
+    },
+    "paperless": {
+      "type": "checkbox",
+      "probability": 0.7
+    },
+    "currency": {
+      "type": "constant",
+      "value": "TWD"
+    },
+    "fee": {
+      "type": "constant",
+      "value": 10
+    },
+    "account": {
+      "type": "object",
+      "fields": {
+        "creditLimit": {
+          "type": "money",
+          "min": 0,
+          "max": 100000
+        }
+      }
+    },
+    "transactions": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 20,
+      "items": {
+        "type": "object",
+        "fields": {
+          "date": {
+            "type": "date",
+            "min": "2026-01-01",
+            "max": "2026-12-31"
+          },
+          "deposit": {
+            "type": "money",
+            "min": 0,
+            "max": 10000,
+            "decimals": 2
+          },
+          "withdrawal": {
+            "type": "money",
+            "min": 0,
+            "max": 5000,
+            "decimals": 2
+          },
+          "balance": {
+            "type": "runningBalance",
+            "opening": "openingBalance",
+            "add": ["transactions[].deposit"],
+            "subtract": ["transactions[].withdrawal"]
+          }
+        }
+      }
+    },
+    "totalDeposits": {
+      "type": "sum",
+      "of": ["transactions[].deposit"]
+    },
+    "utilization": {
+      "type": "percentage",
+      "part": "totalDeposits",
+      "whole": "account.creditLimit",
+      "decimals": 2
+    }
+  }
+}
