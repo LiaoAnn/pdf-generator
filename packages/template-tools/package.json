@@ -13,5 +13,8 @@
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "handlebars": "^4.7.10"
   }
 }
