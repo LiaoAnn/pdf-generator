@@ -434,6 +434,29 @@ function render(ast: AST, root: unknown, file: string): string {
 }
 
 /**
+ * A parsed template and what is wrong with it: a syntax error (then no AST),
+ * or the constructs outside the supported subset.
+ */
+export function parseTemplate(
+  source: string,
+  file: string,
+): { ast?: AST; issues: PackIssue[] } {
+  const ast = parse(source, file);
+  if (!('body' in ast)) return { issues: [ast] };
+  return { ast, issues: unsupported(ast, file) };
+}
+
+/** Renders a template that parseTemplate found no issue in. */
+export function renderTemplate(ast: AST, data: unknown, file: string): string {
+  try {
+    return render(ast, data, file);
+  } catch (error) {
+    if (error instanceof Fail) throw new TemplateError([error.issue]);
+    throw error;
+  }
+}
+
+/**
  * Fills `data` into a Handlebars template. Lookups are strict: a field the
  * data lacks is an error, a field that is null prints blank. Throws
  * TemplateError, located in `file`, for anything outside the supported subset.
@@ -443,14 +466,7 @@ export function fill(
   data: unknown,
   { file = 'template.hbs' }: { file?: string } = {},
 ): string {
-  const ast = parse(template, file);
-  if (!('body' in ast)) throw new TemplateError([ast]);
-  const issues = unsupported(ast, file);
-  if (issues.length > 0) throw new TemplateError(issues);
-  try {
-    return render(ast, data, file);
-  } catch (error) {
-    if (error instanceof Fail) throw new TemplateError([error.issue]);
-    throw error;
-  }
+  const { ast, issues } = parseTemplate(template, file);
+  if (ast === undefined || issues.length > 0) throw new TemplateError(issues);
+  return renderTemplate(ast, data, file);
 }

@@ -20,7 +20,7 @@ export function decode(bytes: Uint8Array): string | undefined {
 }
 
 /** 1-based line and column (in UTF-16 code units) of `offset` in `text`. */
-function position(
+export function position(
   text: string,
   offset: number,
 ): { line: number; column: number } {

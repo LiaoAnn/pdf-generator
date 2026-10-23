@@ -7,7 +7,9 @@ import {
 import { type FakeRecord, recordSchema } from '@pdf-generator/fake-data';
 import type { z } from 'zod';
 import { type PackFiles, readFiles } from './files.ts';
+import { parseTemplate, renderTemplate, TemplateError } from './fill.ts';
 import type { PackIssue } from './issues.ts';
+import { markIssues } from './marks.ts';
 import { decode, jsonPosition, parseJson } from './text.ts';
 
 export type { PackFiles } from './files.ts';
@@ -155,6 +157,22 @@ export function checkPack(
     parsedRules &&
     sampleJson &&
     validate(recordSchema(parsedRules), sampleJson, sample, 'sample-invalid');
+
+  if (templateText !== undefined) {
+    const parsed = parseTemplate(templateText, template);
+    issues.push(...parsed.issues);
+    if (parsed.ast !== undefined) {
+      issues.push(...markIssues(templateText, parsed.ast, template));
+      if (parsed.issues.length === 0 && parsedSample !== undefined) {
+        try {
+          renderTemplate(parsed.ast, parsedSample, template);
+        } catch (error) {
+          if (!(error instanceof TemplateError)) throw error;
+          issues.push(...error.issues);
+        }
+      }
+    }
+  }
 
   if (
     issues.length > 0 ||
