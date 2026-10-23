@@ -1,0 +1,10 @@
+{
+  // The print runtime runs in the print browser, not in the Worker.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": ["public/print-runtime.js"]
+}

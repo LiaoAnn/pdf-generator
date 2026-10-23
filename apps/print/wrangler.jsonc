@@ -6,6 +6,12 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat_v2"],
+  // Puppeteer's page.evaluate serialises functions with toString(); esbuild's
+  // keep_names helpers (__name) would not exist in the page.
+  "keep_names": false,
+  "browser": {
+    "binding": "BROWSER",
+  },
   "assets": {
     "directory": "public",
     "binding": "ASSETS",

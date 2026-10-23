@@ -1,0 +1,118 @@
+// Printing a document on a Browser Rendering tab. Exported for the print
+// Worker's routes and for T08 (ground truth), which reads boxes on the same
+// tab through `inspect` before the PDF is printed (T03 Must 3).
+import type { Browser } from '@cloudflare/puppeteer';
+import { prepareHtml } from './prepare.ts';
+import type { PrintRequest } from './request.ts';
+
+export { prepareHtml } from './prepare.ts';
+export {
+  type PageSettings,
+  type PrintRequest,
+  printRequestSchema,
+} from './request.ts';
+
+/** What the print runtime (public/print-runtime.js) reports once Paged.js is done. */
+export interface PrintReadyState {
+  pageCount: number;
+}
+
+/**
+ * The page `inspect` receives. Only `evaluate` with a function that takes no
+ * arguments, which puppeteer and Playwright pages both have.
+ */
+export interface PrintPage {
+  evaluate<R>(fn: () => R | Promise<R>): Promise<R>;
+}
+
+export type RenderErrorCode = 'pagination_timeout';
+
+/** A render that must not produce a PDF. */
+export class RenderError extends Error {
+  readonly code: RenderErrorCode;
+  readonly details: string[];
+
+  constructor(code: RenderErrorCode, message: string, details: string[] = []) {
+    super(message);
+    this.name = 'RenderError';
+    this.code = code;
+    this.details = details;
+  }
+}
+
+const defaultTimeoutMs = 60_000;
+
+/**
+ * Waits until Paged.js has finished paginating a page prepared with
+ * `prepareHtml` (its `PagedConfig.after`, T03 Must 1). Rejects with a
+ * `pagination_timeout` RenderError after `timeoutMs`.
+ */
+export async function waitForPrintReady(
+  page: PrintPage,
+  timeoutMs = defaultTimeoutMs,
+): Promise<PrintReadyState> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () =>
+        reject(
+          new RenderError(
+            'pagination_timeout',
+            `Paged.js did not finish within ${timeoutMs} ms`,
+          ),
+        ),
+      timeoutMs,
+    );
+  });
+  try {
+    return await Promise.race([
+      page.evaluate(
+        () =>
+          (
+            globalThis as unknown as {
+              __pdfgen: { ready: Promise<PrintReadyState> };
+            }
+          ).__pdfgen.ready,
+      ),
+      timeout,
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface RenderOptions<T> {
+  /** Origin the browser loads `/blank`, `/fonts/…` and Paged.js from. */
+  assetOrigin: string;
+  /** Runs on the paginated tab, before it is printed. */
+  inspect?: (page: PrintPage) => Promise<T>;
+  timeoutMs?: number;
+}
+
+export interface RenderResult<T> {
+  pdf: Uint8Array;
+  pageCount: number;
+  inspected: T | undefined;
+}
+
+/** Prints one document on a new tab of `browser`, then closes the tab. */
+export async function renderPdf<T = undefined>(
+  browser: Browser,
+  request: PrintRequest,
+  options: RenderOptions<T>,
+): Promise<RenderResult<T>> {
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${options.assetOrigin}/blank`);
+    await page.setContent(prepareHtml(request.html, { page: request.page }));
+    const ready = await waitForPrintReady(page, options.timeoutMs);
+    const inspected = options.inspect ? await options.inspect(page) : undefined;
+    const pdf = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+    });
+    return { pdf, pageCount: ready.pageCount, inspected };
+  } finally {
+    await page.close().catch(() => undefined);
+  }
+}
