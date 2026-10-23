@@ -33,6 +33,8 @@ Fall back to the Sonnet target, with the same brief and a new `clientRequestId` 
 
 Once the primary has hit a credit or quota limit, use the fallback for the rest of the ticket; don't probe the primary again. Record every fallback (which call, the error text) in your slice report. If both fail, stop and report to the coordinator.
 
+The Sonnet fallback runs on the same Claude account as you: when you yourself hit the Claude usage limit, it is unavailable too. A fallback that failed for that reason is not a Codex failure; retry on Codex first once the limit resets.
+
 Never fall back to running the role yourself or to another Opus instance. The point is a different model.
 
 ## What the child is told
