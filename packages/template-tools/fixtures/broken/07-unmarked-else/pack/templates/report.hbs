@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>公司月報</title>
+  <link rel="stylesheet" href="../styles/report.css">
+</head>
+<body>
+  <h1 data-gt="title">公司月報</h1>
+  <img data-gt="image" src="../assets/logo.svg" alt="青禾標誌">
+  <p data-gt="field">公司：{{company}}／統編：{{businessId}}</p>
+  <p data-gt="field">聯絡人：{{contact}}／身分證：{{nationalId}}</p>
+  <p data-gt="field">地址：{{address}}／電話：{{phone}}</p>
+  <p data-gt="field">報表日期：{{date}}</p>
+  <p data-gt="field">營收：{{number revenue}} 元</p>
+  {{#if approved}}
+  <p data-gt="checkbox">已核准</p>
+  {{else}}
+  <p>待核准</p>
+  {{/if}}
+  <table data-gt="table">
+    <thead><tr><th>支出項目</th><th>金額</th></tr></thead>
+    <tbody>
+      {{#each rows}}
+      <tr><td>{{item}}</td><td>{{number amount}}</td></tr>
+      {{/each}}
+    </tbody>
+  </table>
+  <p data-gt="paragraph">備註：<span>本報表為測試用合成資料。</span></p>
+</body>
+</html>

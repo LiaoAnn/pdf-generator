@@ -1,0 +1,14 @@
+{
+  "description": "Sample national ID has an incorrect check digit.",
+  "issues": [
+    {
+      "code": "sample-invalid",
+      "file": "data/sample.json",
+      "line": 5,
+      "column": 17,
+      "path": [
+        "nationalId"
+      ]
+    }
+  ]
+}

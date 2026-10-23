@@ -1,0 +1,11 @@
+{
+  "description": "Title uses a block type outside the contract.",
+  "issues": [
+    {
+      "code": "gt-type",
+      "file": "templates/report.hbs",
+      "line": 9,
+      "column": 7
+    }
+  ]
+}

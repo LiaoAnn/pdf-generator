@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "company": { "type": "company" },
+    "businessId": { "type": "businessId" },
+    "contact": { "type": "name" },
+    "nationalId": { "type": "nationalId" },
+    "address": { "type": "address", "cities": ["臺北市"] },
+    "phone": { "type": "phone", "kind": "landline" },
+    "date": { "type": "date", "min": "2026-01-01", "max": "2026-12-31" },
+    "revenue": { "type": "money", "min": 1000001, "max": 1000000 },
+    "approved": { "type": "checkbox" },
+    "rows": {
+      "type": "array", "minItems": 1, "maxItems": 5,
+      "items": { "type": "object", "fields": {
+        "item": { "type": "choice", "options": ["文具", "設備"] },
+        "amount": { "type": "money", "min": 0, "max": 1000000 }
+      } }
+    }
+  }
+}

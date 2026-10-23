@@ -1,0 +1,16 @@
+{
+  "description": "Manifest lists a second stylesheet that was not included.",
+  "issues": [
+    {
+      "code": "file-missing",
+      "file": "manifest.json",
+      "line": 8,
+      "column": 37,
+      "path": [
+        "files",
+        "styles",
+        1
+      ]
+    }
+  ]
+}

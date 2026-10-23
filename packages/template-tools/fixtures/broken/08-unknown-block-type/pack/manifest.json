@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "taiwan-monthly-report",
+  "name": "公司月報",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "templates/report.hbs",
+    "styles": ["styles/report.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": ["assets/logo.svg", "assets/report.woff2"]
+  }
+}

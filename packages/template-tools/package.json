@@ -7,10 +7,12 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "check-pack": "node src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc"
+    "typecheck": "tsc && tsc -p tsconfig.cli.json"
   },
   "devDependencies": {
+    "@types/node": "^24.13.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

@@ -2,8 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     // Web APIs only (TextDecoder, …): the same code runs in a Worker and in
-    // Node, so it must not reach for Node's own modules.
+    // Node, so it must not reach for Node's own modules. The Node CLI is
+    // typechecked on its own (tsconfig.cli.json).
     "lib": ["ESNext", "WebWorker"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/cli.ts", "src/cli.test.ts", "src/fixtures.test.ts"]
 }

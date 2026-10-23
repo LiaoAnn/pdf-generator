@@ -1,0 +1,11 @@
+{
+  "description": "Template misspells the company field.",
+  "issues": [
+    {
+      "code": "template-unknown-field",
+      "file": "templates/report.hbs",
+      "line": 11,
+      "column": 27
+    }
+  ]
+}
