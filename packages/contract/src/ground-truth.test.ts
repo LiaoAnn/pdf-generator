@@ -331,10 +331,12 @@ describe('ground truth for printed PDF fixtures', () => {
 function tableDocument(
   tablePatch: Record<string, unknown> = {},
   cellPatch: Record<string, unknown> = {},
+  page = 1,
 ) {
   return document([
     block({
       type: 'table',
+      page,
       table: {
         rows: 2,
         cols: 2,
@@ -369,6 +371,96 @@ describe('ground truth table fragments', () => {
       },
     );
     expect(gtSchema.parse(value)).toEqual(value);
+  });
+
+  test.each([
+    ['width', [90, 10, 100.01, 18]],
+    ['height', [10, 90, 18, 100.01]],
+  ])(
+    'reports a checkbox exceeding its referenced page %s at the exact nested bbox path',
+    (_dimension, bbox) => {
+      const checkboxes = [
+        { checked: true, text: '是', bbox: [2, 0, 10, 8] },
+        { checked: false, text: '否', bbox: [12, 0, 20, 8] },
+      ];
+      const value = tableDocument(
+        {
+          cells: [
+            {
+              row: 0,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: '',
+              bbox: [0, 0, 50, 20],
+            },
+            {
+              row: 0,
+              col: 1,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: '是 否',
+              bbox: [50, 0, 100, 20],
+              checkboxes,
+            },
+          ],
+        },
+        {},
+        2,
+      );
+      value.blocks.unshift(block({ id: 'intro', order: 1 }));
+      value.pages[1] = { width: 100, height: 100 };
+      expect(gtSchema.parse(value)).toEqual(value);
+
+      checkboxes.splice(1, 1, { checked: false, text: '否', bbox });
+
+      expect(issuePaths(gtSchema, value)).toContainEqual([
+        'blocks',
+        1,
+        'table',
+        'cells',
+        1,
+        'checkboxes',
+        1,
+        'bbox',
+      ]);
+    },
+  );
+
+  test.each([
+    ['inside the page', [150, 150, 158, 158]],
+    ['exactly on both page edges', [190, 290, 200, 300]],
+  ])(
+    'accepts a checkbox outside its cell but %s on the referenced larger page',
+    (_position, bbox) => {
+      const value = tableDocument(
+        {},
+        { checkboxes: [{ checked: false, text: '是', bbox }] },
+        2,
+      );
+      value.pages = [
+        { width: 100, height: 100 },
+        { width: 200, height: 300 },
+      ];
+
+      expect(gtSchema.parse(value)).toEqual(value);
+    },
+  );
+
+  test('reports a missing table page even when a cell checkbox needs page dimensions', () => {
+    const value = tableDocument(
+      {},
+      {
+        checkboxes: [
+          { checked: false, text: '是', bbox: [990, 990, 999, 999] },
+        ],
+      },
+      3,
+    );
+
+    expect(issuePaths(gtSchema, value)).toContainEqual(['blocks', 0, 'page']);
   });
 
   test.each([
