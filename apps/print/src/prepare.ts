@@ -1,9 +1,17 @@
 import type { PageSettings } from './request.ts';
 
+// Only the print Worker's own scripts (the runtime and Paged.js) may run: no
+// inline script, event handler attribute or other script source from the
+// template. Template code could forge the runtime's check results, and would
+// make the output depend on more than the template and its data.
+// (puppeteer's page.evaluate is not subject to the page's policy.)
+const noTemplateScripts = `<meta http-equiv="Content-Security-Policy" content="script-src 'self'">`;
+
 /**
- * Turns a template's HTML into the document the print browser loads: the
- * print runtime and Paged.js go first in <head>, and the requested page size
- * is both the first and the last stylesheet of <head>. Paged.js 0.4.3 takes
+ * Turns a template's HTML into the document the print browser loads: a
+ * policy that lets only the platform's scripts run, the print runtime and
+ * Paged.js go first, and the requested page size is both the first and the
+ * last stylesheet of <head>. Paged.js 0.4.3 takes
  * the page box from the first stylesheet that sets a size, but lays the
  * content out with the size of the last one, so both are needed for the
  * request's orientation to win over any `@page { size }` of the template.
@@ -18,13 +26,10 @@ export function prepareHtml(
 ): string {
   const { size, orientation } = options.page;
   const pageSize = `<style>@page { size: ${size} ${orientation}; }</style>`;
-  const first = `${pageSize}<script src="/print-runtime.js"></script><script src="/paged.polyfill.js"></script>`;
-  // Never before the doctype: a script there would switch to quirks mode.
-  const withFirst = insert(html, first, 'after', [
-    /<head\b[^>]*>/i,
-    /<html\b[^>]*>/i,
-    /<!doctype[^>]*>/i,
-  ]);
+  const first = `${noTemplateScripts}${pageSize}<script src="/print-runtime.js"></script><script src="/paged.polyfill.js"></script>`;
+  // Before any of the template's markup, so the policy covers all of it; but
+  // never before the doctype, which would switch the page to quirks mode.
+  const withFirst = insert(html, first, 'after', [/^\s*<!doctype[^>]*>/i]);
   const withLast = insert(withFirst, pageSize, 'before', [
     /<\/head\s*>/i,
     /<body\b/i,

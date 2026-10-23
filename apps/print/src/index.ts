@@ -1,8 +1,12 @@
 // The print Worker. Static assets (fonts, Paged.js, /blank) are served before
 // this handler runs. `POST /print` turns a document into a PDF;
 // `DELETE /session/<id>` closes a kept-alive browser session.
+import { Buffer } from 'node:buffer';
 import puppeteer from '@cloudflare/puppeteer';
 import type { ApiError } from '@pdf-generator/contract';
+// T08's reader; a stub with its signature until @pdf-generator/ground-truth
+// merges.
+import { readGroundTruth } from './ground-truth-stub.ts';
 import { openBrowser, RenderError, renderPdf } from './lib.ts';
 import { printRequestSchema } from './request.ts';
 
@@ -86,10 +90,29 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
   const { browser, sessionId, release } = await openBrowser(env.BROWSER, {
     session,
   });
+  const { source } = parsed.data;
   try {
+    // With a source, the ground truth is read on the paginated tab right
+    // before it is printed (T03 Must 3).
     const result = await renderPdf(browser, parsed.data, {
       assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
+      ...(source ? { inspect: page => readGroundTruth(page, source) } : {}),
     });
+    if (result.inspected) {
+      return Response.json(
+        {
+          pageCount: result.pageCount,
+          pdf: Buffer.from(result.pdf).toString('base64'),
+          gt: result.inspected,
+        },
+        {
+          headers: {
+            'X-Page-Count': String(result.pageCount),
+            ...(sessionId ? { 'X-Browser-Session': sessionId } : {}),
+          },
+        },
+      );
+    }
     return new Response(result.pdf, {
       headers: {
         'Content-Type': 'application/pdf',

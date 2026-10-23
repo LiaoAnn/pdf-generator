@@ -69,13 +69,17 @@
     }
   }
 
-  // Page margin boxes exist only after pagination, so read the @page rules
-  // from the stylesheets' text: each declaration block inside an @page rule.
-  function findUsedInPageRules() {
+  // Rules computed styles can't show before Paged.js runs: @page rules (margin
+  // boxes exist only after pagination) and @media print rules (Paged.js
+  // applies them; the page is still on screen media here). Read them from the
+  // stylesheets' text: a platform family named anywhere in a declaration
+  // block's font or font-family, bold when the block asks for bold.
+  function findUsedInAtRules() {
     for (const style of document.querySelectorAll('style')) {
       const css = (style.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
-      for (let at = css.search(/@page\b/i); at !== -1; ) {
-        const open = css.indexOf('{', at);
+      const starts = /@page\b|@media\s+print\b/gi;
+      for (let match = starts.exec(css); match; match = starts.exec(css)) {
+        const open = css.indexOf('{', match.index);
         if (open === -1) break;
         let depth = 0;
         let end = open;
@@ -86,12 +90,20 @@
         const rule = css.slice(open + 1, end);
         const outer = rule.replace(/\{[^{}]*\}/g, '');
         for (const block of [outer, ...(rule.match(/\{[^{}]*\}/g) ?? [])]) {
-          const family = /font-family\s*:\s*([^;}]+)/i.exec(block)?.[1];
-          const weight = /font-weight\s*:\s*([^;}]+)/i.exec(block)?.[1];
-          if (family) use(family, weight ?? '400');
+          const weight = /font-weight\s*:\s*([^;}]+)/i.exec(block)?.[1] ?? '';
+          const fonts = [
+            ...block.matchAll(/font(?:-family)?\s*:\s*([^;}]+)/gi),
+          ];
+          for (const [, value = ''] of fonts) {
+            const lower = value.toLowerCase();
+            const bold =
+              isBold(weight) || /(^|\s)(bold|bolder|[6-9]00)(\s|$)/.test(lower);
+            for (const key of Object.keys(platformFonts)) {
+              if (lower.includes(key)) use(key, bold ? '700' : '400');
+            }
+          }
         }
-        const next = css.slice(end).search(/@page\b/i);
-        at = next === -1 ? -1 : end + next;
+        starts.lastIndex = end;
       }
     }
   }
@@ -100,7 +112,7 @@
   // that fails to load stays in document.fonts with status "error".
   async function loadUsedFaces() {
     findUsedInDocument();
-    findUsedInPageRules();
+    findUsedInAtRules();
     const faces = [...used].sort().map(entry => {
       const [key = '', variant] = entry.split('|');
       const font = platformFonts[key];

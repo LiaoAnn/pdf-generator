@@ -33,11 +33,14 @@ export interface PrintReadyState {
 }
 
 /**
- * The page `inspect` receives. Only `evaluate` with a function that takes no
- * arguments, which puppeteer and Playwright pages both have.
+ * The page `inspect` receives: `evaluate` with a function that takes no
+ * arguments or with an expression string, which puppeteer and Playwright
+ * pages both have.
  */
 export interface PrintPage {
   evaluate<R>(fn: () => R | Promise<R>): Promise<R>;
+  /** A string expression, as T08's reader uses (no serialised functions). */
+  evaluate(expression: string): Promise<unknown>;
 }
 
 export type RenderErrorCode =
