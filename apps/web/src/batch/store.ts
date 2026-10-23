@@ -75,3 +75,21 @@ export async function readFixtureRows(db: Db, batchId: string) {
     .where(eq(fixtures.batchId, batchId))
     .orderBy(fixtures.index);
 }
+
+/** The batch row alone, without progress. */
+export async function readBatchRow(
+  db: Db,
+  id: string,
+): Promise<BatchRow | undefined> {
+  const [row] = await db.select().from(batches).where(eq(batches.id, id));
+  return row;
+}
+
+/** How many fixtures of a batch have finished (completed or failed). */
+export async function countFinished(db: Db, batchId: string): Promise<number> {
+  const [row] = await db
+    .select({ finished: sql<number>`count(*)`.mapWith(Number) })
+    .from(fixtures)
+    .where(eq(fixtures.batchId, batchId));
+  return row?.finished ?? 0;
+}
