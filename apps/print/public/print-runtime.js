@@ -3,7 +3,8 @@
 // Paged.js (see src/prepare.ts). It declares only the platform font faces the
 // document uses and resolves `window.__pdfgen.ready` once Paged.js has
 // finished, with the checks of docs/findings/T03.md Must 4 (DOM part) and
-// Must 5. It also makes tables repeat their header and keep rows whole.
+// Must 5, and the text the PDF must contain. It also makes tables repeat
+// their header and keep rows whole.
 (() => {
   /** @type {Record<string, { family: string, regular: string, bold?: string }>} */
   const platformFonts = {
@@ -221,7 +222,31 @@
     return rows;
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[] }) => void} */
+  // Per page, the text of every visible text node inside a [data-gt] element,
+  // as the PDF's text layer should contain it (T03 Must 4, PDF part).
+  function expectedText() {
+    return [...document.querySelectorAll('.pagedjs_page')].map(page => {
+      /** @type {string[]} */
+      const texts = [];
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.parentElement?.closest('[data-gt]')) continue;
+        const text = (node.textContent ?? '')
+          .normalize('NFKC')
+          .replace(/\s/g, '');
+        if (!text) continue;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const visible = [...range.getClientRects()].some(
+          rect => rect.width > 0 && rect.height > 0,
+        );
+        if (visible) texts.push(text);
+      }
+      return texts;
+    });
+  }
+
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: string[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
@@ -240,6 +265,7 @@
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),
           fragmentedRows: fragmentedRows(),
+          expectedText: expectedText(),
         });
       },
     },

@@ -1,8 +1,9 @@
 // The print Worker. Static assets (fonts, Paged.js, /blank) are served before
-// this handler runs. `POST /print` turns a document into a PDF.
+// this handler runs. `POST /print` turns a document into a PDF;
+// `DELETE /session/<id>` closes a kept-alive browser session.
 import puppeteer from '@cloudflare/puppeteer';
 import type { ApiError } from '@pdf-generator/contract';
-import { RenderError, renderPdf } from './lib.ts';
+import { openBrowser, RenderError, renderPdf } from './lib.ts';
 import { printRequestSchema } from './request.ts';
 
 interface PrintEnv extends Env {
@@ -44,13 +45,21 @@ async function authorized(request: Request, token: string): Promise<boolean> {
   );
 }
 
-async function print(request: Request, env: PrintEnv): Promise<Response> {
+// The bearer token check every route shares; undefined when it passes.
+async function denied(
+  request: Request,
+  env: PrintEnv,
+): Promise<Response | undefined> {
   if (!env.PRINT_TOKEN) {
     return apiError(503, 'not_configured', 'PRINT_TOKEN is not set');
   }
   if (!(await authorized(request, env.PRINT_TOKEN))) {
     return apiError(401, 'unauthorized', 'Missing or wrong bearer token');
   }
+  return undefined;
+}
+
+async function print(request: Request, env: PrintEnv): Promise<Response> {
   let json: unknown;
   try {
     json = await request.json();
@@ -71,7 +80,12 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
       })),
     );
   }
-  const browser = await puppeteer.launch(env.BROWSER);
+  // X-Browser-Session: `new` or a session id keeps the browser for the next
+  // request (a batch); the response names the session to send next time.
+  const session = request.headers.get('x-browser-session') ?? undefined;
+  const { browser, sessionId, release } = await openBrowser(env.BROWSER, {
+    session,
+  });
   try {
     const result = await renderPdf(browser, parsed.data, {
       assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
@@ -80,6 +94,7 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
       headers: {
         'Content-Type': 'application/pdf',
         'X-Page-Count': String(result.pageCount),
+        ...(sessionId ? { 'X-Browser-Session': sessionId } : {}),
       },
     });
   } catch (error) {
@@ -93,15 +108,33 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
     }
     throw error;
   } finally {
-    await browser.close();
+    await release();
   }
+}
+
+async function closeSession(env: PrintEnv, id: string): Promise<Response> {
+  let browser: Awaited<ReturnType<typeof puppeteer.connect>>;
+  try {
+    browser = await puppeteer.connect(env.BROWSER, id);
+  } catch {
+    return apiError(404, 'session_not_found', `No browser session ${id}`);
+  }
+  await browser.close();
+  return new Response(null, { status: 204 });
 }
 
 export default {
   async fetch(request, env: PrintEnv) {
     const { pathname } = new URL(request.url);
+    const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
     if (pathname === '/print' && request.method === 'POST') {
-      return print(request, env);
+      return (await denied(request, env)) ?? print(request, env);
+    }
+    if (session && request.method === 'DELETE') {
+      return (
+        (await denied(request, env)) ??
+        closeSession(env, decodeURIComponent(session))
+      );
     }
     return apiError(
       404,

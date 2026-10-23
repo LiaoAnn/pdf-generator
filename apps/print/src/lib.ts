@@ -2,6 +2,7 @@
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect` before the PDF is printed (T03 Must 3).
 import type { Browser } from '@cloudflare/puppeteer';
+import { missingText } from './pdf-text.ts';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
 
@@ -11,6 +12,11 @@ export {
   type PrintRequest,
   printRequestSchema,
 } from './request.ts';
+export {
+  type OpenBrowserOptions,
+  type OpenedBrowser,
+  openBrowser,
+} from './session.ts';
 
 /** What the print runtime (public/print-runtime.js) reports once Paged.js is done. */
 export interface PrintReadyState {
@@ -19,6 +25,11 @@ export interface PrintReadyState {
   unloadedFaces: string[];
   /** `"page <n>: <row text>"` of every table row split or outside its page. */
   fragmentedRows: string[];
+  /**
+   * Per page, the text of every visible text node inside a `[data-gt]`
+   * element (NFKC, no whitespace): what the PDF's text layer must contain.
+   */
+  expectedText?: string[][];
 }
 
 /**
@@ -32,7 +43,8 @@ export interface PrintPage {
 export type RenderErrorCode =
   | 'pagination_timeout'
   | 'font_not_loaded'
-  | 'row_fragmented';
+  | 'row_fragmented'
+  | 'text_missing';
 
 /** A render that must not produce a PDF. */
 export class RenderError extends Error {
@@ -132,6 +144,17 @@ export async function renderPdf<T = undefined>(
       preferCSSPageSize: true,
       printBackground: true,
     });
+    // The PDF is the authority on what was printed (T03 Must 4, PDF part).
+    if (ready.expectedText?.some(texts => texts.length > 0)) {
+      const missing = await missingText(pdf, ready.expectedText);
+      if (missing.length > 0) {
+        throw new RenderError(
+          'text_missing',
+          'Some data-gt text is missing from the PDF',
+          missing,
+        );
+      }
+    }
     return { pdf, pageCount: ready.pageCount, inspected };
   } finally {
     await page.close().catch(() => undefined);
