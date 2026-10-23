@@ -109,6 +109,11 @@
         rect: [pt(r.left - o.left), pt(r.top - o.top), pt(r.right - o.left), pt(r.bottom - o.top)],
         cells: [...tr.children].map((c) => { const q = c.getBoundingClientRect(); return [c.innerText.slice(0, 8), pt(q.left - o.left), pt(q.top - o.top), pt(q.right - o.left), pt(q.bottom - o.top), [...c.getClientRects()].length]; }),
         trRects: [...tr.getClientRects()].length,
+        textRects: [...tr.querySelectorAll('td,th')].map((c) => {
+          const range = document.createRange();
+          range.selectNodeContents(c);
+          return [...range.getClientRects()].map((q) => [pt(q.left - o.left), pt(q.top - o.top), pt(q.right - o.left), pt(q.bottom - o.top)]);
+        }),
         area: [pt(area.left - o.left), pt(area.top - o.top), pt(area.right - o.left), pt(area.bottom - o.top)],
       };
     });
