@@ -1,4 +1,8 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The tests start Node child processes to check cross-process determinism.
+    "types": ["node"]
+  },
   "include": ["src"]
 }
