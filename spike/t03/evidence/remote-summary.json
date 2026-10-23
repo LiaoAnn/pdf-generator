@@ -1,0 +1,312 @@
+{
+ "limitsBefore": {
+  "limits": {
+   "activeSessions": [],
+   "maxConcurrentSessions": 200,
+   "allowedBrowserAcquisitions": 10,
+   "timeUntilNextAllowedBrowserAcquisition": 0
+  },
+  "sessions": []
+ },
+ "launch": {
+  "sessionId": "54c40a5e-ce76-4ac5-9e77-05f8be113656",
+  "launchMs": 88527,
+  "version": "Chrome/152.0.7977.64"
+ },
+ "runFixed": {
+  "raw": "error code: 1102\n"
+ },
+ "runOrig": {
+  "raw": "error code: 1102\n"
+ },
+ "runBadFont": {
+  "browserVersion": "Chrome/152.0.7977.64",
+  "timings": {
+   "loadMs": 2265,
+   "doneMs": 25342,
+   "pdfMs": 3503,
+   "totalMs": 31190
+  },
+  "paged": {
+   "total": 4,
+   "performanceMs": 21142,
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 834
+    },
+    {
+     "name": "load",
+     "ms": 978
+    },
+    {
+     "name": "fontsReady",
+     "ms": 985
+    },
+    {
+     "name": "beforePaged",
+     "ms": 987
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 22308
+    }
+   ],
+   "failedFaces": [
+    {
+     "family": "Broken TC",
+     "weight": "normal",
+     "status": "error"
+    }
+   ]
+  },
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 4,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": true,
+  "overflow": [],
+  "fetched": [
+   {
+    "url": "/doc-fixed",
+    "bytes": 9535,
+    "ms": 431
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 283
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 287
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 306
+   },
+   {
+    "url": "/fonts/missing.otf",
+    "bytes": 0,
+    "ms": 0
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 0
+   },
+   {
+    "url": "/fonts/missing.otf",
+    "bytes": 0,
+    "ms": 0
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Bold.otf",
+    "bytes": 5803876,
+    "ms": 326
+   },
+   {
+    "url": "/fonts/NotoSansSymbols2-Regular.ttf",
+    "bytes": 1233128,
+    "ms": 439
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Bold.otf",
+    "bytes": 8217080,
+    "ms": 539
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Regular.otf",
+    "bytes": 5647272,
+    "ms": 1454
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 2036
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Regular.otf",
+    "bytes": 7899880,
+    "ms": 3857
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+   "warn: Failed to preload font-family: Broken TC"
+  ]
+ },
+ "benchSeqIntercept": {
+  "params": {
+   "browsers": 1,
+   "tabs": 1,
+   "n": 10,
+   "mode": "intercept",
+   "path": "/doc-fixed"
+  },
+  "wallMs": 386,
+  "pdfs": 0,
+  "pdfsPerMinute": 0,
+  "renderMs": null,
+  "renderMsAfterFirst": null,
+  "pages": [],
+  "overflowCounts": [],
+  "pdfBytes": [],
+  "errors": [],
+  "lanes": [
+   {
+    "launchMs": 386,
+    "launchError": "Error: Unable to connect to existing session 54c40a5e-ce76-4ac5-9e77-05f8be113656 (it may still be in use or not ready yet) - retry or launch a new browser: TypeError: Cannot read properties of null (reading 'accept')"
+   }
+  ]
+ },
+ "benchSeqUrl": {
+  "params": {
+   "browsers": 1,
+   "tabs": 1,
+   "n": 10,
+   "mode": "url",
+   "path": "/doc-fixed"
+  },
+  "wallMs": 87,
+  "pdfs": 0,
+  "pdfsPerMinute": 0,
+  "renderMs": null,
+  "renderMsAfterFirst": null,
+  "pages": [],
+  "overflowCounts": [],
+  "pdfBytes": [],
+  "errors": [],
+  "lanes": [
+   {
+    "launchMs": 87,
+    "launchError": "Error: Unable to connect to existing session 54c40a5e-ce76-4ac5-9e77-05f8be113656 (it may still be in use or not ready yet) - retry or launch a new browser: TypeError: Cannot read properties of null (reading 'accept')"
+   }
+  ]
+ },
+ "benchTabs3Url": {
+  "params": {
+   "browsers": 1,
+   "tabs": 3,
+   "n": 4,
+   "mode": "url",
+   "path": "/doc-fixed"
+  },
+  "wallMs": 52703,
+  "pdfs": 12,
+  "pdfsPerMinute": 13.7,
+  "renderMs": {
+   "n": 12,
+   "min": 6039,
+   "median": 6205,
+   "max": 33460
+  },
+  "renderMsAfterFirst": {
+   "n": 11,
+   "min": 6039,
+   "median": 6180,
+   "max": 11609
+  },
+  "pages": [
+   4
+  ],
+  "overflowCounts": [
+   0
+  ],
+  "pdfBytes": [
+   501489
+  ],
+  "errors": [],
+  "lanes": [
+   {
+    "launchMs": 940,
+    "renders": 12
+   }
+  ]
+ },
+ "benchBrowsers3Url": {
+  "params": {
+   "browsers": 3,
+   "tabs": 1,
+   "n": 4,
+   "mode": "url",
+   "path": "/doc-fixed"
+  },
+  "wallMs": 67417,
+  "pdfs": 12,
+  "pdfsPerMinute": 10.7,
+  "renderMs": {
+   "n": 12,
+   "min": 2339,
+   "median": 4763,
+   "max": 8753
+  },
+  "renderMsAfterFirst": {
+   "n": 9,
+   "min": 2339,
+   "median": 4270,
+   "max": 6814
+  },
+  "pages": [
+   4
+  ],
+  "overflowCounts": [
+   0
+  ],
+  "pdfBytes": [
+   501489
+  ],
+  "errors": [],
+  "lanes": [
+   {
+    "launchMs": 38204,
+    "renders": 4
+   },
+   {
+    "launchMs": 38777,
+    "renders": 4
+   },
+   {
+    "launchMs": 38018,
+    "renders": 4
+   }
+  ]
+ },
+ "reuse5s": {
+  "raw": "error code: 1102\n"
+ },
+ "reuse75s": {
+  "waitMs": 75000,
+  "launchMs": 3334,
+  "sessionId": "01b7525c-112c-421b-968a-7398d1b41212",
+  "first": null,
+  "reconnect": {
+   "ok": false,
+   "error": "Error: Unable to connect to existing session 01b7525c-112c-421b-968a-7398d1b41212 (it may still be in use or not ready yet) - retry or launch a new browser: TypeError: Cannot read properties of null (reading 'accept')",
+   "afterMs": 263
+  }
+ },
+ "limitsAfter": {
+  "limits": {
+   "activeSessions": [],
+   "maxConcurrentSessions": 200,
+   "allowedBrowserAcquisitions": 10,
+   "timeUntilNextAllowedBrowserAcquisition": 0
+  },
+  "sessions": []
+ },
+ "close": {
+  "closed": true
+ }
+}

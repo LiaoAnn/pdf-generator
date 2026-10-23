@@ -29,7 +29,12 @@ for (let p = 1; p <= doc.numPages; p++) {
       page: p,
       str: it.str,
       font: fontName,
+      size,
+      base,
+      // Glyph box from the font's ascent/descent as pdf.js reports them (unreliable for some fonts).
       box: [x, base - st.ascent * size, x + it.width, base - st.descent * size],
+      // Metric-free anchor: horizontal centre, a third of an em above the baseline.
+      anchor: [x + it.width / 2, base - 0.35 * size],
     });
   }
 }
@@ -42,13 +47,15 @@ function compare(snap) {
   const unmatched = [];
   const byFrag = new Map(frags.map((f) => [f, []]));
   for (const it of items) {
-    const cx = (it.box[0] + it.box[2]) / 2;
-    const cy = (it.box[1] + it.box[3]) / 2;
+    const [cx, cy] = it.anchor;
     const f = frags.find((b) => b.page === it.page && cx >= b.box[0] - 1 && cx <= b.box[2] + 1 && cy >= b.box[1] - 1 && cy <= b.box[3] + 1);
     if (f) byFrag.get(f).push(it);
     else unmatched.push(it);
   }
   let maxDev = 0;
+  let maxDevX = 0;
+  let baselineOutside = 0;
+  let matchedItems = 0;
   let textMismatch = 0;
   let textMismatchNfkc = 0;
   const diffs = [];
@@ -68,6 +75,12 @@ function compare(snap) {
       const dom = [u(lb, 0, Math.min), u(lb, 1, Math.min), u(lb, 2, Math.max), u(lb, 3, Math.max)];
       const pdf = [u(ib, 0, Math.min), u(ib, 1, Math.min), u(ib, 2, Math.max), u(ib, 3, Math.max)];
       dev = Math.max(...dom.map((v, i) => Math.abs(v - pdf[i])));
+      maxDevX = Math.max(maxDevX, Math.abs(dom[0] - pdf[0]), Math.abs(dom[2] - pdf[2]));
+      // Every glyph run's baseline must fall inside one of the block's DOM line boxes.
+      for (const it of its) {
+        matchedItems++;
+        if (!lb.some((l) => it.base >= l[1] - 0.5 && it.base <= l[3] + 0.5 && it.anchor[0] >= l[0] - 0.5 && it.anchor[0] <= l[2] + 0.5)) baselineOutside++;
+      }
       rows.push({ id: f.id, page: f.page, dom: dom.map((v) => +v.toFixed(2)), pdf: pdf.map((v) => +v.toFixed(2)), dev: +dev.toFixed(2), textOk: ok });
     } else {
       rows.push({ id: f.id, page: f.page, dev: null, textOk: ok });
@@ -78,6 +91,9 @@ function compare(snap) {
     pageCount: snap.pageCount,
     fragments: frags.length,
     maxDevPt: +maxDev.toFixed(2),
+    maxDevXPt: +maxDevX.toFixed(2),
+    matchedItems,
+    baselineOutside,
     textMismatch,
     textMismatchNfkc,
     diffs,
@@ -100,7 +116,7 @@ const detail = {};
 for (const n of names) {
   const c = compare(run.snapshots[n]);
   detail[n] = c;
-  summary.snapshots[n] = { pageCount: c.pageCount, fragments: c.fragments, maxDevPt: c.maxDevPt, textMismatch: c.textMismatch, textMismatchNfkc: c.textMismatchNfkc, unmatched: c.unmatchedItems.length };
+  summary.snapshots[n] = { pageCount: c.pageCount, fragments: c.fragments, maxDevPt: c.maxDevPt, maxDevXPt: c.maxDevXPt, matchedItems: c.matchedItems, baselineOutside: c.baselineOutside, textMismatch: c.textMismatch, textMismatchNfkc: c.textMismatchNfkc, unmatched: c.unmatchedItems.length };
 }
 writeFileSync(file.replace(/\.json$/, '.analysis.json'), JSON.stringify({ summary, detail }, null, 2));
 console.log(JSON.stringify(summary, null, 2));
