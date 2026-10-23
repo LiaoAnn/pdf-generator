@@ -1,0 +1,19 @@
+# Observations transcribed from tool output (not machine-captured files)
+
+## Cleanup of the remote Worker, 2026-10-24 00:06 CST (after the batch)
+$ T3CODE_WORKTREE_PATH=… wt-exec bash -lc 'cd spike/t03 && echo y | pnpm exec wrangler delete t03-print-spike'
+ ⛅️ wrangler 4.152.0
+? Are you sure you want to delete t03-print-spike? This action cannot be undone.
+🤖 Using fallback value in non-interactive context: yes
+Successfully deleted t03-print-spike
+$ curl -sS -o /dev/null -w '%{http_code}\n' https://t03-print-spike.liaoann.workers.dev/doc-fixed   (twice)
+404
+404
+$ curl … https://t03-print-spike.liaoann.workers.dev/limits?token=…   (twice)
+404
+404
+
+## T3 preview browser and PDFs, 2026-10-23
+preview_navigate to https://app-t03-print-spike.pdf-generator.liaoann.net/pdf?doc=/doc-fixed returned:
+"… is a file this browser cannot show, so it was downloaded instead. preview_status lists it under downloads."
+(download: pdf.pdf, 460197 bytes)
