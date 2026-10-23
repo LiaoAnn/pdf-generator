@@ -12,7 +12,8 @@
       "!**/worker-configuration.d.ts",
       "!**/routeTree.gen.ts",
       "!**/drizzle/meta",
-      "!packages/contract/schemas"
+      "!packages/contract/schemas",
+      "!apps/print/public/paged.polyfill.js"
     ]
   },
   "formatter": {

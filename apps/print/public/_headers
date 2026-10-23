@@ -1,0 +1,5 @@
+# Fonts and Paged.js change only with a deploy; let the print browser keep them.
+/fonts/*
+  Cache-Control: public, max-age=604800
+/paged.polyfill.js
+  Cache-Control: public, max-age=604800
