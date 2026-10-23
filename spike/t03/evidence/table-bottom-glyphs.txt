@@ -1,6 +1,0 @@
-# run-fixed PDF page 3, last table row: baseline and pdf.js font ascent/descent per item (y from page top, pt)
-"045" AAAAAA+NotoSansTC-Regular size 10.00 baseline 603.00 ascent 1.160 descent -0.288
-"新竹竹北5號店" AAAAAA+NotoSansTC-Regular size 10.00 baseline 603.00 ascent 1.160 descent -0.288
-"1,149,668" AAAAAA+NotoSansTC-Regular size 10.00 baseline 603.00 ascent 1.160 descent -0.288
-"☐" GAAAAA+NotoSansSymbols2-Regular size 10.00 baseline 603.00 ascent 1.069 descent -0.630
-"未達標" AAAAAA+NotoSansTC-Regular size 10.00 baseline 603.00 ascent 1.160 descent -0.288

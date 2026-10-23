@@ -1,7 +1,0 @@
-node_modules/
-.cache/
-.wrangler/
-out/
-public/fonts/
-public/pdfjs/
-public/fonts-fixed/
