@@ -8,6 +8,8 @@ import type { LocalAccess } from './access/local.ts';
 import { accessConfigFromEnv } from './access/verify.ts';
 import { createFetchHandler } from './worker.ts';
 
+export { BatchWorkflow } from './batch/workflow.ts';
+
 const startFetch = createStartHandler(defaultStreamHandler);
 
 // `vite dev` stands in for the Cloudflare Access edge; `vite build` replaces

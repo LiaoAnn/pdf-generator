@@ -8,6 +8,13 @@
       "when": 1792777214486,
       "tag": "0000_blue_sheva_callister",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1792784029783,
+      "tag": "0001_outstanding_molten_man",
+      "breakpoints": true
     }
   ]
 }

@@ -31,6 +31,15 @@
       "bucket_name": "pdf-generator-files",
     },
   ],
+  // Batches (T16): one Workflow instance per batch, id = batch id
+  // (src/batch/workflow.ts).
+  "workflows": [
+    {
+      "name": "pdf-generator-batch",
+      "binding": "BATCH_WORKFLOW",
+      "class_name": "BatchWorkflow",
+    },
+  ],
   "observability": {
     "enabled": true,
   },
