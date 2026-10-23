@@ -8,6 +8,11 @@
     "apps/*": {
       "project": ["src/**/*.{ts,tsx}"],
     },
+    "apps/web": {
+      "project": ["src/**/*.{ts,tsx,css}", "scripts/**/*.ts"],
+      // `cloudflare:workers` is a workerd built-in module, not a package.
+      "ignoreDependencies": ["cloudflare"],
+    },
     "packages/*": {
       "project": ["src/**/*.ts"],
     },

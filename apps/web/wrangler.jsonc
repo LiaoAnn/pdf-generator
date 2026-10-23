@@ -1,16 +1,12 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // The web app (TanStack Start, T09). A placeholder Worker until then.
+  // The web app: TanStack Start on Workers, built by @cloudflare/vite-plugin.
+  // `pnpm dev` serves it through Vite on port 8787 (vite.config.ts).
   "name": "pdf-generator-web",
-  "main": "src/index.ts",
+  "main": "src/server.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat_v2"],
   "observability": {
     "enabled": true,
-  },
-  "dev": {
-    "ip": "127.0.0.1",
-    "port": 8787,
-    "inspector_port": 9229,
   },
 }
