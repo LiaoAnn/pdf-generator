@@ -68,6 +68,15 @@
 - **不做**：任何實作
 - **預估行數**：800
 
+### T02-2 契約：表格儲存格內的勾選框
+- **目標**：gt.json 的表格儲存格（`cellSchema`）加一個選填的 `checkboxes` 陣列：`{ checked: boolean, text: string, bbox }`，依框在儲存格內出現的順序；`text` 是該選項的標籤（例如「是」），`bbox` 是勾選框元素的框；superRefine 加一條：每個勾選框的框要落在頁面內（不綁儲存格的框，避免捨入誤差）；重新匯出 JSON Schema，補合格／不合格範例
+- **Blocked by**：T02
+- **Blocks**：T13 的最後一個 slice（儲存格內勾選框）、T23
+- **撞車風險**：契約變更；T13 進行中，merge 後通知 T13 rebase
+- **驗收測試**：一份含「□是 □否」兩個框的儲存格範例通過 gtSchema；勾選框框超出頁面的範例被擋下；JSON Schema 已重新匯出且 staleness 測試通過
+- **不做**：讀取邏輯（T13）
+- **預估行數**：150
+
 ### T03 實驗：雲端印 PDF
 - **目標**：Browser Rendering + Paged.js 印中文 A4，讀回元素位置；寫一頁結論（字型、限制、分頁後讀座標的時機）
 - **Blocked by**：—
