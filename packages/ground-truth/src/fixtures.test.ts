@@ -27,6 +27,8 @@ describe('hand-authored fixture ground truth', () => {
     'image-text',
     'table-grid',
     'table-merged',
+    'table-cross-page',
+    'table-repeat-header',
   ]) {
     test(`${name} matches every hand-derived block after pagination`, async () => {
       const html = await readFile(
@@ -47,7 +49,11 @@ describe('hand-authored fixture ground truth', () => {
       try {
         await page.setContent(html);
         await page.evaluate(`window.__pagedDone = false;
-          window.PagedConfig = { auto: true, after: () => { window.__pagedDone = true; } };`);
+          window.PagedConfig = {
+            auto: true,
+            before: () => window.registerFixtureHandlers?.(),
+            after: () => { window.__pagedDone = true; }
+          };`);
         await page.addScriptTag({ path: polyfill });
         // T03: the first page appearing is not completion; wait for after().
         await page.waitForFunction('window.__pagedDone === true');

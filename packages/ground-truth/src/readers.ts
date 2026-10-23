@@ -121,6 +121,14 @@ function readTable(element: MeasuredElement): { table: GtTable } {
   if (rows.length === 0) {
     throw new GroundTruthError(['table has no printed rows']);
   }
+  const lost = rows
+    .map((row, r) => ({ row, r }))
+    .filter(({ row }) => row.cells.some(cell => !cell.printed))
+    .map(
+      ({ row, r }) =>
+        `row ${r} (${row.cells.map(cell => cell.text.trim()).join(' | ')}) is not printed: Paged.js left it in the page's hidden overflow (T03 §5)`,
+    );
+  if (lost.length > 0) throw new GroundTruthError(lost);
   const covered = rows.map(() => new Set<number>());
   const cells: GtCell[] = [];
   let cols = 0;

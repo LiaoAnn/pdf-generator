@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { type Browser, chromium, type Page } from 'playwright-core';
@@ -829,4 +830,63 @@ describe('T13 single-page table grid boundaries and markup errors', () => {
     },
     30_000,
   );
+});
+
+// T03 §5: exercise the actual Paged.js failure, not a mocked measurement or
+// manually moved cell. The 12pt remainder at H=420 loses the next 24pt row.
+describe('T13 lost rows in cross-page tables', () => {
+  test('rejects a real Paged.js lost row with its cell text alongside other block errors', async () => {
+    await withPage(async page => {
+      const html = await readFile(
+        new URL('../fixtures/table-cross-page.html', import.meta.url),
+        'utf8',
+      );
+      const table = html.match(/<table[\s\S]*?<\/table>/)?.[0];
+      if (!table) throw new Error('Missing cross-page fixture table');
+      await paginate(
+        page,
+        `${table.replace('data-gt-id="t"', 'data-gt-id="lost-a"')}
+         <div data-gt="table" data-gt-id="not-a-table">Invalid table markup</div>`,
+        `@page { size: 600pt 420pt; margin: 48pt; }
+         table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 300pt; }
+         td, th { padding: 0; border: 0; height: 24pt; }
+         col.a { width: 120pt; } col.b { width: 180pt; }`,
+      );
+      // Guard the reproducer independently of the reader. A browser upgrade
+      // that changes this split must not turn rejection into a false positive.
+      const lostRows = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('.pagedjs_page table'))
+          .filter(table =>
+            Array.from(table.querySelectorAll('td')).some(
+              cell => cell.textContent === 'r12',
+            ),
+          )
+          .map(table => {
+            const page = table.closest('.pagedjs_page');
+            const cell = Array.from(table.querySelectorAll('td')).find(
+              cell => cell.textContent === 'r12',
+            );
+            if (!page || !cell) throw new Error('Missing lost-row cell/page');
+            const box = cell.getBoundingClientRect();
+            const pageBox = page.getBoundingClientRect();
+            return {
+              id: table.getAttribute('data-gt-id'),
+              rects: cell.getClientRects().length,
+              outside: box.right > pageBox.right,
+              nextFirstCell:
+                page.nextElementSibling?.querySelector('tbody td')?.textContent,
+            };
+          }),
+      );
+      expect(lostRows).toEqual([
+        { id: 'lost-a', rects: 2, outside: true, nextFirstCell: 'r13' },
+      ]);
+      // Both independent failures must be listed; reporting only the table's
+      // oversized bbox does not help the pack author find the missing row.
+      await expectMarkupIssues(page, [
+        { id: 'lost-a', problem: /r12/ },
+        { id: 'not-a-table', problem: /table/i },
+      ]);
+    });
+  }, 30_000);
 });

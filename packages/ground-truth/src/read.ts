@@ -61,7 +61,12 @@ function collect(): Measurement {
     .map((element): MeasuredElement => {
       const pageElement = element.closest('.pagedjs_page');
       const { x, y, width, height } = element.getBoundingClientRect();
-      const origin = pageElement?.getBoundingClientRect() ?? { x: 0, y: 0 };
+      const origin = pageElement?.getBoundingClientRect() ?? {
+        x: 0,
+        y: 0,
+        right: 0,
+        bottom: 0,
+      };
       const type = element.getAttribute('data-gt') ?? '';
       const details: ElementDetails | undefined =
         type === 'checkbox'
@@ -112,6 +117,13 @@ function collect(): Measurement {
                                 width: box.width,
                                 height: box.height,
                               },
+                              // Half a px of slack for subpixel layout.
+                              printed:
+                                cell.getClientRects().length === 1 &&
+                                box.x >= origin.x - 0.5 &&
+                                box.y >= origin.y - 0.5 &&
+                                box.right <= origin.right + 0.5 &&
+                                box.bottom <= origin.bottom + 0.5,
                             };
                           }),
                       })),

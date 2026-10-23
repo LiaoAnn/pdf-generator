@@ -1,0 +1,365 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "table-repeat-header",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 600, "height": 408 }, { "width": 600, "height": 408 }],
+  "blocks": [
+    {
+      "id": "t",
+      "type": "table",
+      "page": 1,
+      "bbox": [48, 48, 348, 360],
+      "order": 0,
+      "text": "Name\tVal\nr0\t0\nr1\t1\nr2\t2\nr3\t3\nr4\t4\nr5\t5\nr6\t6\nr7\t7\nr8\t8\nr9\t9\nr10\t10\nr11\t11",
+      "table": {
+        "rows": 13,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Name",
+            "bbox": [48, 48, 168, 72]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Val",
+            "bbox": [168, 48, 348, 72]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r0",
+            "bbox": [48, 72, 168, 96]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "0",
+            "bbox": [168, 72, 348, 96]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r1",
+            "bbox": [48, 96, 168, 120]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "1",
+            "bbox": [168, 96, 348, 120]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r2",
+            "bbox": [48, 120, 168, 144]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "2",
+            "bbox": [168, 120, 348, 144]
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r3",
+            "bbox": [48, 144, 168, 168]
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "3",
+            "bbox": [168, 144, 348, 168]
+          },
+          {
+            "row": 5,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r4",
+            "bbox": [48, 168, 168, 192]
+          },
+          {
+            "row": 5,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "4",
+            "bbox": [168, 168, 348, 192]
+          },
+          {
+            "row": 6,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r5",
+            "bbox": [48, 192, 168, 216]
+          },
+          {
+            "row": 6,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "5",
+            "bbox": [168, 192, 348, 216]
+          },
+          {
+            "row": 7,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r6",
+            "bbox": [48, 216, 168, 240]
+          },
+          {
+            "row": 7,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "6",
+            "bbox": [168, 216, 348, 240]
+          },
+          {
+            "row": 8,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r7",
+            "bbox": [48, 240, 168, 264]
+          },
+          {
+            "row": 8,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "7",
+            "bbox": [168, 240, 348, 264]
+          },
+          {
+            "row": 9,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r8",
+            "bbox": [48, 264, 168, 288]
+          },
+          {
+            "row": 9,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "8",
+            "bbox": [168, 264, 348, 288]
+          },
+          {
+            "row": 10,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r9",
+            "bbox": [48, 288, 168, 312]
+          },
+          {
+            "row": 10,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "9",
+            "bbox": [168, 288, 348, 312]
+          },
+          {
+            "row": 11,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r10",
+            "bbox": [48, 312, 168, 336]
+          },
+          {
+            "row": 11,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "10",
+            "bbox": [168, 312, 348, 336]
+          },
+          {
+            "row": 12,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r11",
+            "bbox": [48, 336, 168, 360]
+          },
+          {
+            "row": 12,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "11",
+            "bbox": [168, 336, 348, 360]
+          }
+        ]
+      }
+    },
+    {
+      "id": "t-2",
+      "type": "table",
+      "page": 2,
+      "bbox": [48, 48, 348, 168],
+      "order": 1,
+      "continues": "t",
+      "text": "Name\tVal\nr12\t12\nr13\t13\nr14\t14\nr15\t15",
+      "table": {
+        "rows": 5,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Name",
+            "bbox": [48, 48, 198, 72]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Val",
+            "bbox": [198, 48, 348, 72]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r12",
+            "bbox": [48, 72, 198, 96]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "12",
+            "bbox": [198, 72, 348, 96]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r13",
+            "bbox": [48, 96, 198, 120]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "13",
+            "bbox": [198, 96, 348, 120]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r14",
+            "bbox": [48, 120, 198, 144]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "14",
+            "bbox": [198, 120, 348, 144]
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "r15",
+            "bbox": [48, 144, 198, 168]
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "15",
+            "bbox": [198, 144, 348, 168]
+          }
+        ]
+      }
+    }
+  ]
+}

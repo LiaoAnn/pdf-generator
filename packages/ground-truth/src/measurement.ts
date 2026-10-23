@@ -94,4 +94,10 @@ export interface MeasuredCell {
   text: string;
   /** Its border box relative to its `.pagedjs_page`, in CSS px. */
   rect: Rect;
+  /**
+   * False when it can't be in the PDF: it has more than one client rect or
+   * lies outside its page, as in a row Paged.js 0.4.3 left in the content
+   * area's hidden overflow (T03 §5).
+   */
+  printed: boolean;
 }

@@ -31,10 +31,22 @@ const gt = await readGroundTruth(page, { templateId, templateVersion, seed, inde
 - **Repeats**: the same element on several pages (running header or footer clones, split fragments) keeps its first id, then `-2`, `-3`, …. A fragment Paged.js split off (`data-split-from`) gets `continues` = the previous fragment's id.
 - `data-gt` elements must not nest.
 
-## Extending it (T13)
+## Tables and special items (T13)
 
-`table`, `checkbox` and `formula` need fields the contract requires (`table`, `checked`, `latex`). Pass a detail reader per type in `options.detailReaders`. It receives the element's measurement, including `details` collected in the browser, and returns those fields. Without a reader, such a block is an error. The browser half (`collect` in `src/read.ts`) must stay self-contained and declare no named local functions (see its comment). `src/bundled.test.ts` checks that it survives a wrangler-style esbuild bundle.
+`readGroundTruth` fills the fields the contract requires beyond the common ones with built-in detail readers. `options.detailReaders` replaces them per type; `buildGroundTruth` has none, so there a `table`, `checkbox` or `formula` block without a reader is an error. A reader receives the element's measurement, including `details` collected in the browser, returns the extra fields, and reports a problem by throwing a `GroundTruthError`. The browser half (`collect` in `src/read.ts`) must stay self-contained and declare no named local functions (see its comment). `src/bundled.test.ts` checks that it survives a wrangler-style esbuild bundle.
+
+| Markup | Gives |
+| --- | --- |
+| `data-gt="table"` on a `<table>` | `table`: the rows printed on that page in visual order (thead, bodies, tfoot), each cell placed by the HTML table algorithm, its rowspan clipped to the printed rows; `header` for a `<th>` or a cell in `<thead>`; cell text and box like a block's. |
+| `data-gt="checkbox"` with `data-gt-checked="true\|false"`, or a single `<input type=checkbox\|radio>` (the element or inside it) | `checked`. Both present must agree; neither, or several inputs without the attribute, is an error. |
+| `data-gt="formula"` with `data-gt-latex="…"`, or one KaTeX `<annotation encoding="application/x-tex">` inside it | `latex`, trimmed; both present must agree. `text` is the visible `.katex-html` rendering, not KaTeX's hidden MathML copy. |
+| `data-gt="image"` with `data-gt-text="…"` | `text`: the text the pack declares for the image (not OCR). An image that declares text and also renders text is an error. |
+
+- `data-gt-checked`, `data-gt-latex` and `data-gt-text` are allowed only on their type. Any other `data-gt-*` attribute, or any `data-gt-*` attribute on an element inside a block, is an error.
+- A blank field needs no attribute: give it a size; its text is `""`.
+- **Split tables**: each page's piece is its own block with its own grid (rows from 0) and `continues`. Header rows printed on a later page (by a header-repeat handler; Paged.js 0.4.3 has none) are that piece's header rows.
+- **Lost rows**: Paged.js 0.4.3 can leave a row in the content area's hidden overflow, on no page of the PDF (T03 §5). A table cell with more than one client rect or outside its page is an error naming the row. The PDF stays the only authoritative check (T14): T03 saw one lost row these DOM checks miss.
 
 ## Tests
 
-The Playwright tests use `playwright-core` (pinned to the container's global Playwright version, whose headless shell is installed in the container and by CI) and `pagedjs` 0.4.3. `fixtures/` holds two fixed multi-page documents. Their `gt.json` files were written by hand from the CSS, and each HTML file explains its derivation in a comment. Never regenerate them from the reader's output.
+The Playwright tests use `playwright-core` (pinned to the container's global Playwright version, whose headless shell is installed in the container and by CI) and `pagedjs` 0.4.3. `fixtures/` holds fixed documents, one per case (T08's two multi-page documents, then T13's checkbox, blank field, formula, image text, table grid, merged cells, cross-page table and repeated header). Their `gt.json` files were written by hand from the CSS, and each HTML file explains its derivation in a comment. Never regenerate them from the reader's output.
