@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Web APIs only (TextDecoder, …): the same code runs in a Worker and in
+    // Node, so it must not reach for Node's own modules.
+    "lib": ["ESNext", "WebWorker"]
+  },
   "include": ["src"]
 }
