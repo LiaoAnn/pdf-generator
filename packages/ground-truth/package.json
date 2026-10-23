@@ -13,5 +13,8 @@
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@pdf-generator/contract": "workspace:*"
   }
 }

@@ -1,4 +1,15 @@
-// Reads gt.json blocks from a printed page. Filled by T08 (basic) and T13 (tables and special items).
-// Placeholder until then: the package exists so the workspace layout, tooling
-// and imports are in place.
-export const packageName = '@pdf-generator/ground-truth';
+// Reads gt.json from a page Paged.js has finished paginating (T08; T13 adds
+// table, checkbox and formula details through detail readers).
+export {
+  type BuildOptions,
+  buildGroundTruth,
+  type DetailReader,
+  type DetailReaders,
+  GroundTruthError,
+} from './build.ts';
+export type {
+  MeasuredElement,
+  Measurement,
+  Rect,
+  Region,
+} from './measurement.ts';
