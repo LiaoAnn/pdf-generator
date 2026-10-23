@@ -44,7 +44,8 @@ Whether the user wrote, a worker sent a message, or the heartbeat fired:
 
 Every worker message starts with `[TNN] <EVENT>`.
 
-- `PLAN`: check it against the ticket: 3–5 slices; every 驗收測試 covered; nothing from 不做; estimate ≤ 2000 lines; stubs named for unmerged needs; no contract change. If it drifts, steer the worker now with `t3_thread_send` (`mode: "steer"`). Don't hold it for approval otherwise.
+Workers don't send their plans; they plan and carry them out on their own. A plan problem reaches you only as an `ASK` (a `STOP` item) or at the merge bar.
+
 - `ASK`: answer it yourself only if `AGENTS.md`, the ticket, an earlier user decision or T03/T04's findings settle it; quote the source in your answer. Otherwise ask the user with the worker's options and recommendation, and send the answer back word for word plus any context. External-service calls always go to the user, every time.
 - `BLOCKED`: check it (`wt-status <worker path>`, the thread's evidence). If it's the worker's own layer, say so with the evidence. If it's the VM, Traefik, DNS or `wt-*`, report it to the user; don't fix it.
 - `PR`: check the merge bar.
@@ -88,10 +89,13 @@ Use `startFromOrigin: true` so the worktree has every merged PR. Keep the return
 
 The brief:
 
+Start the brief with `/work-ticket` on its own line, so the worker runs the skill as a slash command rather than reading about it:
+
 ```text
-You are the worker for ticket TNN (<title>) in the pdf-generator project.
-Use the `work-ticket` skill; read AGENTS.md first.
-Load every skill work-ticket names (plan-it, implement-plan, tdd, review-change, …) with the Skill tool at its step; work-ticket only adjusts them.
+/work-ticket
+
+You are the worker for ticket TNN (<title>) in the pdf-generator project. Read AGENTS.md first.
+At each step, run the slash command work-ticket names (/plan-it, /implement-plan, /tdd, /verification-evidence, /review-change, /cross-model-delegate) as if I had typed it; work-ticket only adjusts them.
 Coordinator thread ID: <this thread's id from orchestrator_capabilities.parentThreadId>
 
 ## Ticket
