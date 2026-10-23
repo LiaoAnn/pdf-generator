@@ -24,3 +24,9 @@ export const relativePathSchema = z
   .describe(
     "Path relative to the template pack root, '/'-separated, with no leading '/', empty, '.' or '..' segment, backslash or control character.",
   );
+
+/** Seed that makes fake data and a whole batch reproducible. */
+export const seedSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/)
+  .describe('Seed: 1-64 of A-Z a-z 0-9 _ -.');

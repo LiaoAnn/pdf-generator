@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { blockListSchema } from './block-list.ts';
+import { gtSchema } from './ground-truth.ts';
 import { manifestSchema } from './manifest.ts';
 import { rulesSchema } from './rules.ts';
 
@@ -6,6 +8,8 @@ import { rulesSchema } from './rules.ts';
 export const contractSchemas = {
   manifest: manifestSchema,
   rules: rulesSchema,
+  gt: gtSchema,
+  'block-list': blockListSchema,
 } as const satisfies Record<string, z.ZodType>;
 
 /**

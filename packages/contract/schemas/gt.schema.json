@@ -1,0 +1,478 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "number",
+      "const": 1
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "templateId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+          "description": "Lower-case kebab-case identifier, e.g. `company-monthly-report`."
+        },
+        "templateVersion": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "seed": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_-]{1,64}$",
+          "description": "Seed: 1-64 of A-Z a-z 0-9 _ -."
+        },
+        "index": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Index of the fixture in its batch."
+        }
+      },
+      "required": [
+        "templateId",
+        "templateVersion",
+        "seed",
+        "index"
+      ],
+      "additionalProperties": false,
+      "description": "What produced this fixture."
+    },
+    "pages": {
+      "minItems": 1,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "width": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          },
+          "height": {
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "width",
+          "height"
+        ],
+        "additionalProperties": false,
+        "description": "Page size in PDF points (A4 portrait: 595.28 × 841.89). Page n is pages[n - 1]."
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "description": "Unique within the document."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "description": "Page number, from 1."
+              },
+              "bbox": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Reading order across the whole document, from 0; the orders of all blocks are 0..n-1."
+              },
+              "text": {
+                "type": "string",
+                "description": "Text of the block (empty for a blank field; for an image, the text inside it)."
+              },
+              "continues": {
+                "description": "Id of the block this one continues: the same element on an earlier page, e.g. a table split across pages.",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "title",
+                  "heading",
+                  "paragraph",
+                  "list_item",
+                  "label",
+                  "field",
+                  "image",
+                  "caption",
+                  "barcode",
+                  "page_header",
+                  "page_footer",
+                  "page_number",
+                  "footnote",
+                  "reference"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "page",
+              "bbox",
+              "order",
+              "text",
+              "type"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "description": "Unique within the document."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "description": "Page number, from 1."
+              },
+              "bbox": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Reading order across the whole document, from 0; the orders of all blocks are 0..n-1."
+              },
+              "text": {
+                "type": "string",
+                "description": "Text of the block (empty for a blank field; for an image, the text inside it)."
+              },
+              "continues": {
+                "description": "Id of the block this one continues: the same element on an earlier page, e.g. a table split across pages.",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "table"
+              },
+              "table": {
+                "type": "object",
+                "properties": {
+                  "rows": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "cols": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  },
+                  "cells": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "row": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "col": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "rowSpan": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "colSpan": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 9007199254740991
+                        },
+                        "header": {
+                          "type": "boolean",
+                          "description": "A header cell (repeated on every page it is printed on)."
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "bbox": {
+                          "type": "array",
+                          "prefixItems": [
+                            {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "number",
+                              "minimum": 0
+                            }
+                          ],
+                          "items": false,
+                          "minItems": 4,
+                          "maxItems": 4,
+                          "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+                        }
+                      },
+                      "required": [
+                        "row",
+                        "col",
+                        "rowSpan",
+                        "colSpan",
+                        "header",
+                        "text",
+                        "bbox"
+                      ],
+                      "additionalProperties": false
+                    }
+                  }
+                },
+                "required": [
+                  "rows",
+                  "cols",
+                  "cells"
+                ],
+                "additionalProperties": false,
+                "description": "This block's grid: the fragment printed on this page."
+              }
+            },
+            "required": [
+              "id",
+              "page",
+              "bbox",
+              "order",
+              "text",
+              "type",
+              "table"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "description": "Unique within the document."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "description": "Page number, from 1."
+              },
+              "bbox": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Reading order across the whole document, from 0; the orders of all blocks are 0..n-1."
+              },
+              "text": {
+                "type": "string",
+                "description": "Text of the block (empty for a blank field; for an image, the text inside it)."
+              },
+              "continues": {
+                "description": "Id of the block this one continues: the same element on an earlier page, e.g. a table split across pages.",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "checkbox"
+              },
+              "checked": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id",
+              "page",
+              "bbox",
+              "order",
+              "text",
+              "type",
+              "checked"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$",
+                "description": "Unique within the document."
+              },
+              "page": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991,
+                "description": "Page number, from 1."
+              },
+              "bbox": {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                ],
+                "items": false,
+                "minItems": 4,
+                "maxItems": 4,
+                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+              },
+              "order": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991,
+                "description": "Reading order across the whole document, from 0; the orders of all blocks are 0..n-1."
+              },
+              "text": {
+                "type": "string",
+                "description": "Text of the block (empty for a blank field; for an image, the text inside it)."
+              },
+              "continues": {
+                "description": "Id of the block this one continues: the same element on an earlier page, e.g. a table split across pages.",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{1,64}$"
+              },
+              "type": {
+                "type": "string",
+                "const": "formula"
+              },
+              "latex": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "id",
+              "page",
+              "bbox",
+              "order",
+              "text",
+              "type",
+              "latex"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "source",
+    "pages",
+    "blocks"
+  ],
+  "additionalProperties": false,
+  "title": "Ground truth (gt.json)",
+  "description": "Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ids are unique; the orders are a permutation of 0..n-1; page ≤ number of pages; the bbox lies inside its page (x1 ≤ width, y1 ≤ height); continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols."
+}

@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "file": "公司月報.pdf",
+    "tool": {
+      "name": "mineru",
+      "version": "2.5.4"
+    }
+  },
+  "pages": [
+    {
+      "width": 595.28,
+      "height": 841.89
+    },
+    {
+      "width": 595.28,
+      "height": 841.89
+    }
+  ],
+  "blocks": [
+    {
+      "id": "title",
+      "type": "title",
+      "page": 1,
+      "bbox": [36, 36, 559, 66],
+      "order": 0,
+      "text": "臺灣示範股份有限公司 月報",
+      "confidence": 1.01
+    },
+    {
+      "id": "intro",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [36, 80, 559, 110],
+      "order": 1,
+      "text": "本月營運資料如下。",
+      "confidence": 0.98
+    },
+    {
+      "id": "table-first",
+      "type": "table",
+      "page": 1,
+      "bbox": [36, 130, 559, 190],
+      "order": 2,
+      "text": "項目 金額\n營收 1000",
+      "confidence": 0.98,
+      "html": " <table><tr><th>項目</th><th>金額</th></tr><tr><td colspan=\"2\">備註：已核對</td></tr></table> "
+    },
+    {
+      "id": "page-1",
+      "type": "page_number",
+      "page": 1,
+      "bbox": [290, 800, 305, 820],
+      "order": 3,
+      "text": "1",
+      "confidence": 0.98
+    },
+    {
+      "id": "table-second",
+      "type": "table",
+      "page": 2,
+      "bbox": [36, 36, 559, 96],
+      "order": 4,
+      "text": "項目 金額\n備註：已核對",
+      "confidence": 0.98,
+      "html": " <table><tr><th>項目</th><th>金額</th></tr><tr><td colspan=\"2\">備註：已核對</td></tr></table> "
+    },
+    {
+      "id": "approved",
+      "type": "checkbox",
+      "page": 2,
+      "bbox": [36, 120, 52, 136],
+      "order": 5,
+      "text": "已核對",
+      "checked": true,
+      "confidence": 0.98
+    },
+    {
+      "id": "equation",
+      "type": "formula",
+      "page": 2,
+      "bbox": [36, 150, 220, 180],
+      "order": 6,
+      "text": "總額 = 單價 × 數量",
+      "latex": "\\mathrm{total} = p \\times q",
+      "confidence": 0.98
+    },
+    {
+      "id": "signature",
+      "type": "field",
+      "page": 2,
+      "bbox": [36, 200, 200, 230],
+      "order": 7,
+      "text": "",
+      "confidence": 0.98
+    },
+    {
+      "id": "stamp",
+      "type": "image",
+      "page": 2,
+      "bbox": [400, 200, 500, 300],
+      "order": 8,
+      "text": "示範公司章",
+      "confidence": 0.98
+    },
+    {
+      "id": "page-2",
+      "type": "page_number",
+      "page": 2,
+      "bbox": [290, 800, 305, 820],
+      "order": 9,
+      "text": "2",
+      "confidence": 0.98
+    }
+  ]
+}
