@@ -1,0 +1,34 @@
+# Fonts used by the T03 spike (downloaded 2026-10-23)
+NotoSansTC-{Regular,Bold}.otf   https://github.com/notofonts/noto-cjk/raw/main/Sans/SubsetOTF/TC/
+NotoSerifTC-{Regular,Bold}.otf  https://github.com/notofonts/noto-cjk/raw/main/Serif/SubsetOTF/TC/
+LXGWWenKaiTC-Regular.ttf        https://github.com/lxgw/LxgwWenkaiTC/releases/latest/download/LXGWWenKaiTC-Regular.ttf
+NotoSansSymbols2-Regular.ttf    https://github.com/google/fonts/raw/main/ofl/notosanssymbols2/NotoSansSymbols2-Regular.ttf
+
+## sha256, size
+55420b259eb119bf5f2a0aadba10cf9d736c12d64ab93e78546d69ef5f43558b  public/fonts/NotoSansTC-Bold.otf
+5bab0cb3c1cf89dde07c4a95a4054b195afbcfe784d69d75c340780712237537  public/fonts/NotoSansTC-Regular.otf
+3ca2b3294ec84b795d0a45695e78e3612a44dce50f9fc776cd40206340a5768d  public/fonts/NotoSerifTC-Bold.otf
+63515eb0622d589a2f4062e8757c598b3da3bffd053f69abd181c210158ef10c  public/fonts/NotoSerifTC-Regular.otf
+6662480a3f95b4a90c80b189c679617a48adce3a505118a6af63ce5a482b83fa  public/fonts/LXGWWenKaiTC-Regular.ttf
+7d5fb73b7ca67a6798101741f5d280a3d016a56a197afcd4199dbb57b4b82a21  public/fonts/NotoSansSymbols2-Regular.ttf
+15341148 public/fonts/LXGWWenKaiTC-Regular.ttf
+1233128 public/fonts/NotoSansSymbols2-Regular.ttf
+5839972 public/fonts/NotoSansTC-Bold.otf
+5683368 public/fonts/NotoSansTC-Regular.otf
+8253304 public/fonts/NotoSerifTC-Bold.otf
+7936104 public/fonts/NotoSerifTC-Regular.otf
+
+## name table (fontkit)
+NotoSansTC-Regular.otf | Version 2.004;hotconv 1.0.118;makeotfexe 2.5.65603 | © 2014-2021 Adobe (http://www.adobe.com/). | http://scripts.sil.org/OFL | fsType {"noEmbedding":false,"viewOnly":false,"editable":false,"noSubsetting":false,"bitmapOnly":false} | glyphs 20950 | ☑ false ☐ false 㵾 false 𩸽 false 𡘙 true 𠀾 true
+NotoSerifTC-Regular.otf | Version 2.003;hotconv 1.1.1;makeotfexe 2.6.0 | © 2017-2024 Adobe (http://www.adobe.com/). | http://scripts.sil.org/OFL | fsType {"noEmbedding":false,"viewOnly":false,"editable":false,"noSubsetting":false,"bitmapOnly":false} | glyphs 20939 | ☑ false ☐ false 㵾 false 𩸽 false 𡘙 true 𠀾 true
+LXGWWenKaiTC-Regular.ttf | Version 1.530; October 13, 2026 | Copyright 2022-2026 LXGW (https://github.com/lxgw/LxgwWenkaiTC) / Copyright 2020 The Klee Project Authors (https://github.com/fontworks-fonts/Klee) | https://openfontlicense.org | fsType {"noEmbedding":false,"viewOnly":false,"editable":false,"noSubsetting":false,"bitmapOnly":false} | glyphs 25893 | ☑ true ☐ true 㵾 false 𩸽 true 𡘙 true 𠀾 true
+NotoSansSymbols2-Regular.ttf | Version 2.008; ttfautohint (v1.8.4.7-5d5b) | Copyright 2022 The Noto Project Authors (https://github.com/notofonts/symbols) | https://scripts.sil.org/OFL | fsType {"noEmbedding":false,"viewOnly":false,"editable":false,"noSubsetting":false,"bitmapOnly":false} | glyphs 2976 | ☑ true ☐ true 㵾 false 𩸽 false 𡘙 false 𠀾 false
+
+## licence files: Reserved Font Name declared?
+none of LICENSE-noto-cjk.txt, LICENSE-lxgw-wenkai-tc.txt, LICENSE-noto-symbols2.txt declares one
+
+## fix-cmap.mjs output
+{"input":"public/fonts/NotoSansTC-Regular.otf","mapped":20394,"dropped":351,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺋⺍⺏","outBytes":5647272,"verify":{"glyphs":20950,"chars":20394,"一":2760,"⼀":false}}
+{"input":"public/fonts/NotoSansTC-Bold.otf","mapped":20394,"dropped":351,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺋⺍⺏","outBytes":5803876,"verify":{"glyphs":20950,"chars":20394,"一":2760,"⼀":false}}
+{"input":"public/fonts/NotoSerifTC-Regular.otf","mapped":20390,"dropped":358,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺍⺎兀","outBytes":7899880,"verify":{"glyphs":20939,"chars":20390,"一":2762,"⼀":false}}
+{"input":"public/fonts/NotoSerifTC-Bold.otf","mapped":20390,"dropped":358,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺍⺎兀","outBytes":8217080,"verify":{"glyphs":20939,"chars":20390,"一":2762,"⼀":false}}
