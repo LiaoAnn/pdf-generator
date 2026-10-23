@@ -37,11 +37,11 @@
       "id": "table-first",
       "type": "table",
       "page": 1,
-      "bbox": [36, 130, 559, 190],
+      "bbox": [36, 130, 559, 220],
       "order": 2,
-      "text": "項目 金額\n營收 1000",
+      "text": "項目 金額\n營收 1000\n已核對 是 否",
       "table": {
-        "rows": 2,
+        "rows": 3,
         "cols": 2,
         "cells": [
           {
@@ -79,6 +79,28 @@
             "header": false,
             "text": "1000",
             "bbox": [300, 160, 559, 190]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "已核對",
+            "bbox": [36, 190, 300, 220]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "是 否",
+            "bbox": [300, 190, 559, 220],
+            "checkboxes": [
+              { "checked": true, "text": "是", "bbox": [304, 199, 314, 209] },
+              { "checked": false, "text": "否", "bbox": [340, 199, 350, 209] }
+            ]
           }
         ]
       }
