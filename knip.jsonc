@@ -1,0 +1,9 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
+  "entry": [".devcontainer/scripts/cron.mjs"],
+  "project": ["src/**/*.{ts,tsx}", ".devcontainer/scripts/**/*.mjs"],
+  "ignoreDependencies": [
+    // Loaded from a Vite app's own dependencies only when that app has a Vite config.
+    "vite",
+  ],
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cf-worker-typescript-template",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-20",
+  "compatibility_flags": ["nodejs_compat_v2"],
+  "observability": {
+    "enabled": true
+  },
+  "dev": {
+    "ip": "127.0.0.1",
+    "port": 8787,
+    "inspector_port": 9229
+  }
+}

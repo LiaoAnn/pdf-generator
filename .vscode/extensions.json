@@ -1,0 +1,12 @@
+{
+  "recommendations": [
+    "formulahendry.auto-close-tag",
+    "formulahendry.auto-rename-tag",
+    "streetsidesoftware.code-spell-checker",
+    "GitHub.copilot",
+    "oderwat.indent-rainbow",
+    "bradlc.vscode-tailwindcss",
+    "wayou.vscode-todo-highlight",
+    "biomejs.biome",
+  ]
+}

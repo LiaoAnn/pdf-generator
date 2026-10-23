@@ -1,0 +1,9 @@
+{
+  "features": {
+    "ghcr.io/devcontainers-extra/features/cloudflare-wrangler:1": {
+      "version": "1.0.3",
+      "resolved": "ghcr.io/devcontainers-extra/features/cloudflare-wrangler@sha256:36f8ceba43b2503022e6eff4ad80ef4848d54c369d9bc966bf7063517b9a7eb5",
+      "integrity": "sha256:36f8ceba43b2503022e6eff4ad80ef4848d54c369d9bc966bf7063517b9a7eb5"
+    }
+  }
+}

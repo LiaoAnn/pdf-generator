@@ -1,0 +1,11 @@
+{
+  // Keys are wrangler.jsonc paths relative to the workspace root.
+  // Unlisted Workers use their running Vite/Wrangler server's actual port.
+  // If no matching server is running, scheduling waits; config ports are not used.
+  "workers": {
+    // "apps/api/wrangler.jsonc": { "url": "http://127.0.0.1:8788" },
+    // "apps/web/wrangler.jsonc": { "url": "http://127.0.0.1:5173" },
+    // "apps/jobs/wrangler.jsonc": { "environment": "development" },
+    // "apps/disabled/wrangler.jsonc": { "enabled": false },
+  },
+}

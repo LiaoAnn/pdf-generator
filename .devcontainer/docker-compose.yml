@@ -1,0 +1,23 @@
+services:
+  app:
+    image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
+    command: sleep infinity
+    user: node
+    environment:
+      # Playwright's browsers live on the shared playwright_browsers volume.
+      PLAYWRIGHT_BROWSERS_PATH: /home/node/.cache/ms-playwright
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../..:/workspaces:cached
+      - pnpm_store:/home/node/.pnpm-store
+      - playwright_browsers:/home/node/.cache/ms-playwright
+
+volumes:
+  # Shared by every TypeScript project; created by initializeCommand in devcontainer.json.
+  pnpm_store:
+    external: true
+    name: pnpm_store
+  playwright_browsers:
+    external: true
+    name: playwright_browsers

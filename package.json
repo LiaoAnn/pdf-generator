@@ -1,0 +1,24 @@
+{
+  "name": "cf-worker-typescript-template",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "dev:cron": "bash .devcontainer/scripts/cron.sh",
+    "test:cron": "node --test .devcontainer/scripts/*.test.mjs",
+    "deploy": "wrangler deploy --minify",
+    "lint": "biome check src .devcontainer/scripts",
+    "knip": "knip",
+    "format": "biome format --write src .devcontainer/scripts",
+    "check": "biome check --write src .devcontainer/scripts",
+    "cf-typegen": "wrangler types"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.14",
+    "@types/node": "^24.13.6",
+    "croner": "^10.0.1",
+    "jsonc-parser": "^3.3.1",
+    "knip": "^6.37.0",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.135.0"
+  }
+}
