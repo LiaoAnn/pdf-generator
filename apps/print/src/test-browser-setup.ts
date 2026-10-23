@@ -4,8 +4,15 @@
 // render here installs Chrome before any test file runs.
 import { fileURLToPath } from 'node:url';
 import { unstable_startWorker } from 'wrangler';
+import { browserEnv } from '../vitest.config.ts';
 
 export default async function setup() {
+  // The global setup runs in vitest's main process, which test.env doesn't
+  // reach; set the browser variables only while it runs.
+  const saved = Object.fromEntries(
+    Object.keys(browserEnv).map(key => [key, process.env[key]]),
+  );
+  Object.assign(process.env, browserEnv);
   const token = 'browser-setup';
   const worker = await unstable_startWorker({
     config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
@@ -31,5 +38,9 @@ export default async function setup() {
     }
   } finally {
     await worker.dispose();
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   }
 }
