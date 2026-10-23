@@ -3,7 +3,12 @@
 // are into the CSS text as given, so issues point at what the author wrote.
 
 /** A URL as written, and the offset of its first character. */
-export type Reference = { url: string; offset: number };
+export type Reference = {
+  url: string;
+  offset: number;
+  /** `stylesheet` when it loads one (`@import`). */
+  kind?: 'stylesheet';
+};
 
 /** CSS with comments replaced by spaces (newlines kept), offsets unchanged. */
 const withoutComments = (css: string) =>
@@ -41,7 +46,11 @@ export function scanCss(css: string): {
       }
       const inside = functions.at(-1) ?? '';
       if (importing || inside === 'url' || imageSets.has(inside)) {
-        references.push({ url: css.slice(i + 1, end), offset: i + 1 });
+        references.push({
+          url: css.slice(i + 1, end),
+          offset: i + 1,
+          ...(importing ? { kind: 'stylesheet' as const } : {}),
+        });
       }
       importing = false;
       i = end + 1;
@@ -66,6 +75,7 @@ export function scanCss(css: string): {
         references.push({
           url: css.slice(start, stop).trimEnd(),
           offset: start,
+          ...(importing ? { kind: 'stylesheet' as const } : {}),
         });
         importing = false;
         i = stop + 1;

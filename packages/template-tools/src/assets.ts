@@ -3,29 +3,22 @@
 // declared face before it paginates; T03 Must 8). A reference resolves
 // against the file containing it, as in a browser loading the pack's files at
 // their pack paths.
-// The template is also inert: no script, event handler or embedded document
-// runs when it is printed.
 import { fontFaces, type Reference, scanCss, usedFamilies } from './css.ts';
 import { attributeOf, type Html, type TemplateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
+import { isRefused } from './policy.ts';
 import { decode, position } from './text.ts';
 
-/** Attributes that make the browser load a URL, by element. */
+/**
+ * Attributes that make the browser load a URL, by element, among the
+ * elements the allowlist (policy.ts) admits.
+ */
 const loaders = new Map<string, string[]>([
   ['img', ['src', 'srcset']],
-  ['source', ['src', 'srcset']],
-  ['video', ['src', 'poster']],
-  ['audio', ['src']],
-  ['iframe', ['src']],
-  ['embed', ['src']],
-  ['input', ['src']],
-  ['object', ['data']],
+  ['source', ['srcset']],
   ['link', ['href']],
   ['image', ['href', 'xlink:href']],
-  ['use', ['href', 'xlink:href']],
 ]);
-/** Elements whose URL loads a document, where a data: URL is a page. */
-const documents = new Set(['iframe', 'object', 'embed']);
 
 /** A text file of the pack: the template or a stylesheet. */
 type Source = { file: string; text: string };
@@ -111,28 +104,36 @@ export function assetIssues(
       message,
     });
 
+  /**
+   * A URL found in `source`: in an HTML attribute, in CSS, or one that loads
+   * a stylesheet (`<link href>`, `@import`), where data: would hide what the
+   * stylesheet loads in turn.
+   */
   const reference = (
     source: Source,
-    { url, offset }: Reference,
-    element?: string,
+    { url, offset, kind }: Reference,
+    context: 'attribute' | 'css' = 'css',
   ) => {
     const trimmed = url.trimStart();
     const at = offset + url.length - trimmed.length;
     if (source === template && url.includes('{{')) {
-      issue(
-        'asset-dynamic',
-        source,
-        at,
-        `${url} depends on the data: write the path out, and pick between paths with {{#if}}`,
-      );
+      // In CSS a statement is a template-structure issue already.
+      if (context === 'attribute') {
+        issue(
+          'asset-dynamic',
+          source,
+          at,
+          `${url} depends on the data: write the path out, and pick between paths with {{#if}}`,
+        );
+      }
       return;
     }
-    if (element && documents.has(element) && /^\s*data:/i.test(url)) {
+    if (kind === 'stylesheet' && /^data:/i.test(trimmed)) {
       issue(
-        'html-active',
+        'asset-data',
         source,
         at,
-        `<${element}> may not load a data: document`,
+        'a stylesheet may not be a data: URL: put it in the pack as a .css file',
       );
       return;
     }
@@ -156,7 +157,7 @@ export function assetIssues(
   const css = (source: Source, css: string, start: number, rules: boolean) => {
     const { references, escapes } = scanCss(css);
     for (const ref of references) {
-      reference(source, { url: ref.url, offset: start + ref.offset });
+      reference(source, { ...ref, offset: start + ref.offset });
     }
     for (const offset of escapes) {
       issue(
@@ -192,30 +193,8 @@ export function assetIssues(
         location?.attrs?.[name] ??
         location?.attrs?.[name.split(':').pop() ?? ''];
       const tag = element.tagName;
-      const active = (offset: number | undefined, message: string) =>
-        issue('html-active', template, offset ?? 0, message);
-
-      if (
-        tag === 'script' ||
-        tag === 'base' ||
-        (tag === 'meta' &&
-          attributeOf(element, 'http-equiv')?.value.toLowerCase() === 'refresh')
-      ) {
-        active(
-          location?.startOffset,
-          `<${tag}> is not allowed in a pack: printing must not run code or change where the page loads from`,
-        );
-        continue;
-      }
-      for (const attr of element.attrs) {
-        const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
-        if (name.startsWith('on') || name === 'srcdoc') {
-          active(
-            attrAt(name)?.startOffset,
-            `${name} is not allowed in a pack: printing must not run code`,
-          );
-        }
-      }
+      // The allowlist reports these; nothing inside them is loaded.
+      if (isRefused(element)) continue;
       for (const name of loaders.get(tag) ?? []) {
         const attr = attributeOf(element, name);
         const at = attrAt(name);
@@ -225,8 +204,13 @@ export function assetIssues(
           name === 'srcset'
             ? srcsetUrls(attr.value)
             : [{ url: attr.value, offset: 0 }];
+        const kind = tag === 'link' ? 'stylesheet' : undefined;
         for (const { url, offset } of urls) {
-          reference(template, { url, offset: start + offset }, tag);
+          reference(
+            template,
+            { url, offset: start + offset, kind },
+            'attribute',
+          );
         }
       }
       const style = attributeOf(element, 'style');

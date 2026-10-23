@@ -107,27 +107,17 @@ describe('checkPack template coverage diagnostics', () => {
     ]);
   });
 
-  it.each([
-    'img',
-    'svg',
-    'canvas',
-    'picture',
-    'video',
-    'object',
-    'embed',
-    'iframe',
-    'input',
-    'select',
-    'textarea',
-    'math',
-  ])('rejects an unmarked %s even without a text node', tag => {
-    const element = ['img', 'embed', 'input'].includes(tag)
-      ? `<${tag}>`
-      : `<${tag}></${tag}>`;
-    rejected(`<body>\n  ${element}\n</body>`, [
-      { code: 'gt-unmarked', line: 2, column: 3 },
-    ]);
-  });
+  it.each(['img', 'svg', 'picture', 'input', 'select', 'textarea', 'math'])(
+    'rejects an unmarked %s even without a text node',
+    tag => {
+      const element = ['img', 'input'].includes(tag)
+        ? `<${tag}>`
+        : `<${tag}></${tag}>`;
+      rejected(`<body>\n  ${element}\n</body>`, [
+        { code: 'gt-unmarked', line: 2, column: 3 },
+      ]);
+    },
+  );
 
   it.each([
     ['empty', 'data-gt=""'],

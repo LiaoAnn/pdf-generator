@@ -14,6 +14,8 @@ export type TemplateHtml = {
   branchAt: (offset: number) => number;
   /** Whether an offset lies in a branch or in a branch nested inside it. */
   inBranch: (offset: number, branch: number) => boolean;
+  /** Every Handlebars tag (`{{…}}`) in the template: [start, end) offsets. */
+  statements: [number, number][];
 };
 
 /**
@@ -24,7 +26,11 @@ export type TemplateHtml = {
 function asHtml(
   source: string,
   ast: hbs.AST.Program,
-): { html: string; branches: [number, number][] } {
+): {
+  html: string;
+  branches: [number, number][];
+  statements: [number, number][];
+} {
   const lineStarts = [0];
   for (let i = 0; i < source.length; i++) {
     if (source[i] === '\n') lineStarts.push(i + 1);
@@ -38,6 +44,7 @@ function asHtml(
     for (let i = start; i < end; i++) html[i] = source[i] ?? ' ';
   };
   const branches: [number, number][] = [];
+  const content: [number, number][] = [];
   const visit = (program: hbs.AST.Program | undefined) => {
     const body = program?.body ?? [];
     const first = body[0];
@@ -46,10 +53,10 @@ function asHtml(
       branches.push([offset(first.loc.start), offset(last.loc.end)]);
     }
     for (const statement of body) {
-      if (
-        statement.type === 'ContentStatement' ||
-        statement.type === 'MustacheStatement'
-      ) {
+      if (statement.type === 'ContentStatement') {
+        content.push([offset(statement.loc.start), offset(statement.loc.end)]);
+        keep(statement);
+      } else if (statement.type === 'MustacheStatement') {
         keep(statement);
       } else if (statement.type === 'BlockStatement') {
         const block = statement as hbs.AST.BlockStatement;
@@ -59,7 +66,34 @@ function asHtml(
     }
   };
   visit(ast);
-  return { html: html.join(''), branches };
+  // Whatever isn't content is Handlebars: mustaches, comments and block tags
+  // ({{else}} has no node of its own), split at each `{{`.
+  content.sort((a, b) => a[0] - b[0]);
+  const statements: [number, number][] = [];
+  let at = 0;
+  const ends: [number, number][] = [...content, [source.length, source.length]];
+  for (const [start, end] of ends) {
+    const gap = source.slice(at, start);
+    for (let i = gap.indexOf('{{'); i >= 0; ) {
+      const close = i + nextClose(gap.slice(i));
+      statements.push([at + i, at + close]);
+      i = gap.indexOf('{{', close);
+    }
+    at = end;
+  }
+  return { html: html.join(''), branches, statements };
+}
+
+/** Length of the Handlebars tag at the start of `text`, through its `}}`. */
+function nextClose(text: string): number {
+  if (text.startsWith('{{!--')) {
+    const end = text.indexOf('--}}');
+    return end < 0 ? text.length : end + 4;
+  }
+  const end = text.indexOf('}}');
+  if (end < 0) return text.length;
+  // A triple-stash closes with }}}.
+  return text[end + 2] === '}' ? end + 3 : end + 2;
 }
 
 /** Parses the template as HTML, with source locations. */
@@ -67,7 +101,7 @@ export function templateHtml(
   source: string,
   ast: hbs.AST.Program,
 ): TemplateHtml {
-  const { html, branches } = asHtml(source, ast);
+  const { html, branches, statements } = asHtml(source, ast);
   // Branches nest, so the innermost one containing an offset is the
   // shortest; templates have few blocks, so a scan is fine.
   const branchAt = (at: number) => {
@@ -93,6 +127,7 @@ export function templateHtml(
     document: parse(html, { sourceCodeLocationInfo: true }),
     branchAt,
     inBranch,
+    statements,
   };
 }
 

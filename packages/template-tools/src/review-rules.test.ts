@@ -289,10 +289,22 @@ describe('review regressions: HTML and Handlebars branches', () => {
       const fixed = attribute.startsWith('data-gt-id')
         ? ' data-gt="paragraph"'
         : '';
-      rejects(
-        pack(`<p${fixed} {{#if holder}}${attribute}{{/if}}></p>`),
-        'gt-branch',
-        attribute,
+      const template = `<p${fixed} {{#if holder}}${attribute}{{/if}}></p>`;
+      const result = checkPack(pack(template));
+      expect(result.ok).toBe(false);
+      expect(
+        result.issues.map(({ code, file, line, column }) => ({
+          code,
+          file,
+          line,
+          column,
+        })),
+      ).toEqual(
+        ['{{#if holder}}', '{{/if}}'].map(token => ({
+          code: 'template-structure',
+          file: templateFile,
+          ...at(template, token),
+        })),
       );
     },
   );
@@ -320,7 +332,7 @@ describe('review regressions: active HTML and dynamic loads', () => {
       'OnClick',
     ],
     ['nonstandard on prefix', '<p data-gt="paragraph" only="x">x</p>', 'only'],
-    ['srcdoc', '<iframe data-gt="image" srcdoc=""></iframe>', 'srcdoc'],
+    ['srcdoc', '<div srcdoc=""></div>', 'srcdoc'],
     ['base', '<base href="./">', '<base'],
     ['refresh', '<meta http-equiv="ReFrEsH" content="0">', '<meta'],
   ])('rejects %s before it can execute or redirect', (_name, template, token) =>
@@ -332,16 +344,12 @@ describe('review regressions: active HTML and dynamic loads', () => {
       'srcset',
       '<img data-gt="image" srcset="../assets/logo.svg 1x, {{holder}} 2x">',
     ],
-    ['poster', '<video data-gt="image" poster="{{holder}}"></video>'],
-    ['object', '<object data-gt="image" data="{{holder}}"></object>'],
+    [
+      'source',
+      '<picture data-gt="image"><source srcset="{{holder}}"></picture>',
+    ],
     ['link', '<link href="{{holder}}" rel="stylesheet">'],
     ['svg image', '<svg data-gt="image"><image href="{{holder}}"/></svg>'],
-    ['svg use', '<svg data-gt="image"><use xlink:href="{{holder}}"/></svg>'],
-    [
-      'style attribute',
-      '<p data-gt="paragraph" style="background:url(\'{{holder}}\')">x</p>',
-    ],
-    ['style element', '<style>p{background:url("{{holder}}")}</style>'],
     ['partial URL', '<img data-gt="image" src="../assets/{{holder}}.svg">'],
   ])(
     'rejects %s URLs that sample rendering cannot prove safe',
@@ -360,8 +368,8 @@ describe('review regressions: active HTML and dynamic loads', () => {
         pack(
           `<${tag} data-gt="image" ${attr}="data:text/html,hello"></${tag}>`,
         ),
-        'html-active',
-        'data:text/html,hello',
+        'html-unsupported',
+        `<${tag}`,
       );
     },
   );
@@ -518,12 +526,16 @@ describe('review regressions: untrusted resource limits and prototype names', ()
       },
     ]);
   });
-  it('treats constructor as an ordinary element name without crashing', () => {
-    accepts(pack('<constructor></constructor>'));
+  it('rejects constructor as unsupported without a prototype-name crash or unmarked cascade', () => {
+    rejects(
+      pack('<constructor></constructor>'),
+      'html-unsupported',
+      '<constructor',
+    );
     rejects(
       pack('<constructor>visible</constructor>'),
-      'gt-unmarked',
-      'visible',
+      'html-unsupported',
+      '<constructor',
     );
   });
 });

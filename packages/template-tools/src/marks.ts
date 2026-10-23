@@ -5,6 +5,7 @@
 import { blockTypes } from '@pdf-generator/contract';
 import { attributeOf, type Html, type TemplateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
+import { isRefused } from './policy.ts';
 import { position } from './text.ts';
 
 /** Subtrees that print nothing. */
@@ -194,13 +195,14 @@ export function markIssues(
       }
       if (!('tagName' in child)) continue;
       const element = child as Html.Element;
-      if (exempt.has(element.tagName)) continue;
+      // Refused elements are the allowlist's to report (policy.ts).
+      if (exempt.has(element.tagName) || isRefused(element)) continue;
       const location = element.sourceCodeLocation;
       const at = (name: string) =>
         location?.attrs?.[name]?.startOffset ?? location?.startOffset ?? 0;
 
-      // An element prints whole or not at all only if its tags and its
-      // data-gt attributes are in one Handlebars branch.
+      // An element prints whole or not at all only if its tags are in one
+      // Handlebars branch (statements inside a tag are template-structure).
       if (location?.startTag) {
         const branch = branchAt(location.startTag.startOffset);
         // Without an end tag, the element runs on to its last content,
@@ -217,15 +219,6 @@ export function markIssues(
             location.startOffset,
             `<${element.tagName}> must open and close in the same {{#…}}/{{else}} branch`,
           );
-        }
-        for (const attr of element.attrs) {
-          if (isGtAttribute(attr.name) && branchAt(at(attr.name)) !== branch) {
-            report(
-              'gt-branch',
-              at(attr.name),
-              `${attr.name} can't depend on a {{#…}} block inside the tag: put the block around the whole element`,
-            );
-          }
         }
       }
 

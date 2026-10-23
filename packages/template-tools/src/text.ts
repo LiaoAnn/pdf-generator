@@ -19,17 +19,32 @@ export function decode(bytes: Uint8Array): string | undefined {
   }
 }
 
+// Line starts of the text most recently asked about: issues come in runs
+// for one file, so this keeps locating thousands of them linear.
+let cached: { text: string; starts: number[] } | undefined;
+
 /** 1-based line and column (in UTF-16 code units) of `offset` in `text`. */
 export function position(
   text: string,
   offset: number,
 ): { line: number; column: number } {
-  const before = text.slice(0, offset);
-  const lineStart = before.lastIndexOf('\n') + 1;
-  return {
-    line: before.split('\n').length,
-    column: offset - lineStart + 1,
-  };
+  if (cached?.text !== text) {
+    const starts = [0];
+    for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) {
+      starts.push(i + 1);
+    }
+    cached = { text, starts };
+  }
+  const { starts } = cached;
+  // The last line start at or before offset.
+  let low = 0;
+  let high = starts.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if ((starts[middle] ?? 0) <= offset) low = middle;
+    else high = middle - 1;
+  }
+  return { line: low + 1, column: offset - (starts[low] ?? 0) + 1 };
 }
 
 /** Parses JSON, or returns a `json-syntax` issue at the first error. */

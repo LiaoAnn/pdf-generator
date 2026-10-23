@@ -12,6 +12,7 @@ import { parseTemplate, renderTemplate, TemplateError } from './fill.ts';
 import { templateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { markIssues } from './marks.ts';
+import { policyIssues } from './policy.ts';
 import { decode, jsonPosition, parseJson } from './text.ts';
 
 export type { PackFiles } from './files.ts';
@@ -203,15 +204,33 @@ function check(
     issues.push(...parsed.issues);
     if (parsed.ast !== undefined) {
       const html = templateHtml(templateText, parsed.ast);
-      issues.push(...markIssues(templateText, html, template));
+      const policy = policyIssues(templateText, html, template);
+      // A statement that breaks the HTML structure is reported as that; what
+      // the other checks make of the broken tag there is noise.
+      const structure = new Set(
+        policy
+          .filter(issue => issue.code === 'template-structure')
+          .map(issue => `${issue.line}:${issue.column}`),
+      );
+      const located = (found: PackIssue[]) =>
+        found.filter(
+          issue =>
+            issue.code === 'template-structure' ||
+            issue.file !== template ||
+            !structure.has(`${issue.line}:${issue.column}`),
+        );
+      issues.push(...located(policy));
+      issues.push(...located(markIssues(templateText, html, template)));
       issues.push(
-        ...assetIssues(
-          { file: template, text: templateText, html },
-          styles.flatMap((file, i) => {
-            const text = styleTexts[i];
-            return text === undefined ? [] : [{ file, text }];
-          }),
-          path => files[path],
+        ...located(
+          assetIssues(
+            { file: template, text: templateText, html },
+            styles.flatMap((file, i) => {
+              const text = styleTexts[i];
+              return text === undefined ? [] : [{ file, text }];
+            }),
+            path => files[path],
+          ),
         ),
       );
       if (parsed.issues.length === 0 && parsedSample !== undefined) {

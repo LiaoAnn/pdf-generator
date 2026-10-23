@@ -99,6 +99,10 @@ function unsupported(program: AST, file: string): PackIssue[] {
     }
   };
   const call = (node: Call, statement: Node, block: boolean) => {
+    if (node.path.type !== 'PathExpression') {
+      report(statement, 'a literal cannot be used as a field or helper name');
+      return;
+    }
     const name = node.path.original;
     const helper = !isSimpleName(node.path)
       ? undefined
@@ -110,10 +114,6 @@ function unsupported(program: AST, file: string): PackIssue[] {
           ? inlineHelpers[name]
           : undefined;
     const isCall = block || node.params.length > 0 || node.hash !== undefined;
-    if (node.path.type !== 'PathExpression') {
-      report(statement, 'a literal cannot be used as a field or helper name');
-      return;
-    }
     if (!helper) {
       if (isCall) report(statement, `{{${name}}} is not a supported helper`);
       else expression(node.path, statement);
