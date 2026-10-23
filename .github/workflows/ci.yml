@@ -15,15 +15,15 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # The Dev Container's image (.devcontainer/docker-compose.yml), so CI runs
+    # with the same Node, pnpm and network setup as every worktree. The dev cron
+    # tests in particular rely on it: on the bare runner `localhost` resolves to
+    # ::1 first and Wrangler discovery sees two candidate sockets.
+    container:
+      image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      # Installs the pnpm version pinned in package.json's packageManager.
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
