@@ -373,3 +373,12 @@
 - **不做**：改區塊讀取規則
 - **來源**：PR #8 的 open risks
 
+### T07-2 印 PDF：位元組完全相同
+- **目標**：同一份 HTML 重印時 PDF 位元組一模一樣：固定或移除 Chrome 寫入的 `/CreationDate`、`/ModDate`，以及 tagged-PDF 結構樹裡的 DOM node-id 字串（必要時關掉 tagged PDF 或在印完後正規化）
+- **Blocked by**：T07
+- **Blocks**：—（T16「重做結果一模一樣」目前 data.json、gt.json 已相同，PDF 只差這些欄位）
+- **撞車風險**：`apps/print`
+- **驗收測試**：同一份文件連印兩次 sha256 相同；T16 重做 100 份 PDF 100/100 相同
+- **不做**：改排版
+- **來源**：PR #11
+

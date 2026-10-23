@@ -51,7 +51,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 ## Commands
 
-Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
+Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
 | Command | Purpose |
 | --- | --- |
@@ -68,6 +68,7 @@ Run every project command inside your worktree's stack (see "Environment"), neve
 | `pnpm --filter @pdf-generator/web build` / `preview` | Production build, served locally (fails closed with 503 until Access vars are set) |
 | `pnpm dev:print --ip 0.0.0.0` | `wrangler dev` for `apps/print` (port 8788, inside the stack only) |
 | `pnpm cf-typegen` | Regenerate every Worker's binding types after changing its `wrangler.jsonc` |
+| Batch locally (two tmux sessions) | print: `CI=1 XDG_CACHE_HOME=<writable dir> pnpm dev:print --ip 0.0.0.0 --var PRINT_TOKEN:<token> --var ASSET_ORIGIN:http://127.0.0.1:8788`; web: `MINIFLARE_REGISTRY_PATH=/tmp/wrangler-registry pnpm dev --ip 0.0.0.0` with the same token as `PRINT_TOKEN` in `apps/web/.env` (gitignored). Don't put print values in `apps/print/.env`: its own tests load it |
 | `pnpm --filter @pdf-generator/contract schemas` | Regenerate the committed JSON Schema after a contract change (a test fails when it is stale) |
 
 ## How work is organized
