@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.ts",
     "build": "vite build",
+    "preview": "vite preview",
     "deploy": "vite build && wrangler deploy",
     "cf-typegen": "wrangler types --strict-vars=false",
     "test": "vitest run",
