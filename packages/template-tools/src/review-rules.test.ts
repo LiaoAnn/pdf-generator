@@ -247,12 +247,40 @@ describe('review regressions: HTML and Handlebars branches', () => {
     },
   );
   it('rejects the else div closing outside its branch even when its opening is unmarked', () => {
-    rejects(
+    const template =
+      '{{#if holder}}<div data-gt="paragraph">{{else}}<div>{{/if}}文字</div>';
+    const result = checkPack(pack(template));
+    expect(result.ok).toBe(false);
+    expect(result).not.toHaveProperty('pack');
+    expect(
+      result.issues.map(({ message, ...issue }) => {
+        expect(message.trim()).not.toBe('');
+        return issue;
+      }),
+    ).toEqual(
+      ['<div data-gt', '<div>{{/if}}'].map(token => ({
+        code: 'gt-branch',
+        file: templateFile,
+        ...at(template, token),
+      })),
+    );
+  });
+  it('rejects an implicit paragraph whose content escapes its branch', () => {
+    const files = pack(
+      '{{#if approved}}<p data-gt="paragraph">{{/if}}Unmarked<p data-gt="paragraph">Next</p>',
+    );
+    files['rules.json'] = JSON.stringify({
+      schemaVersion: 1,
+      fields: { approved: { type: 'constant', value: false } },
+    });
+    files['sample.json'] = JSON.stringify({ approved: false });
+    rejects(files, 'gt-branch', '<p');
+  });
+  it('allows implicit paragraph content in its opening branch or a nested branch', () => {
+    accepts(
       pack(
-        '{{#if holder}}<div data-gt="paragraph">{{else}}<div>{{/if}}文字</div>',
+        '{{#if holder}}<p data-gt="paragraph">x {{#if rows}}y{{/if}}{{/if}}',
       ),
-      'gt-branch',
-      '<div>{{/if}}',
     );
   });
   it.each(['data-gt="paragraph"', 'data-gt-id="x"'])(

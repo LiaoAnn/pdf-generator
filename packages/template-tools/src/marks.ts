@@ -58,7 +58,7 @@ function* descendants(node: Html.ParentNode): Generator<Html.ChildNode> {
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
   source: string,
-  { html, document, branchAt }: TemplateHtml,
+  { html, document, branchAt, inBranch }: TemplateHtml,
   file: string,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
@@ -71,6 +71,21 @@ export function markIssues(
     if (!/\S/.test(text.value) || !location) return undefined;
     const slice = html.slice(location.startOffset, location.endOffset);
     return location.startOffset + (blank.exec(slice)?.[0].length ?? 0);
+  };
+
+  /** Offset of the last printed thing inside an element, if any. */
+  const lastContent = (element: Html.Element) => {
+    let last: number | undefined;
+    for (const node of descendants(element)) {
+      const location = node.sourceCodeLocation;
+      if (!location) continue;
+      if (node.nodeName === '#text') {
+        const slice = html.slice(location.startOffset, location.endOffset);
+        const trailing = /\S\s*$/.exec(slice);
+        if (trailing) last = location.startOffset + trailing.index;
+      } else if ('tagName' in node) last = location.startOffset;
+    }
+    return last;
   };
 
   /** The detail checks of a marked element of a known type. */
@@ -188,9 +203,14 @@ export function markIssues(
       // data-gt attributes are in one Handlebars branch.
       if (location?.startTag) {
         const branch = branchAt(location.startTag.startOffset);
+        // Without an end tag, the element runs on to its last content,
+        // which must then be printed whenever the start tag is.
+        const last = location.endTag ? undefined : lastContent(element);
         if (
           branchAt(location.startTag.endOffset - 1) !== branch ||
-          (location.endTag && branchAt(location.endTag.startOffset) !== branch)
+          (location.endTag &&
+            branchAt(location.endTag.startOffset) !== branch) ||
+          (last !== undefined && !inBranch(last, branch))
         ) {
           report(
             'gt-branch',

@@ -12,6 +12,8 @@ export type TemplateHtml = {
    * branch are always printed together, or not at all.
    */
   branchAt: (offset: number) => number;
+  /** Whether an offset lies in a branch or in a branch nested inside it. */
+  inBranch: (offset: number, branch: number) => boolean;
 };
 
 /**
@@ -82,10 +84,15 @@ export function templateHtml(
     });
     return best;
   };
+  const inBranch = (at: number, branch: number) => {
+    const range = branches[branch];
+    return range === undefined || (range[0] <= at && at < range[1]);
+  };
   return {
     html,
     document: parse(html, { sourceCodeLocationInfo: true }),
     branchAt,
+    inBranch,
   };
 }
 
