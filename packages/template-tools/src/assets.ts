@@ -188,7 +188,7 @@ export function assetIssues(
         'css-escape',
         source,
         at(offset),
-        'a backslash escape outside a CSS string: write names out plainly',
+        'a backslash escape in CSS: write the character itself (packs are UTF-8)',
       );
     }
     if (rules) {

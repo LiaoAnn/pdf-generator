@@ -392,11 +392,11 @@ describe('review regressions: CSS tokenization and reached stylesheets', () => {
   ])('checks CSS escapes in template context %s', template =>
     rejects(pack(template), 'css-escape', '\\'),
   );
-  it('does not scan URL-like strings or escaped content strings as CSS references', () =>
+  it('does not scan URL-like strings or literal Unicode content as CSS references', () =>
     accepts(
       pack(
         undefined,
-        'p::before{content:"url(missing.png) \\2022"} /* u\\72l(missing.png) */',
+        'p::before{content:"url(missing.png) •"} /* u\\72l(missing.png) */',
       ),
     ));
   it.each(['image-set', '-webkit-image-set'])(

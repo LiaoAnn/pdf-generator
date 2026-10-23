@@ -21,9 +21,10 @@ const identifier = /[A-Za-z0-9_\-\u0080-￿]/;
 
 /**
  * The URLs a stylesheet loads (`url(…)`, `@import "…"`, strings in
- * `image-set(…)`) and every backslash outside strings and comments: an escape
- * there can spell `url` or `@import` in a way no scanner here would see, and
- * a pack never needs one. One linear pass that knows strings and comments.
+ * `image-set(…)`) and every backslash outside comments: an escape can spell
+ * `url` or `@import`, or end a string or url() where this scanner wouldn't,
+ * and a UTF-8 pack never needs one. One linear pass that knows strings and
+ * comments.
  */
 export function scanCss(css: string): {
   references: Reference[];
@@ -35,6 +36,7 @@ export function scanCss(css: string): {
   const escapes: number[] = [];
   const dynamic: number[] = [];
   const functions: string[] = [];
+  let insideImageSet = 0;
   let importing = false;
   let i = 0;
   while (i < css.length) {
@@ -50,7 +52,9 @@ export function scanCss(css: string): {
         css[end] !== c &&
         !/[\n\r\f]/.test(css[end] ?? '')
       ) {
-        end += css[end] === '\\' ? 2 : 1;
+        // Every backslash is an issue, so no need to know what it escapes.
+        if (css[end] === '\\') escapes.push(end);
+        end++;
       }
       const inside = functions.at(-1) ?? '';
       if (importing || inside === 'url' || imageSets.has(inside)) {
@@ -64,7 +68,7 @@ export function scanCss(css: string): {
       i = end + 1;
     } else if (c === '\\') {
       escapes.push(i);
-      i += 2;
+      i++;
     } else if (c === '@' || identifier.test(c)) {
       let end = i + 1;
       while (end < css.length && identifier.test(css[end] ?? '')) end++;
@@ -80,6 +84,10 @@ export function scanCss(css: string): {
         }
         const close = css.indexOf(')', start);
         const stop = close < 0 ? css.length : close;
+        for (let at = css.indexOf('\\', start); at >= 0 && at < stop; ) {
+          escapes.push(at);
+          at = css.indexOf('\\', at + 1);
+        }
         references.push({
           url: css.slice(start, stop).trimEnd(),
           offset: start,
@@ -89,20 +97,19 @@ export function scanCss(css: string): {
         i = stop + 1;
         continue;
       } else if (css[end] === '(') {
-        if (
-          ['var', 'env', 'attr'].includes(name) &&
-          functions.some(open => imageSets.has(open))
-        ) {
+        if (['var', 'env', 'attr'].includes(name) && insideImageSet > 0) {
           dynamic.push(i);
         }
+        if (imageSets.has(name)) insideImageSet++;
         functions.push(name);
         end++;
       }
       i = end;
     } else {
       if (c === '(') functions.push('');
-      else if (c === ')') functions.pop();
-      else if (c === ';' || c === '{' || c === '}') importing = false;
+      else if (c === ')' && imageSets.has(functions.pop() ?? '')) {
+        insideImageSet--;
+      } else if (c === ';' || c === '{' || c === '}') importing = false;
       i++;
     }
   }

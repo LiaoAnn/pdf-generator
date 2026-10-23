@@ -506,3 +506,115 @@ it('checks 8,000 complete if branches in under three seconds', () => {
   expect(result).toMatchObject({ ok: true, issues: [] });
   expect(elapsed).toBeLessThan(3_000);
 }, 30_000);
+
+describe('print parity: round 5 forbids CSS escapes outside comments', () => {
+  const contexts = [
+    'file',
+    'style element',
+    'style attribute',
+    'SVG attribute',
+  ];
+  function cssPack(context: string, declaration: string) {
+    return context === 'file'
+      ? pack(undefined, `p{${declaration}}`)
+      : pack(
+          context === 'style element'
+            ? `<style>p{${declaration}}</style>`
+            : context === 'style attribute'
+              ? `<p data-gt="paragraph" style='${declaration}'>x</p>`
+              : `<svg data-gt="image"><rect fill='${declaration}'/></svg>`,
+        );
+  }
+
+  for (const [name, declaration] of [
+    ['quoted hex escape', 'content:"\\2022"'],
+    ['escaped quote', 'content:"a\\"b"'],
+    ['escaped backslash', 'content:"\\\\tail"'],
+    ['comment-like string', 'content:"/* \\2022 */"'],
+    ['unquoted URL', 'background:url(data:image/png,\\41)'],
+    ['quoted URL', 'background:url("data:image/png,\\41")'],
+    ['ordinary token', '--x:r\\65 d'],
+    ['trailing backslash', '--x:abc\\'],
+  ] as const) {
+    it.each(contexts)(`rejects every backslash in ${name} in %s`, context => {
+      // Unique suffixes distinguish adjacent backslashes, so neither may be
+      // skipped as the second character of an escape.
+      const tokens = [...declaration.matchAll(/\\/g)].map(match =>
+        declaration.slice(match.index),
+      );
+      rejects(
+        cssPack(context, declaration),
+        'css-escape',
+        tokens,
+        context === 'file' ? cssFile : templateFile,
+      );
+    });
+  }
+
+  for (const [name, declaration] of [
+    [
+      'escaped CRLF string',
+      '--x:"\\\r\n";background-image:url(https://outside.invalid/leak);',
+    ],
+    [
+      'escaped unquoted URL closing parenthesis',
+      '--x:url(data:\\)");background-image:url(https://outside.invalid/leak);',
+    ],
+  ] as const) {
+    it.each(contexts)(`rejects the reviewed ${name} in %s`, context => {
+      // Do not require asset-external: rejecting the escape itself is the
+      // policy, independent of recovery from these malformed CSS tokens.
+      rejects(
+        cssPack(context, declaration),
+        'css-escape',
+        ['\\'],
+        context === 'file' ? cssFile : templateFile,
+      );
+    });
+  }
+
+  it('rejects the reviewed escaped CRLF represented by HTML character references', () => {
+    rejects(
+      pack(
+        '<p data-gt="paragraph" style=\'--x:"\\&#13;&#10;";background-image:url(https://outside.invalid/leak);\'>x</p>',
+      ),
+      'css-escape',
+      ['\\'],
+    );
+  });
+
+  it.each(['style attribute', 'SVG attribute'])(
+    'reports an entity-encoded backslash at its source position in %s',
+    context => {
+      rejects(cssPack(context, '\n  --x:"&#92;2022"'), 'css-escape', ['&#92;']);
+    },
+  );
+
+  it.each(contexts)(
+    'round 5 positive control: accepts literal Unicode content in %s',
+    context => accepts(cssPack(context, 'content:"•"')),
+  );
+  it.each(contexts)(
+    'round 5 positive control: ignores backslashes and URLs inside comments in %s',
+    context =>
+      accepts(
+        cssPack(
+          context,
+          '/* \\2022 \\\\ url(https://outside.invalid/leak) */ color:red',
+        ),
+      ),
+  );
+});
+
+it('checks 40,000 nested var() functions in under 1.5 seconds', () => {
+  checkPack(pack(undefined, 'p{--x:var(--ink)}'));
+  const files = pack(
+    undefined,
+    `p{--x:${'var('.repeat(40_000)}0${')'.repeat(40_000)}}`,
+  );
+  const start = performance.now();
+  const result = checkPack(files);
+  const elapsed = performance.now() - start;
+  expect(result).toMatchObject({ ok: true, issues: [] });
+  expect(elapsed).toBeLessThan(1_500);
+}, 30_000);
