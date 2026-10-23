@@ -3,16 +3,27 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/lib.ts"
+  },
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
-    "typecheck": "tsc"
+    "typecheck": "tsc && tsc -p tsconfig.browser.json",
+    "fonts": "node src/fonts/build.ts"
   },
   "devDependencies": {
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"
+  },
+  "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0",
+    "@pdf-generator/contract": "workspace:*",
+    "@pdf-generator/ground-truth": "workspace:*",
+    "unpdf": "^1.9.1",
+    "zod": "^4.6.7"
   }
 }

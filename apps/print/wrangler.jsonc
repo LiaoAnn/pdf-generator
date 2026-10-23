@@ -1,11 +1,21 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // The PDF print Worker (Browser Rendering + Paged.js, T07). A placeholder
-  // Worker until then.
+  // The PDF print Worker (T07): Browser Rendering + Paged.js. The browser
+  // loads fonts and Paged.js from this Worker's static assets by URL.
   "name": "pdf-generator-print",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat_v2"],
+  // Puppeteer's page.evaluate serialises functions with toString(); esbuild's
+  // keep_names helpers (__name) would not exist in the page.
+  "keep_names": false,
+  "browser": {
+    "binding": "BROWSER",
+  },
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+  },
   "observability": {
     "enabled": true,
   },
