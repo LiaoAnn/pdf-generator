@@ -248,6 +248,9 @@ importers:
 
   packages/fake-data:
     devDependencies:
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
       typescript:
         specifier: 'catalog:'
         version: 7.0.2
