@@ -325,7 +325,7 @@ describe('print parity: image-set cannot obtain URLs dynamically', () => {
         'p{background:image-set(cross-fade(var(--image),url(logo.svg),50%) 1x)}',
       ),
       'asset-dynamic',
-      ['var(--image)'],
+      ['cross-fade(', 'var(--image)'],
       cssFile,
     );
   });
@@ -618,3 +618,117 @@ it('checks 40,000 nested var() functions in under 1.5 seconds', () => {
   expect(result).toMatchObject({ ok: true, issues: [] });
   expect(elapsed).toBeLessThan(1_500);
 }, 30_000);
+
+describe('print parity: round 6 image-set direct function allowlist', () => {
+  const contexts = [
+    'file',
+    'style element',
+    'style attribute',
+    'SVG attribute',
+  ];
+  function imagePack(context: string, value: string, prelude = '') {
+    const declaration = `background-image:${value}`;
+    return context === 'file'
+      ? pack(undefined, `${prelude}\np{${declaration}}`)
+      : pack(
+          context === 'style element'
+            ? `<style>${prelude}\np{${declaration}}</style>`
+            : context === 'style attribute'
+              ? `<style>${prelude}</style><p data-gt="paragraph"\n style='${declaration}'>x</p>`
+              : `<style>${prelude}</style><svg data-gt="image"><rect\n fill='${value}'/></svg>`,
+        );
+  }
+
+  for (const imageSet of ['image-set', '-webkit-image-set']) {
+    for (const [name, argument, prelude] of [
+      [
+        'custom function',
+        '--image() 1x',
+        '@function --image() { result: "https://outside.invalid/leak"; }',
+      ],
+      [
+        'if',
+        'if(media(all): "https://outside.invalid/leak"; else: "https://outside.invalid/leak") 1x',
+        '',
+      ],
+      ['var', 'var(--image) 1x', ''],
+      ['env', 'env(image) 1x', ''],
+      ['attr', 'attr(data-image) 1x', ''],
+      ['unknown function', 'future-image() 1x', ''],
+    ] as const) {
+      it.each(contexts)(
+        `round 6 rejects direct ${name} in ${imageSet} in %s at its name`,
+        context => {
+          const token = argument.slice(0, argument.indexOf('(') + 1);
+          const files = imagePack(context, `${imageSet}(${argument})`, prelude);
+          // The custom definition has the same name: distinguish the call by
+          // using its complete suffix, while retaining the name's offset.
+          rejects(
+            files,
+            'asset-dynamic',
+            [name === 'custom function' ? '--image() 1x' : token],
+            context === 'file' ? cssFile : templateFile,
+          );
+        },
+      );
+    }
+
+    for (const argument of [
+      'url(a.png) 1x, "b.png" 2x',
+      '"a.png" type("image/png")',
+      ...[
+        'linear-gradient',
+        'radial-gradient',
+        'conic-gradient',
+        'repeating-linear-gradient',
+        'repeating-radial-gradient',
+        'repeating-conic-gradient',
+      ].flatMap(gradient =>
+        ['', '-webkit-'].map(
+          prefix => `${prefix}${gradient}(rgb(0 0 0), red) 1x`,
+        ),
+      ),
+    ]) {
+      it.each(contexts)(
+        `round 6 positive control: accepts ${imageSet}(${argument}) in %s`,
+        context => {
+          const files = imagePack(context, `${imageSet}(${argument})`);
+          const manifest = JSON.parse(String(files['manifest.json']));
+          manifest.files.assets.push('a.png', 'b.png');
+          files['manifest.json'] = JSON.stringify(manifest);
+          files['a.png'] = new Uint8Array([1]);
+          files['b.png'] = new Uint8Array([2]);
+          accepts(files);
+        },
+      );
+    }
+  }
+});
+
+it('round 6 checks 160,000 unquoted data URLs in under 1.5 seconds', () => {
+  checkPack(pack(undefined, 'p{background-image:url(data:,x)}'));
+  const files = pack(
+    undefined,
+    `p{background-image:${'url(data:,x),'.repeat(159_999)}url(data:,x)}`,
+  );
+  const start = performance.now();
+  const result = checkPack(files);
+  const elapsed = performance.now() - start;
+  expect(result).toMatchObject({ ok: true, issues: [] });
+  expect(elapsed).toBeLessThan(1_500);
+}, 30_000);
+
+it('round 6 reports sample text conversion failure at the mustache without throwing', () => {
+  const files = pack('<p data-gt="paragraph">\n  {{value}}</p>');
+  files['rules.json'] = JSON.stringify({
+    schemaVersion: 1,
+    fields: {
+      value: {
+        type: 'object',
+        fields: { toString: { type: 'constant', value: 'x' } },
+      },
+    },
+  });
+  files['sample.json'] = JSON.stringify({ value: { toString: 'x' } });
+  rejects(files, 'template-render', ['{{value}}']);
+});

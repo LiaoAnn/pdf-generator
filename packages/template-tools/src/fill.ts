@@ -444,10 +444,18 @@ function render(ast: AST, root: unknown, file: string): string {
         const value = isHelper
           ? callHelper(mustache as Call, frame, statement)
           : lookupPath(path, frame);
-        return output(
-          Handlebars.Utils.escapeExpression(value as string),
-          statement,
-        );
+        let text: string;
+        try {
+          text = Handlebars.Utils.escapeExpression(value as string);
+        } catch {
+          // e.g. an object whose toString field isn't a function.
+          return fail(
+            statement,
+            'template-render',
+            `{{${path.original}}} is not a value that can be printed`,
+          );
+        }
+        return output(text, statement);
       }
       case 'BlockStatement':
         return block(statement as hbs.AST.BlockStatement, frame);

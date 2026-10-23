@@ -181,6 +181,22 @@ describe('public fill acceptance: eval-free Handlebars subset', () => {
 });
 
 describe('fill diagnostics locate pack author mistakes', () => {
+  it('round 6 wraps a text conversion failure at the statement as TemplateError', () => {
+    expectIssue(
+      rejected(
+        '<p data-gt="paragraph">\n  {{value}}</p>',
+        { value: { toString: 'x' } },
+        { file: 'conversion.hbs' },
+      ),
+      {
+        code: 'template-render',
+        file: 'conversion.hbs',
+        line: 2,
+        column: 3,
+      },
+    );
+  });
+
   it.each([
     ['triple-stash', '{{{x}}}'],
     ['ampersand raw HTML', '{{& x}}'],

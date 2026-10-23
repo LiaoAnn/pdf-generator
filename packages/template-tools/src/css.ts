@@ -17,6 +17,9 @@ const withoutComments = (css: string) =>
   );
 
 const imageSets = new Set(['image-set', '-webkit-image-set']);
+/** Functions image-set() may take directly: URLs, types and gradients. */
+const imageArguments =
+  /^(?:url|type|(?:-webkit-)?(?:repeating-)?(?:linear|radial|conic)-gradient)$/;
 const identifier = /[A-Za-z0-9_\-\u0080-￿]/;
 
 /**
@@ -84,9 +87,8 @@ export function scanCss(css: string): {
         }
         const close = css.indexOf(')', start);
         const stop = close < 0 ? css.length : close;
-        for (let at = css.indexOf('\\', start); at >= 0 && at < stop; ) {
-          escapes.push(at);
-          at = css.indexOf('\\', at + 1);
+        for (let at = start; at < stop; at++) {
+          if (css[at] === '\\') escapes.push(at);
         }
         references.push({
           url: css.slice(start, stop).trimEnd(),
@@ -97,7 +99,13 @@ export function scanCss(css: string): {
         i = stop + 1;
         continue;
       } else if (css[end] === '(') {
-        if (['var', 'env', 'attr'].includes(name) && insideImageSet > 0) {
+        // image-set() takes strings as URLs: any function that could make
+        // one (custom functions, if(), var() …) hides a URL from this scan.
+        const parent = functions.at(-1) ?? '';
+        if (
+          (imageSets.has(parent) && !imageArguments.test(name)) ||
+          (['var', 'env', 'attr'].includes(name) && insideImageSet > 0)
+        ) {
           dynamic.push(i);
         }
         if (imageSets.has(name)) insideImageSet++;

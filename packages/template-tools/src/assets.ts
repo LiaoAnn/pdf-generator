@@ -177,7 +177,7 @@ export function assetIssues(
         'asset-dynamic',
         source,
         at(offset),
-        'image-set() takes its URLs from var()/env()/attr() here: write them out',
+        'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see',
       );
     }
     for (const ref of references) {
