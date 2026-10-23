@@ -146,7 +146,7 @@ If a check fails, send the worker exactly what failed; don't fix it yourself.
 
 Merged tickets don't keep a stack or a worktree; `/data` is shared by every worktree.
 
-1. After the merge, the worker's `DONE` cleanup, and settling its thread, check the worktree is clean: `git -C <path> status --porcelain` empty and `git -C <path> log @{u}..HEAD` empty. If not, ask the worker what's left; don't delete it.
+1. After the merge, the worker's `DONE` cleanup, and settling its thread, check the worktree is clean: `git -C <path> status --porcelain` empty and `git -C <path> rev-parse HEAD` equal to the merged PR's `headRefOid` (`gh pr view <n> --json headRefOid`); `@{u}` is gone once the remote branch is deleted. If not, ask the worker what's left; don't delete it.
 2. `wt-down <path>` (deletes that stack's containers and volumes; shared volumes stay).
 3. `git -C /data/code/pdf-generator worktree remove <path>`, then `git -C /data/code/pdf-generator branch -D <branch>` (the squash commit on `main` and the PR keep the history).
 
