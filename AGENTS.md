@@ -62,7 +62,10 @@ Run every project command inside your worktree's stack (see "Environment"), neve
 | `pnpm knip` | Unused files, exports, dependencies (all workspaces) |
 | `pnpm check` | Apply Biome fixes |
 | `pnpm verify` | Everything CI runs: typecheck, lint, knip, test |
-| `pnpm dev --ip 0.0.0.0` | `wrangler dev` for `apps/web` (port 8787, the worktree's `app` URL) |
+| `pnpm dev --ip 0.0.0.0` | `vite dev` for `apps/web` (TanStack Start via `@cloudflare/vite-plugin`; `--ip` maps to Vite's `--host`; port 8787, the worktree's `app` URL). Local sign-in: `/__access/login`; scripts send `CF-Access-Client-Id: local-dev.access` and `CF-Access-Client-Secret: local-dev-secret` (dev only) |
+| `pnpm --filter @pdf-generator/web db:generate` | Generate a D1 migration from the Drizzle schema (never hand-write one) |
+| `pnpm --filter @pdf-generator/web db:migrate:local` | Apply migrations to the local D1 (`db:migrate:remote` hits the real account: needs the user's OK) |
+| `pnpm --filter @pdf-generator/web build` / `preview` | Production build, served locally (fails closed with 503 until Access vars are set) |
 | `pnpm dev:print --ip 0.0.0.0` | `wrangler dev` for `apps/print` (port 8788, inside the stack only) |
 | `pnpm cf-typegen` | Regenerate every Worker's binding types after changing its `wrangler.jsonc` |
 | `pnpm --filter @pdf-generator/contract schemas` | Regenerate the committed JSON Schema after a contract change (a test fails when it is stale) |
