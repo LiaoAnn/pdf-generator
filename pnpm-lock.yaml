@@ -211,6 +211,9 @@ importers:
       '@pdf-generator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@pdf-generator/ground-truth':
+        specifier: workspace:*
+        version: link:../../packages/ground-truth
       unpdf:
         specifier: ^1.9.1
         version: 1.9.1

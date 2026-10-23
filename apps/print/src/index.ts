@@ -4,9 +4,7 @@
 import { Buffer } from 'node:buffer';
 import puppeteer from '@cloudflare/puppeteer';
 import type { ApiError } from '@pdf-generator/contract';
-// T08's reader; a stub with its signature until @pdf-generator/ground-truth
-// merges.
-import { readGroundTruth } from './ground-truth-stub.ts';
+import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
 import { openBrowser, RenderError, renderPdf } from './lib.ts';
 import { printRequestSchema } from './request.ts';
 
@@ -37,16 +35,15 @@ async function authorized(request: Request, token: string): Promise<boolean> {
   const header = request.headers.get('authorization') ?? '';
   const match = /^Bearer (.+)$/.exec(header);
   if (!match?.[1]) return false;
-  const encoder = new TextEncoder();
-  const [given, expected] = await Promise.all(
-    [match[1], token].map(value =>
-      crypto.subtle.digest('SHA-256', encoder.encode(value)),
-    ),
-  );
-  return crypto.subtle.timingSafeEqual(
-    given as ArrayBuffer,
-    expected as ArrayBuffer,
-  );
+  const digest = async (value: string) =>
+    new Uint8Array(
+      await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)),
+    );
+  // Equal-length digests, compared without an early exit.
+  const [a, b] = [await digest(match[1]), await digest(token)];
+  let difference = 0;
+  for (let i = 0; i < a.length; i++) difference |= (a[i] ?? 0) ^ (b[i] ?? 0);
+  return difference === 0;
 }
 
 // The bearer token check every route shares; undefined when it passes.
@@ -113,7 +110,7 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
         },
       );
     }
-    return new Response(result.pdf, {
+    return new Response(new Uint8Array(result.pdf), {
       headers: {
         'Content-Type': 'application/pdf',
         'X-Page-Count': String(result.pageCount),
@@ -127,6 +124,14 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
         error.code,
         error.message,
         error.details.map(message => ({ message })),
+      );
+    }
+    if (error instanceof GroundTruthError) {
+      return apiError(
+        422,
+        'ground_truth_invalid',
+        'The printed page has no valid ground truth',
+        error.issues.map(message => ({ message })),
       );
     }
     throw error;

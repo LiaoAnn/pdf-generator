@@ -3,8 +3,10 @@ import type { PageSettings } from './request.ts';
 // Only the print Worker's own scripts (the runtime and Paged.js) may run: no
 // inline script, event handler attribute or other script source from the
 // template. Template code could forge the runtime's check results, and would
-// make the output depend on more than the template and its data.
-// (puppeteer's page.evaluate is not subject to the page's policy.)
+// make the output depend on more than the template and its data. The policy
+// that holds whatever the template looks like is the response header of
+// /blank (public/_headers), which page.setContent keeps; this meta repeats it
+// in the document. (puppeteer's page.evaluate is not subject to it.)
 const noTemplateScripts = `<meta http-equiv="Content-Security-Policy" content="script-src 'self'">`;
 
 /**
@@ -27,9 +29,11 @@ export function prepareHtml(
   const { size, orientation } = options.page;
   const pageSize = `<style>@page { size: ${size} ${orientation}; }</style>`;
   const first = `${noTemplateScripts}${pageSize}<script src="/print-runtime.js"></script><script src="/paged.polyfill.js"></script>`;
-  // Before any of the template's markup, so the policy covers all of it; but
-  // never before the doctype, which would switch the page to quirks mode.
-  const withFirst = insert(html, first, 'after', [/^\s*<!doctype[^>]*>/i]);
+  // Right after the doctype, past any comments and whitespace before it: never
+  // before it, which would switch the page to quirks mode.
+  const withFirst = insert(html, first, 'after', [
+    /^(?:\s|<!--[\s\S]*?-->)*<!doctype[^>]*>/i,
+  ]);
   const withLast = insert(withFirst, pageSize, 'before', [
     /<\/head\s*>/i,
     /<body\b/i,

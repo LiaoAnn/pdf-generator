@@ -1,4 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // @pdf-generator/ground-truth (T08) is TypeScript source whose collector
+    // runs in the browser, so this program needs the DOM types too.
+    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+  },
   "include": ["worker-configuration.d.ts", "src"]
 }

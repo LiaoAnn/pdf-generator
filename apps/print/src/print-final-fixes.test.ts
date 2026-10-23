@@ -69,6 +69,75 @@ test('template script cannot forge ready state to bypass the authoritative PDF t
 });
 
 test.each([
+  ['U+00A0', '\u00a0'],
+  ['U+FEFF', '\ufeff'],
+  ['U+000B', '\u000b'],
+  ['leading HTML comment', '<!-- generated template -->'],
+])(
+  '%s before the doctype cannot let template scripts forge ready state',
+  async (_name, prefix) => {
+    const response = await print(
+      prefix +
+        documentHtml(`<p data-gt="paragraph">標點——測試</p>
+    <script>window.__pdfgen.ready = Promise.resolve({ pageCount: 999,
+    unloadedFaces: [], fragmentedRows: [], expectedText: [] });</script>`),
+    );
+    expect(response.status).toBe(422);
+    expect(response.headers.has('x-page-count')).toBe(false);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('text_missing');
+    expect(error.details?.some(detail => detail.message.includes('——'))).toBe(
+      true,
+    );
+  },
+);
+
+test('comments and HTML whitespace before the doctype preserve standards-mode class matching', async () => {
+  const response = await print(
+    ' \t\r\n<!-- generated template -->\n<!-- second comment -->\f' +
+      documentHtml(
+        '<p class="HIDDEN" data-gt="paragraph">重要內容</p>',
+        '.hidden { display: none; }',
+      ),
+  );
+  expect(response.status).toBe(200);
+  const pdf = await getDocumentProxy(
+    new Uint8Array(await response.arrayBuffer()),
+  );
+  try {
+    const { text } = await extractText(pdf, { mergePages: true });
+    expect(text.replace(/\s/gu, '')).toBe('重要內容');
+  } finally {
+    await pdf.loadingTask.destroy();
+  }
+});
+
+test('template pagedjs_page markup cannot shift the generated page text checks', async () => {
+  const response = await print(
+    documentHtml(
+      '<div id="template-page" class="pagedjs_page"><p data-gt="paragraph">公司月報</p></div>',
+      // Keep the colliding class from importing Paged.js page-box dimensions.
+      '#template-page { all: initial; display: block; font: inherit; }',
+    ),
+  );
+  expect(
+    response.status,
+    response.status === 200 ? undefined : await response.text(),
+  ).toBe(200);
+  expect(response.headers.get('x-page-count')).toBe('1');
+  const pdf = await getDocumentProxy(
+    new Uint8Array(await response.arrayBuffer()),
+  );
+  try {
+    expect(pdf.numPages).toBe(1);
+    const { text } = await extractText(pdf, { mergePages: true });
+    expect(text.replace(/\s/gu, '')).toBe('公司月報');
+  } finally {
+    await pdf.loadingTask.destroy();
+  }
+});
+
+test.each([
   {
     name: 'inline scripts and image/body event handlers',
     html: documentHtml(`<p data-gt="normal">一月公司月報</p>
@@ -118,6 +187,13 @@ test.each([
     css: 'body { font: 16px "Noto Sans TC", sans-serif; } @media print { body { font-family: "Noto Serif TC", serif; } }',
     fonts: ['NotoSerifTC-Regular'],
   },
+  ...['only print', 'screen, print', 'print and (min-width: 1px)'].map(
+    query => ({
+      name: `print-media query "${query}"`,
+      css: `@media ${query} { body { font-family: "Noto Serif TC", serif; } }`,
+      fonts: ['NotoSerifTC-Regular'],
+    }),
+  ),
 ])(
   '$name embeds the requested platform face without system fallback',
   async ({ css, fonts }) => {
@@ -155,7 +231,7 @@ test.each(['portrait', 'landscape'] as const)(
   async orientation => {
     const response = await post({
       html: documentHtml(
-        '<section data-gt="one">第一頁</section><section data-gt="two">第二頁</section>',
+        '<section><h1 data-gt="title">公司月報</h1></section><section><p data-gt="paragraph">第二頁內容</p></section>',
         'section + section { break-before: page; }',
       ),
       page: { size: 'A4', orientation },
@@ -172,6 +248,23 @@ test.each(['portrait', 'landscape'] as const)(
     };
     const gt = gtSchema.parse(body.gt);
     expect(gt.source).toEqual(source);
+    expect(
+      gt.blocks.map(({ type, text, page }) => ({ type, text, page })),
+    ).toEqual([
+      { type: 'title', text: '公司月報', page: 1 },
+      { type: 'paragraph', text: '第二頁內容', page: 2 },
+    ]);
+    for (const block of gt.blocks) {
+      const page = gt.pages[block.page - 1];
+      expect(page).toBeDefined();
+      const [x0, y0, x1, y1] = block.bbox;
+      expect(x0).toBeGreaterThanOrEqual(0);
+      expect(y0).toBeGreaterThanOrEqual(0);
+      expect(x1).toBeGreaterThan(x0);
+      expect(y1).toBeGreaterThan(y0);
+      expect(x1).toBeLessThanOrEqual(page?.width ?? 0);
+      expect(y1).toBeLessThanOrEqual(page?.height ?? 0);
+    }
     expect(body.pageCount).toBe(2);
     expect(gt.pages).toHaveLength(body.pageCount);
     expect(response.headers.get('x-page-count')).toBe(String(body.pageCount));
@@ -201,6 +294,41 @@ test.each(['portrait', 'landscape'] as const)(
     }
   },
 );
+
+test('invalid ground-truth block type returns 422 ground_truth_invalid with reader issues when source is requested', async () => {
+  const response = await post({
+    html: documentHtml('<p data-gt="not-a-block-type">公司月報</p>'),
+    page: { size: 'A4', orientation: 'portrait' },
+    source,
+  });
+  expect(response.status).toBe(422);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(error.code).toBe('ground_truth_invalid');
+  expect(error.details).toEqual([
+    {
+      message:
+        'data-gt="not-a-block-type" on page 1: unknown block type "not-a-block-type"',
+    },
+  ]);
+});
+
+test('invalid ground-truth block type still prints a PDF when source is omitted', async () => {
+  const response = await print(
+    documentHtml('<p data-gt="not-a-block-type">公司月報</p>'),
+  );
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toMatch(/^application\/pdf\b/i);
+  const pdf = await getDocumentProxy(
+    new Uint8Array(await response.arrayBuffer()),
+  );
+  try {
+    expect(pdf.numPages).toBe(1);
+    const { text } = await extractText(pdf, { mergePages: true });
+    expect(text.replace(/\s/gu, '')).toBe('公司月報');
+  } finally {
+    await pdf.loadingTask.destroy();
+  }
+});
 
 test.each([
   ['null', null],

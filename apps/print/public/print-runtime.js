@@ -77,7 +77,7 @@
   function findUsedInAtRules() {
     for (const style of document.querySelectorAll('style')) {
       const css = (style.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
-      const starts = /@page\b|@media\s+print\b/gi;
+      const starts = /@page\b|@media\b[^{;]*\bprint\b/gi;
       for (let match = starts.exec(css); match; match = starts.exec(css)) {
         const open = css.indexOf('{', match.index);
         if (open === -1) break;
@@ -196,6 +196,12 @@
     Paged.registerHandlers(Tables);
   }
 
+  // The pages Paged.js generated, not elements of the template that happen to
+  // use its class names.
+  function pagedPages() {
+    return [...document.querySelectorAll('.pagedjs_pages > .pagedjs_page')];
+  }
+
   // Faces that did not load: Paged.js only warns about them (T03 Must 5).
   function unloadedFaces() {
     /** @type {string[]} */
@@ -214,7 +220,7 @@
   function fragmentedRows() {
     /** @type {string[]} */
     const rows = [];
-    document.querySelectorAll('.pagedjs_page').forEach((page, i) => {
+    pagedPages().forEach((page, i) => {
       const content = page.querySelector('.pagedjs_page_content');
       if (!content) return;
       const area = content.getBoundingClientRect();
@@ -237,7 +243,7 @@
   // Per page, the text of every visible text node inside a [data-gt] element,
   // as the PDF's text layer should contain it (T03 Must 4, PDF part).
   function expectedText() {
-    return [...document.querySelectorAll('.pagedjs_page')].map(page => {
+    return pagedPages().map(page => {
       /** @type {string[]} */
       const texts = [];
       const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
