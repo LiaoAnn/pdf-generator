@@ -23,6 +23,8 @@ describe('hand-authored fixture ground truth', () => {
     'incident-form',
     'checkbox',
     'blank-field',
+    'formula',
+    'image-text',
   ]) {
     test(`${name} matches every hand-derived block after pagination`, async () => {
       const html = await readFile(

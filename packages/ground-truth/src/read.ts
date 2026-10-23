@@ -76,7 +76,18 @@ function collect(): Measurement {
                 )
                 .map(input => (input as HTMLInputElement).checked),
             }
-          : undefined;
+          : type === 'formula'
+            ? {
+                annotations: Array.from(
+                  element.querySelectorAll(
+                    'annotation[encoding="application/x-tex"]',
+                  ),
+                ).map(annotation => annotation.textContent ?? ''),
+                visibleParts: Array.from(
+                  element.querySelectorAll('.katex-html'),
+                ).map(part => (part as HTMLElement).innerText),
+              }
+            : undefined;
       return {
         type,
         id: element.getAttribute('data-gt-id'),

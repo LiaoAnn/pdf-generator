@@ -1,0 +1,39 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 is 595.28 x 841.89 with 54pt margins.
+Six border-box blocks, each 300pt x 36pt without margins, stack at
+x=54, y=54+36*n (n=0..5); x1=354 and y1=y+36.
+The hand-written KaTeX shapes include inline and display wrappers. MathML
+is clipped using KaTeX's hiding rules, not display:none: its annotation
+must supply LaTeX without contaminating the visible glyph text.
+The first two formulas obtain LaTeX from x-tex annotations. The third uses
+only the attribute and preserves its internal double space. The fourth
+has matching sources after trimming. The fifth has two visible parts and
+one explicit source, so its text is joined with one space. The sixth has
+two matching annotations and an explicit source, removing the ambiguity.
+Expected JSON is hand-written from this design, never from the reader.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Formula ground truth</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+[data-gt] { display: block; width: 300pt; height: 36pt; margin: 0; padding: 0; }
+.katex { position: relative; }
+.katex-display { display: block; margin: 0; text-align: center; }
+.katex-mathml { position: absolute; clip: rect(1px,1px,1px,1px); padding: 0; border: 0; height: 1px; width: 1px; overflow: hidden; }
+</style>
+</head>
+<body>
+<div data-gt="formula" data-gt-id="inline-energy"><span class="katex"><span class="katex-mathml"><math><semantics><mrow><mi>E</mi><mo>=</mo><mi>m</mi><msup><mi>c</mi><mn>2</mn></msup></mrow><annotation encoding="application/x-tex">  E=mc^2  </annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span>E</span><span>=</span><span>mc²</span></span></span></div>
+<div data-gt="formula" data-gt-id="display-ratio"><span class="katex-display"><span class="katex"><span class="katex-mathml"><math><semantics><mfrac><mi>a</mi><mi>b</mi></mfrac><annotation encoding="application/x-tex"> \frac{a}{b} </annotation></semantics></math></span><span class="katex-html" aria-hidden="true"><span>a</span><span>/</span><span>b</span></span></span></span></div>
+<div data-gt="formula" data-gt-id="plain-explicit" data-gt-latex="  x +  y  ">  x + y  </div>
+<div data-gt="formula" data-gt-id="matching-sources" data-gt-latex="  z^2  "><span class="katex"><span class="katex-mathml"><math><semantics><msup><mi>z</mi><mn>2</mn></msup><annotation encoding="application/x-tex"> z^2 </annotation></semantics></math></span><span class="katex-html" aria-hidden="true">z²</span></span></div>
+<div data-gt="formula" data-gt-id="multiple-parts" data-gt-latex="a+b"><span class="katex"><span class="katex-html" aria-hidden="true">a</span></span><span class="katex"><span class="katex-html" aria-hidden="true">+b</span></span></div>
+<div data-gt="formula" data-gt-id="explicit-multiple" data-gt-latex=" x "><span class="katex"><span class="katex-mathml"><math><semantics><mi>x</mi><annotation encoding="application/x-tex">x</annotation></semantics></math></span><span class="katex-html" aria-hidden="true">x</span></span><span class="katex"><span class="katex-mathml"><math><semantics><mi>x</mi><annotation encoding="application/x-tex"> x </annotation></semantics></math></span><span class="katex-html" aria-hidden="true">x</span></span></div>
+</body>
+</html>

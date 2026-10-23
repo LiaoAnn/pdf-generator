@@ -66,4 +66,11 @@ export interface Measurement {
 export interface ElementDetails {
   /** checkbox: the `checked` property of each checkbox or radio input, the element itself first. */
   inputs?: boolean[];
+  /** formula: the text of each `<annotation encoding="application/x-tex">`, untrimmed. */
+  annotations?: string[];
+  /**
+   * formula: the rendered innerText of each KaTeX `.katex-html` part, the
+   * visible rendering without the hidden MathML copy.
+   */
+  visibleParts?: string[];
 }

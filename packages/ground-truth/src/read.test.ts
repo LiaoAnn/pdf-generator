@@ -482,3 +482,129 @@ describe('T13 checkbox state and markup validation', () => {
     });
   }, 30_000);
 });
+
+describe('T13 formula sources and declared image text', () => {
+  test.each([
+    {
+      name: 'missing LaTeX rather than inferring it from visible glyphs',
+      attributes: '',
+      content: '<span class="katex-html">x²</span>',
+      problem:
+        /(?:missing|no|needs|requires?|provide|add).*(?:latex|source|annotation)|(?:latex|source).*(?:missing|empty|required)/i,
+    },
+    {
+      name: 'an empty explicit LaTeX attribute',
+      attributes: 'data-gt-latex=""',
+      content: 'x',
+      problem: /empty|non.?empty|blank/i,
+    },
+    {
+      name: 'whitespace-only explicit LaTeX even when an annotation is usable',
+      attributes: 'data-gt-latex="   "',
+      content:
+        '<math><semantics><annotation encoding="application/x-tex">x</annotation></semantics></math>',
+      problem: /empty|non.?empty|blank|disagree|conflict|mismatch/i,
+    },
+    {
+      name: 'an empty annotation after trimming',
+      attributes: '',
+      content:
+        '<math><semantics><annotation encoding="application/x-tex">   </annotation></semantics></math>',
+      problem: /empty|non.?empty|blank/i,
+    },
+    {
+      name: 'a non-TeX annotation rather than treating arbitrary metadata as LaTeX',
+      attributes: '',
+      content:
+        '<math><semantics><annotation encoding="text/plain">x</annotation></semantics></math>',
+      problem:
+        /(?:missing|no|needs|requires?|provide|add).*(?:latex|source|annotation)|(?:latex|source).*(?:missing|empty|required)/i,
+    },
+    {
+      name: 'disagreeing attribute and annotation rather than silently preferring the attribute',
+      attributes: 'data-gt-latex=" x "',
+      content:
+        '<math><semantics><annotation encoding="application/x-tex"> y </annotation></semantics></math>',
+      problem: /disagree|conflict|mismatch/i,
+    },
+    {
+      name: 'multiple distinct annotations without an explicit source',
+      attributes: '',
+      content:
+        '<math><semantics><annotation encoding="application/x-tex">x</annotation><annotation encoding="application/x-tex">y</annotation></semantics></math>',
+      problem:
+        /multiple|more than one|ambiguous|exactly one|single.*annotation|2.*annotation/i,
+    },
+    {
+      name: 'duplicate equal annotations without an explicit source rather than deduplicating ambiguity',
+      attributes: '',
+      content:
+        '<math><semantics><annotation encoding="application/x-tex">x</annotation><annotation encoding="application/x-tex">x</annotation></semantics></math>',
+      problem:
+        /multiple|more than one|ambiguous|exactly one|single.*annotation|2.*annotation/i,
+    },
+  ])(
+    'rejects $name',
+    async ({ attributes, content, problem }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="formula" data-gt-id="invalid-formula" ${attributes}>${content}</div>`,
+          '[data-gt] { width: 240pt; height: 36pt; }',
+        );
+        await expectMarkupIssues(page, [{ id: 'invalid-formula', problem }]);
+      });
+    },
+    30_000,
+  );
+
+  test.each([
+    { name: 'different declared and rendered text', declared: 'Declared' },
+    { name: 'equal declared and rendered text', declared: 'Printed' },
+    { name: 'an empty declaration alongside rendered text', declared: '   ' },
+  ])(
+    'rejects an image with $name rather than choosing one source',
+    async ({ declared }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="image" data-gt-id="image-case" data-gt-text="${declared}">Printed</div>`,
+          '[data-gt] { width: 240pt; height: 48pt; }',
+        );
+        await expectMarkupIssues(page, [
+          {
+            id: 'image-case',
+            problem:
+              /(?:data-gt-text|declared).*(?:rendered|visible|innerText|non.?empty|text content)|(?:rendered|visible|innerText).*(?:data-gt-text|declared)|two.*sources/i,
+          },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test('reports formula ambiguity, source disagreement and image text conflicts together rather than stopping at the first block', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="formula" data-gt-id="formula-a"><math><semantics><annotation encoding="application/x-tex">x</annotation><annotation encoding="application/x-tex">y</annotation></semantics></math></div>
+         <div data-gt="formula" data-gt-id="formula-b" data-gt-latex="x"><math><semantics><annotation encoding="application/x-tex">y</annotation></semantics></math></div>
+         <div data-gt="image" data-gt-id="image-c" data-gt-text="Declared">Printed</div>`,
+        '[data-gt] { width: 240pt; height: 48pt; }',
+      );
+      await expectMarkupIssues(page, [
+        {
+          id: 'formula-a',
+          problem:
+            /multiple|more than one|ambiguous|exactly one|single.*annotation|2.*annotation/i,
+        },
+        { id: 'formula-b', problem: /disagree|conflict|mismatch/i },
+        {
+          id: 'image-c',
+          problem:
+            /(?:data-gt-text|declared).*(?:rendered|visible|innerText|non.?empty|text content)|(?:rendered|visible|innerText).*(?:data-gt-text|declared)|two.*sources/i,
+        },
+      ]);
+    });
+  }, 30_000);
+});
