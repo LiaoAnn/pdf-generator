@@ -148,14 +148,25 @@ export function assetIssues(
         at,
         `${url} points to ${problem.path}, which is not in the pack`,
       );
-    } else if (/\.css$/i.test(problem.path) && !sheets.has(problem.path)) {
+    } else if (
+      (kind === 'stylesheet' || /\.css$/i.test(problem.path)) &&
+      !sheets.has(problem.path)
+    ) {
       sheets.add(problem.path);
       reached.push(problem.path);
     }
   };
   /** CSS found at `start` in `source`: a stylesheet or a style element. */
   const css = (source: Source, css: string, start: number, rules: boolean) => {
-    const { references, escapes } = scanCss(css);
+    const { references, escapes, dynamic } = scanCss(css);
+    for (const offset of dynamic) {
+      issue(
+        'asset-dynamic',
+        source,
+        start + offset,
+        'image-set() takes its URLs from var()/env()/attr() here: write them out',
+      );
+    }
     for (const ref of references) {
       reference(source, { ...ref, offset: start + ref.offset });
     }
@@ -200,6 +211,17 @@ export function assetIssues(
         const at = attrAt(name);
         if (attr === undefined || at === undefined) continue;
         const start = valueStart(at);
+        // Any data in a srcset, descriptors included, can carry a URL.
+        const dynamicAt = attr.value.indexOf('{{');
+        if (name === 'srcset' && dynamicAt >= 0) {
+          issue(
+            'asset-dynamic',
+            template,
+            start + dynamicAt,
+            'a srcset may not depend on the data: write it out',
+          );
+          continue;
+        }
         const urls =
           name === 'srcset'
             ? srcsetUrls(attr.value)
@@ -211,6 +233,29 @@ export function assetIssues(
             { url, offset: start + offset, kind },
             'attribute',
           );
+        }
+      }
+      // A link loads nothing when printed, but a data-driven one is still a
+      // URL the data chooses.
+      const link = tag === 'a' ? attributeOf(element, 'href') : undefined;
+      const linkAt = attrAt('href');
+      if (link?.value.includes('{{') && linkAt) {
+        issue(
+          'asset-dynamic',
+          template,
+          valueStart(linkAt),
+          `${link.value} depends on the data: write the link out`,
+        );
+      }
+      // SVG presentation attributes take url() too (fill, mask, clip-path…).
+      if (element.namespaceURI === 'http://www.w3.org/2000/svg') {
+        for (const attr of element.attrs) {
+          const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
+          const at = attrAt(name);
+          if (name === 'style' || name.endsWith('href') || !at) continue;
+          if (attr.value.includes('url(') || attr.value.includes('image-set')) {
+            css(template, attr.value, valueStart(at), false);
+          }
         }
       }
       const style = attributeOf(element, 'style');

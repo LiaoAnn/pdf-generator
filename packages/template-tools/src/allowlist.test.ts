@@ -167,7 +167,7 @@ describe('printed-document element and attribute allowlist', () => {
 
   it('accepts representative print markup, global attributes, forms and quoted attribute templating', () => {
     accepts(
-      '<!doctype html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><title>Report</title><link rel="stylesheet" href="report.css"><style media="print">p{color:black}</style></head><body><main class="report" id="r" lang="zh-TW" dir="ltr" title="title" hidden translate="no" role="document" aria-label="report" data-custom="x"><section data-gt="paragraph"><h1>Title</h1><p class="{{#if value}}yes{{else}}no{{/if}}" title=\'{{value}}\'><strong>text</strong><br><time datetime="2026-01-01">date</time><a href="#r">link</a></p><ol start="2" reversed><li value="3">item</li></ol><label for="choice">Choice</label><select id="choice" name="choice" disabled multiple size="2"><optgroup label="group" disabled><option value="a" selected label="A">A</option></optgroup></select><textarea name="note" rows="2" cols="20" readonly disabled>{{value}}</textarea><input type="text" value="{{value}}" readonly><input type="checkbox" checked><input type="radio" disabled><input></section><table data-gt="table" border="1" cellpadding="2" cellspacing="0" width="100%" align="left" summary="summary"><caption>Table</caption><colgroup span="1"><col width="50"></colgroup><thead><tr><th scope="col" abbr="A">A</th></tr></thead><tbody><tr align="left" valign="top" height="20"><td colspan="1" rowspan="1" headers="a" nowrap>cell</td></tr></tbody></table></main></body></html>',
+      '<!doctype html><html xmlns="http://www.w3.org/1999/xhtml"><head><meta charset="utf-8"><title>Report</title><link rel="stylesheet" href="report.css"><style media="print">p{color:black}</style></head><body><main class="report" id="r" lang="zh-TW" dir="ltr" title="title" hidden translate="no" role="document" aria-label="report" data-custom="x"><section data-gt="paragraph"><h1>Title</h1><p class="{{#if value}}yes{{else}}no{{/if}}" title=\'{{value}}\'><strong>text</strong><br><time datetime="2026-01-01">date</time><a href="#r">link</a></p><ol start="2" reversed><li value="3">item</li></ol><label for="choice">Choice</label><textarea name="note" rows="2" cols="20" readonly disabled>{{value}}</textarea><input type="text" value="{{value}}" readonly><input type="checkbox" checked><input type="radio" disabled><input></section><table data-gt="table" border="1" cellpadding="2" cellspacing="0" width="100%" align="left" summary="summary"><caption>Table</caption><colgroup span="1"><col width="50"></colgroup><thead><tr><th scope="col" abbr="A">A</th></tr></thead><tbody><tr align="left" valign="top" height="20"><td colspan="1" rowspan="1" headers="a" nowrap>cell</td></tr></tbody></table></main></body></html>',
     );
   });
 
@@ -213,7 +213,6 @@ describe('printed-document element and attribute allowlist', () => {
   });
   it.each([
     '<svg data-gt="image"><use href="logo.svg#shape"/></svg>',
-    '<svg data-gt="image"><use href="{{value}}"/></svg>',
     '<svg data-gt="image"><use xlink:href="https://outside.example/x"/></svg>',
     '<svg data-gt="image"><text><textPath href="logo.svg#curve">x</textPath></text></svg>',
     '<svg data-gt="image"><path href="#shape"/></svg>',

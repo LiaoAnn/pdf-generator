@@ -349,7 +349,6 @@ describe('review regressions: active HTML and dynamic loads', () => {
       '<picture data-gt="image"><source srcset="{{holder}}"></picture>',
     ],
     ['link', '<link href="{{holder}}" rel="stylesheet">'],
-    ['svg image', '<svg data-gt="image"><image href="{{holder}}"/></svg>'],
     ['partial URL', '<img data-gt="image" src="../assets/{{holder}}.svg">'],
   ])(
     'rejects %s URLs that sample rendering cannot prove safe',

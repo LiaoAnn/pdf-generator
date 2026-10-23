@@ -3,7 +3,12 @@
 // read from that element are well formed. Checked on the template source, so
 // every issue points at a line and column the pack author wrote.
 import { blockTypes } from '@pdf-generator/contract';
-import { attributeOf, type Html, type TemplateHtml } from './html.ts';
+import {
+  attributeOf,
+  descendants,
+  type Html,
+  type TemplateHtml,
+} from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { isRefused } from './policy.ts';
 import { position } from './text.ts';
@@ -49,17 +54,10 @@ const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 const isGtAttribute = (name: string) =>
   name === 'data-gt' || name.startsWith('data-gt-');
 
-function* descendants(node: Html.ParentNode): Generator<Html.ChildNode> {
-  for (const child of node.childNodes) {
-    yield child;
-    if ('childNodes' in child) yield* descendants(child);
-  }
-}
-
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
   source: string,
-  { html, document, branchAt, inBranch }: TemplateHtml,
+  { html, document }: TemplateHtml,
   file: string,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
@@ -72,21 +70,6 @@ export function markIssues(
     if (!/\S/.test(text.value) || !location) return undefined;
     const slice = html.slice(location.startOffset, location.endOffset);
     return location.startOffset + (blank.exec(slice)?.[0].length ?? 0);
-  };
-
-  /** Offset of the last printed thing inside an element, if any. */
-  const lastContent = (element: Html.Element) => {
-    let last: number | undefined;
-    for (const node of descendants(element)) {
-      const location = node.sourceCodeLocation;
-      if (!location) continue;
-      if (node.nodeName === '#text') {
-        const slice = html.slice(location.startOffset, location.endOffset);
-        const trailing = /\S\s*$/.exec(slice);
-        if (trailing) last = location.startOffset + trailing.index;
-      } else if ('tagName' in node) last = location.startOffset;
-    }
-    return last;
   };
 
   /** The detail checks of a marked element of a known type. */
@@ -200,27 +183,6 @@ export function markIssues(
       const location = element.sourceCodeLocation;
       const at = (name: string) =>
         location?.attrs?.[name]?.startOffset ?? location?.startOffset ?? 0;
-
-      // An element prints whole or not at all only if its tags are in one
-      // Handlebars branch (statements inside a tag are template-structure).
-      if (location?.startTag) {
-        const branch = branchAt(location.startTag.startOffset);
-        // Without an end tag, the element runs on to its last content,
-        // which must then be printed whenever the start tag is.
-        const last = location.endTag ? undefined : lastContent(element);
-        if (
-          branchAt(location.startTag.endOffset - 1) !== branch ||
-          (location.endTag &&
-            branchAt(location.endTag.startOffset) !== branch) ||
-          (last !== undefined && !inBranch(last, branch))
-        ) {
-          report(
-            'gt-branch',
-            location.startOffset,
-            `<${element.tagName}> must open and close in the same {{#…}}/{{else}} branch`,
-          );
-        }
-      }
 
       const gtAttrs = element.attrs.filter(attr => isGtAttribute(attr.name));
       if (table && ['td', 'th'].includes(element.tagName) && gtAttrs.length) {

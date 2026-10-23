@@ -3,7 +3,12 @@
 // fetches from the network. An allowlist, not a list of known tricks; plus
 // the rule that Handlebars may not change the HTML or CSS structure, since
 // the checks see the template with its Handlebars statements taken out.
-import { attributeOf, type Html, type TemplateHtml } from './html.ts';
+import {
+  attributeOf,
+  type Html,
+  lastContent,
+  type TemplateHtml,
+} from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { position } from './text.ts';
 
@@ -23,6 +28,9 @@ const cell = [
   'nowrap',
 ];
 const plain = (...names: string[]) => names.map(name => [name, []] as const);
+/** Word's HTML aligns blocks with the legacy attribute. */
+const aligned = (...names: string[]) =>
+  names.map(name => [name, ['align']] as const);
 
 /** HTML elements a pack may use, with the attributes each adds to the global ones. */
 const htmlElements = new Map<string, readonly string[]>([
@@ -49,29 +57,19 @@ const htmlElements = new Map<string, readonly string[]>([
   ['ins', ['cite', 'datetime']],
   ['data', ['value']],
   ['label', ['for']],
-  ['img', ['src', 'srcset', 'sizes', 'alt', 'width', 'height']],
+  ['img', ['src', 'srcset', 'sizes', 'alt', 'width', 'height', 'align']],
   ['source', ['srcset', 'sizes', 'type', 'media', 'width', 'height']],
   [
     'input',
     ['type', 'checked', 'name', 'value', 'disabled', 'readonly', 'size'],
   ],
-  ['select', ['name', 'disabled', 'multiple', 'size']],
-  ['option', ['value', 'selected', 'disabled', 'label']],
-  ['optgroup', ['label', 'disabled']],
   ['textarea', ['name', 'rows', 'cols', 'disabled', 'readonly']],
+  ...aligned('div', 'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'),
   ...plain(
     'head',
     'body',
     'title',
-    'div',
     'span',
-    'p',
-    'h1',
-    'h2',
-    'h3',
-    'h4',
-    'h5',
-    'h6',
     'header',
     'footer',
     'main',
@@ -118,7 +116,6 @@ const htmlElements = new Map<string, readonly string[]>([
     'rp',
     'picture',
     'template',
-    'noscript',
   ),
 ]);
 const globalAttributes = new Set([
@@ -133,6 +130,7 @@ const globalAttributes = new Set([
   'role',
 ]);
 const inputTypes = new Set(['checkbox', 'radio', 'text']);
+const urlAttributes = new Set(['src', 'srcset', 'href', 'xlink:href']);
 /** SVG and MathML elements a pack may use: static drawing and formulas. */
 const svgElements = new Set([
   'svg',
@@ -223,16 +221,20 @@ export function isRefused(element: Html.Element): boolean {
 /** Issues of the allowlist and of Handlebars inside HTML or CSS structure. */
 export function policyIssues(
   source: string,
-  { html, document, statements }: TemplateHtml,
+  { html, document, statements, branchAt, inBranch }: TemplateHtml,
   file: string,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
   const report = (code: string, offset: number, message: string) =>
     issues.push({ code, file, ...position(source, offset), message });
 
-  // Ranges Handlebars may not appear in, and the attribute values it may.
+  // Where statements may not appear (tags, HTML comments, CSS); the quoted
+  // attribute values inside tags where they may; of those, the URL values,
+  // and the RCDATA content (title, textarea), where only mustaches may.
   const forbidden: [number, number][] = [];
   const values: [number, number][] = [];
+  const urls: [number, number][] = [];
+  const rcdata: [number, number][] = [];
 
   const visit = (node: Html.ParentNode) => {
     for (const child of node.childNodes) {
@@ -271,6 +273,25 @@ export function policyIssues(
         continue;
       }
 
+      // An element prints whole or not at all only if its tags (or, without
+      // an end tag, its last content) are in one Handlebars branch.
+      if (location?.startTag) {
+        const branch = branchAt(location.startTag.startOffset);
+        const last = location.endTag ? undefined : lastContent(html, element);
+        if (
+          branchAt(location.startTag.endOffset - 1) !== branch ||
+          (location.endTag &&
+            branchAt(location.endTag.startOffset) !== branch) ||
+          (last !== undefined && !inBranch(last, branch))
+        ) {
+          report(
+            'gt-branch',
+            where,
+            `<${tag}> must open and close in the same {{#…}}/{{else}} branch`,
+          );
+        }
+      }
+
       const foreign =
         element.namespaceURI === svg || element.namespaceURI === mathml;
       const allowed = htmlElements.get(tag) ?? [];
@@ -280,13 +301,23 @@ export function policyIssues(
         const offset = at?.startOffset ?? where;
         if (at) {
           // A quoted value is the one place a statement may sit in a tag;
-          // never in style, whose value is CSS.
+          // never in style, whose value is CSS, nor on SVG or MathML, whose
+          // attributes are CSS-like (fill="url(…)").
           const raw = html.slice(at.startOffset, at.endOffset);
           const equals = raw.indexOf('=');
           const open = equals < 0 ? -1 : raw.slice(equals + 1).search(/\S/);
           const quote = open < 0 ? '' : raw[equals + 1 + open];
-          if (name !== 'style' && (quote === '"' || quote === "'")) {
-            values.push([at.startOffset + equals + 2 + open, at.endOffset - 1]);
+          const value: [number, number] = [
+            at.startOffset + equals + 2 + open,
+            at.endOffset - 1,
+          ];
+          if (
+            !foreign &&
+            name !== 'style' &&
+            (quote === '"' || quote === "'")
+          ) {
+            values.push(value);
+            if (urlAttributes.has(name)) urls.push(value);
           }
         }
         if (name.startsWith('on') || name === 'srcdoc') {
@@ -333,10 +364,15 @@ export function policyIssues(
       ) {
         report('html-unsupported', where, '<link> needs rel="stylesheet"');
       }
-      if (tag === 'style') {
+      if (tag === 'style' || tag === 'title' || tag === 'textarea') {
         for (const text of element.childNodes) {
           const at = (text as Html.TextNode).sourceCodeLocation;
-          if (at) forbidden.push([at.startOffset, at.endOffset]);
+          if (at) {
+            (tag === 'style' ? forbidden : rcdata).push([
+              at.startOffset,
+              at.endOffset,
+            ]);
+          }
         }
       }
       visit(tag === 'template' ? (element as Html.Template).content : element);
@@ -344,20 +380,43 @@ export function policyIssues(
   };
   visit(document);
 
-  const inside = (at: number, [start, end]: [number, number]) =>
-    start <= at && at < end;
-  for (const [start] of statements) {
+  // Each list holds disjoint ranges: sort once, then binary search.
+  const lookup = (ranges: [number, number][]) => {
+    ranges.sort((a, b) => a[0] - b[0]);
+    return (at: number) => {
+      let low = 0;
+      let high = ranges.length - 1;
+      while (low <= high) {
+        const middle = (low + high) >> 1;
+        const [start, end] = ranges[middle] ?? [0, 0];
+        if (at < start) high = middle - 1;
+        else if (at >= end) low = middle + 1;
+        else return true;
+      }
+      return false;
+    };
+  };
+  const inForbidden = lookup(forbidden);
+  const inValue = lookup(values);
+  const inUrl = lookup(urls);
+  const inRcdata = lookup(rcdata);
+  for (const { start, mustache } of statements) {
     const before = source.slice(Math.max(0, start - 2), start);
-    if (
-      before.endsWith('<') ||
-      before === '</' ||
-      (forbidden.some(range => inside(start, range)) &&
-        !values.some(range => inside(start, range)))
-    ) {
+    const where =
+      before.endsWith('<') || before === '</'
+        ? 'right after <'
+        : inForbidden(start) && !inValue(start)
+          ? 'inside a tag (outside a quoted value), CSS or an HTML comment'
+          : !mustache && inUrl(start)
+            ? 'inside a URL, where it can change the scheme or host'
+            : !mustache && inRcdata(start)
+              ? 'inside <title> or <textarea>, where it can end the element'
+              : undefined;
+    if (where !== undefined) {
       report(
         'template-structure',
         start,
-        'Handlebars may not sit inside a tag (except in a quoted attribute value), an HTML comment, CSS, or right after <: put {{…}} in text or in quoted values',
+        `Handlebars may not sit ${where}: it would change the HTML the checks see; put {{…}} in text or in quoted attribute values`,
       );
     }
   }

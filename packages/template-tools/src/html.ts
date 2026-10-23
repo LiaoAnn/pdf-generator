@@ -14,9 +14,12 @@ export type TemplateHtml = {
   branchAt: (offset: number) => number;
   /** Whether an offset lies in a branch or in a branch nested inside it. */
   inBranch: (offset: number, branch: number) => boolean;
-  /** Every Handlebars tag (`{{…}}`) in the template: [start, end) offsets. */
-  statements: [number, number][];
+  /** Every Handlebars tag (`{{…}}`) in the template, in source order. */
+  statements: Statement[];
 };
+
+/** One Handlebars tag: [start, end) offsets, and whether it prints a value. */
+type Statement = { start: number; end: number; mustache: boolean };
 
 /**
  * The template as HTML: Handlebars block tags, `{{else}}` and comments become
@@ -29,7 +32,7 @@ function asHtml(
 ): {
   html: string;
   branches: [number, number][];
-  statements: [number, number][];
+  statements: Statement[];
 } {
   const lineStarts = [0];
   for (let i = 0; i < source.length; i++) {
@@ -45,6 +48,13 @@ function asHtml(
   };
   const branches: [number, number][] = [];
   const content: [number, number][] = [];
+  // Mustaches and comments, whose exact extent the AST knows (a comment can
+  // contain `}}`), by start offset.
+  const known = new Map<number, Statement>();
+  const record = (node: hbs.AST.Node, mustache: boolean) => {
+    const start = offset(node.loc.start);
+    known.set(start, { start, end: offset(node.loc.end), mustache });
+  };
   const visit = (program: hbs.AST.Program | undefined) => {
     const body = program?.body ?? [];
     const first = body[0];
@@ -58,6 +68,9 @@ function asHtml(
         keep(statement);
       } else if (statement.type === 'MustacheStatement') {
         keep(statement);
+        record(statement, true);
+      } else if (statement.type === 'CommentStatement') {
+        record(statement, false);
       } else if (statement.type === 'BlockStatement') {
         const block = statement as hbs.AST.BlockStatement;
         visit(block.program);
@@ -69,31 +82,29 @@ function asHtml(
   // Whatever isn't content is Handlebars: mustaches, comments and block tags
   // ({{else}} has no node of its own), split at each `{{`.
   content.sort((a, b) => a[0] - b[0]);
-  const statements: [number, number][] = [];
+  const statements: Statement[] = [];
   let at = 0;
   const ends: [number, number][] = [...content, [source.length, source.length]];
   for (const [start, end] of ends) {
     const gap = source.slice(at, start);
     for (let i = gap.indexOf('{{'); i >= 0; ) {
-      const close = i + nextClose(gap.slice(i));
-      statements.push([at + i, at + close]);
-      i = gap.indexOf('{{', close);
+      const statement = known.get(at + i) ?? {
+        start: at + i,
+        end: at + i + blockTagLength(gap.slice(i)),
+        mustache: false,
+      };
+      statements.push(statement);
+      i = gap.indexOf('{{', statement.end - at);
     }
     at = end;
   }
   return { html: html.join(''), branches, statements };
 }
 
-/** Length of the Handlebars tag at the start of `text`, through its `}}`. */
-function nextClose(text: string): number {
-  if (text.startsWith('{{!--')) {
-    const end = text.indexOf('--}}');
-    return end < 0 ? text.length : end + 4;
-  }
+/** Length of the block tag ({{#…}}, {{else}}, {{/…}}) starting `text`. */
+function blockTagLength(text: string): number {
   const end = text.indexOf('}}');
-  if (end < 0) return text.length;
-  // A triple-stash closes with }}}.
-  return text[end + 2] === '}' ? end + 3 : end + 2;
+  return end < 0 ? text.length : end + 2;
 }
 
 /** Parses the template as HTML, with source locations. */
@@ -136,3 +147,29 @@ export const attributeOf = (element: Html.Element, name: string) =>
   element.attrs.find(
     attr => (attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name) === name,
   );
+
+/** Every node inside `node`, in document order. */
+export function* descendants(node: Html.ParentNode): Generator<Html.ChildNode> {
+  for (const child of node.childNodes) {
+    yield child;
+    if ('childNodes' in child) yield* descendants(child);
+  }
+}
+
+/** Offset of the last printed thing inside an element, if any. */
+export function lastContent(
+  html: string,
+  element: Html.Element,
+): number | undefined {
+  let last: number | undefined;
+  for (const node of descendants(element)) {
+    const location = node.sourceCodeLocation;
+    if (!location) continue;
+    if (node.nodeName === '#text') {
+      const slice = html.slice(location.startOffset, location.endOffset);
+      const trailing = /\S\s*$/.exec(slice);
+      if (trailing) last = location.startOffset + trailing.index;
+    } else if ('tagName' in node) last = location.startOffset;
+  }
+  return last;
+}

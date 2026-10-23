@@ -28,9 +28,12 @@ const identifier = /[A-Za-z0-9_\-\u0080-￿]/;
 export function scanCss(css: string): {
   references: Reference[];
   escapes: number[];
+  /** var()/env()/attr() inside image-set(): a URL from elsewhere. */
+  dynamic: number[];
 } {
   const references: Reference[] = [];
   const escapes: number[] = [];
+  const dynamic: number[] = [];
   const functions: string[] = [];
   let importing = false;
   let i = 0;
@@ -81,6 +84,12 @@ export function scanCss(css: string): {
         i = stop + 1;
         continue;
       } else if (css[end] === '(') {
+        if (
+          ['var', 'env', 'attr'].includes(name) &&
+          functions.some(open => imageSets.has(open))
+        ) {
+          dynamic.push(i);
+        }
         functions.push(name);
         end++;
       }
@@ -92,7 +101,7 @@ export function scanCss(css: string): {
       i++;
     }
   }
-  return { references, escapes };
+  return { references, escapes, dynamic };
 }
 
 const facePattern = /@font-face\s*\{[^}]*\}/gi;

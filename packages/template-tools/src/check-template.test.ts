@@ -107,7 +107,7 @@ describe('checkPack template coverage diagnostics', () => {
     ]);
   });
 
-  it.each(['img', 'svg', 'picture', 'input', 'select', 'textarea', 'math'])(
+  it.each(['img', 'svg', 'picture', 'input', 'textarea', 'math'])(
     'rejects an unmarked %s even without a text node',
     tag => {
       const element = ['img', 'input'].includes(tag)
@@ -166,7 +166,7 @@ describe('checkPack template coverage diagnostics', () => {
 
   it('ignores whitespace, nbsp entities, HTML and Handlebars comments, and nonprinted subtrees', () => {
     accepted(
-      '<!doctype html><html><head><title>標題</title><meta charset="utf-8"></head><body>\n \t&nbsp;&#160;&#xA0;\n<!-- ignored <img> text -->\n{{! ignored }}\n{{!-- ignored\n<img> --}}\n<style>p::before { content: "x"; }</style><template><p>hidden</p><img></template><noscript><p>hidden</p><img></noscript>\n</body></html>',
+      '<!doctype html><html><head><title>標題</title><meta charset="utf-8"></head><body>\n \t&nbsp;&#160;&#xA0;\n<!-- ignored <img> text -->\n{{! ignored }}\n{{!-- ignored\n<img> --}}\n<style>p::before { content: "x"; }</style><template><p>hidden</p><img></template>\n</body></html>',
     );
   });
 
