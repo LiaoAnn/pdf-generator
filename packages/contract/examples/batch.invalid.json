@@ -1,0 +1,12 @@
+{
+  "id": "Batch_01-a",
+  "templateId": "monthly-report",
+  "templateVersion": 1,
+  "count": 2,
+  "seed": "Seed_01-a",
+  "status": "completed",
+  "progress": { "completed": 1, "failed": 1 },
+  "createdAt": "2026-10-23T15:46:22.998Z",
+  "finishedAt": "2026-10-23T15:47:22+08:00",
+  "rerunOf": "Original_01"
+}

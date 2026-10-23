@@ -1,4 +1,13 @@
 import { z } from 'zod';
+import {
+  apiErrorSchema,
+  batchListSchema,
+  batchRequestSchema,
+  batchSchema,
+  fixtureListSchema,
+  templateListSchema,
+  templateSummarySchema,
+} from './api.ts';
 import { blockListSchema } from './block-list.ts';
 import { gtSchema } from './ground-truth.ts';
 import { manifestSchema } from './manifest.ts';
@@ -10,6 +19,13 @@ export const contractSchemas = {
   rules: rulesSchema,
   gt: gtSchema,
   'block-list': blockListSchema,
+  'api-error': apiErrorSchema,
+  'template-summary': templateSummarySchema,
+  'template-list': templateListSchema,
+  'batch-request': batchRequestSchema,
+  batch: batchSchema,
+  'batch-list': batchListSchema,
+  'fixture-list': fixtureListSchema,
 } as const satisfies Record<string, z.ZodType>;
 
 /**

@@ -1,4 +1,22 @@
 export {
+  type ApiError,
+  apiErrorSchema,
+  type Batch,
+  type BatchList,
+  type BatchRequest,
+  batchListSchema,
+  batchRequestSchema,
+  batchSchema,
+  type Fixture,
+  type FixtureList,
+  fixtureListSchema,
+  maxBatchCount,
+  type TemplateList,
+  type TemplateSummary,
+  templateListSchema,
+  templateSummarySchema,
+} from './api.ts';
+export {
   type BlockList,
   blockListSchema,
   type ListedBlock,

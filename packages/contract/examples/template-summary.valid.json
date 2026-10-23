@@ -1,0 +1,8 @@
+{
+  "id": "monthly-report",
+  "version": 1,
+  "name": "公司月報",
+  "description": "每月營運摘要",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "createdAt": "2026-10-23T15:46:22.998Z"
+}

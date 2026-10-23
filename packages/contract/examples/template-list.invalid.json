@@ -1,0 +1,11 @@
+{
+  "templates": [
+    {
+      "id": "monthly-report",
+      "version": 0,
+      "name": "公司月報",
+      "page": { "size": "A4", "orientation": "landscape" },
+      "createdAt": "2026-10-23T15:46:22Z"
+    }
+  ]
+}
