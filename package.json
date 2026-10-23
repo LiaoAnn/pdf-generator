@@ -1,16 +1,25 @@
 {
-  "name": "cf-worker-typescript-template",
+  "name": "pdf-generator",
+  "private": true,
   "type": "module",
+  "packageManager": "pnpm@12.10.1",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
-    "dev": "wrangler dev",
+    "dev": "pnpm --filter @pdf-generator/web dev",
+    "dev:print": "pnpm --filter @pdf-generator/print dev",
     "dev:cron": "bash .devcontainer/scripts/cron.sh",
+    "test": "vitest run && pnpm test:cron",
+    "test:watch": "vitest",
     "test:cron": "node --test .devcontainer/scripts/*.test.mjs",
-    "deploy": "wrangler deploy --minify",
-    "lint": "biome check src .devcontainer/scripts",
+    "typecheck": "pnpm -r --parallel typecheck",
+    "lint": "biome check .",
     "knip": "knip",
-    "format": "biome format --write src .devcontainer/scripts",
-    "check": "biome check --write src .devcontainer/scripts",
-    "cf-typegen": "wrangler types"
+    "format": "biome format --write .",
+    "check": "biome check --write .",
+    "cf-typegen": "pnpm -r cf-typegen",
+    "ci": "pnpm typecheck && pnpm lint && pnpm knip && pnpm test"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.14",
@@ -18,7 +27,8 @@
     "croner": "^10.0.1",
     "jsonc-parser": "^3.3.1",
     "knip": "^6.37.0",
-    "typescript": "^7.0.2",
-    "wrangler": "^4.135.0"
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "catalog:"
   }
 }
