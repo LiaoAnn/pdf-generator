@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "blank-field",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "empty",
+      "type": "field",
+      "page": 1,
+      "bbox": [54, 54, 354, 78],
+      "order": 0,
+      "text": ""
+    },
+    {
+      "id": "whitespace",
+      "type": "field",
+      "page": 1,
+      "bbox": [54, 78, 354, 102],
+      "order": 1,
+      "text": ""
+    },
+    {
+      "id": "nbsp",
+      "type": "field",
+      "page": 1,
+      "bbox": [54, 102, 354, 126],
+      "order": 2,
+      "text": ""
+    }
+  ]
+}

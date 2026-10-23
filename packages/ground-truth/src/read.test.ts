@@ -297,3 +297,188 @@ describe('readGroundTruth on completed Paged.js pages', () => {
     });
   }, 30_000);
 });
+
+// Keep error assertions at the public boundary: a generic missing-reader error
+// must not masquerade as validation of a particular markup problem.
+async function expectMarkupIssues(
+  page: Page,
+  problems: { id: string; problem: RegExp }[],
+): Promise<void> {
+  const error = await readGroundTruth(page, source).then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  expect(error).toBeInstanceOf(GroundTruthError);
+  if (!(error instanceof GroundTruthError)) return;
+  expect(error.issues.every(issue => typeof issue === 'string')).toBe(true);
+  for (const { id, problem } of problems) {
+    expect
+      .soft(
+        error.issues.some(issue => issue.includes(id) && problem.test(issue)),
+        `Missing issue for ${id}: ${problem}; received ${error.issues.join('; ')}`,
+      )
+      .toBe(true);
+  }
+}
+
+describe('T13 checkbox state and markup validation', () => {
+  test('reads live checked properties after script changes instead of stale checked attributes', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="checkbox" data-gt-id="script-on"><input type="checkbox">同意</div>
+         <input data-gt="checkbox" data-gt-id="script-off" type="radio" checked>`,
+        '[data-gt] { display: block; width: 120pt; height: 24pt; margin: 0; }',
+      );
+      // Change the printed clones, after pagination, in the caller's session.
+      await page.evaluate(`
+        document.querySelector('.pagedjs_page [data-gt-id="script-on"] input').checked = true;
+        document.querySelector('.pagedjs_page [data-gt-id="script-off"]').checked = false;
+      `);
+      const result = await readGroundTruth(page, source);
+      expect(gtSchema.parse(result)).toEqual(result);
+      expect(
+        result.blocks.map(block => ({
+          id: block.id,
+          text: block.text,
+          checked: block.type === 'checkbox' ? block.checked : undefined,
+        })),
+      ).toEqual([
+        { id: 'script-on', text: '同意', checked: true },
+        { id: 'script-off', text: '', checked: false },
+      ]);
+    });
+  }, 30_000);
+
+  test('ignores non-choice inputs when finding the single checkbox or radio', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="checkbox" data-gt-id="mixed-inputs"><input type="text" value="note"><input type="radio" checked>是</div>`,
+        '[data-gt] { height: 24pt; }',
+      );
+      const result = await readGroundTruth(page, source);
+      expect(result.blocks[0]).toMatchObject({
+        id: 'mixed-inputs',
+        text: '是',
+        checked: true,
+      });
+    });
+  }, 30_000);
+
+  test.each(['', 'TRUE', '1', 'yes'])(
+    'rejects invalid data-gt-checked=%j rather than coercing it to a boolean',
+    async value => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="checkbox" data-gt-id="invalid-state" data-gt-checked="${value}"><input type="checkbox">同意</div>`,
+        );
+        await expectMarkupIssues(page, [
+          { id: 'invalid-state', problem: /data-gt-checked/ },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test.each([
+    { attribute: 'true', input: '<input type="checkbox">' },
+    { attribute: 'false', input: '<input type="radio" checked>' },
+  ])(
+    'rejects explicit $attribute when the input disagrees',
+    async ({ attribute, input }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="checkbox" data-gt-id="state-pair" data-gt-checked="${attribute}">${input}同意</div>`,
+        );
+        await expectMarkupIssues(page, [
+          { id: 'state-pair', problem: /disagree|conflict|mismatch/i },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test.each([
+    { name: 'a printed symbol alone', content: '☑ 同意' },
+    { name: 'a text input', content: '<input type="text">同意' },
+  ])(
+    'rejects $name without a declared state',
+    async ({ content }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="checkbox" data-gt-id="no-state">${content}</div>`,
+        );
+        await expectMarkupIssues(page, [
+          {
+            id: 'no-state',
+            problem:
+              /no.*input|missing.*(state|checked|input)|single.*input|exactly one|cannot determine/i,
+          },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test('rejects multiple choice inputs rather than taking the first checked state', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="checkbox" data-gt-id="ambiguous"><input type="checkbox" checked><input type="radio">同意</div>`,
+      );
+      await expectMarkupIssues(page, [
+        {
+          id: 'ambiguous',
+          problem: /multiple|more than one|single.*input|exactly one|2.*input/i,
+        },
+      ]);
+    });
+  }, 30_000);
+
+  test.each([
+    {
+      type: 'checkbox',
+      attribute: 'data-gt-cheked',
+      extra: 'data-gt-checked="true"',
+    },
+    { type: 'field', attribute: 'data-gt-checked', extra: '' },
+    { type: 'paragraph', attribute: 'data-gt-latex', extra: '' },
+    { type: 'label', attribute: 'data-gt-text', extra: '' },
+  ])(
+    'rejects $attribute on $type instead of silently accepting bad markup',
+    async ({ type, attribute, extra }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<div data-gt="${type}" data-gt-id="bad-attribute" ${attribute}="true" ${extra}>Printed</div>`,
+        );
+        await expectMarkupIssues(page, [
+          { id: 'bad-attribute', problem: new RegExp(attribute) },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test('reports every bad attribute on one block and problems on later blocks in one GroundTruthError', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="field" data-gt-id="bad-field" data-gt-checked="false" data-gt-cheked="false">Printed</div>
+         <div data-gt="label" data-gt-id="bad-label" data-gt-text="secret" data-gt-latex="x">Label</div>
+         <div data-gt="checkbox" data-gt-id="bad-checkbox" data-gt-checked="maybe">同意</div>`,
+      );
+      await expectMarkupIssues(page, [
+        { id: 'bad-field', problem: /data-gt-checked/ },
+        { id: 'bad-field', problem: /data-gt-cheked/ },
+        { id: 'bad-label', problem: /data-gt-text/ },
+        { id: 'bad-label', problem: /data-gt-latex/ },
+        { id: 'bad-checkbox', problem: /data-gt-checked/ },
+      ]);
+    });
+  }, 30_000);
+});

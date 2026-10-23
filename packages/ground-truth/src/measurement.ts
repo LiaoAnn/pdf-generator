@@ -35,7 +35,12 @@ export interface MeasuredElement {
   text: string;
   /** True when it lies inside another `data-gt` element. */
   nested: boolean;
-  /** Type-specific data collected in the browser (T13). */
+  /**
+   * Its `data-gt-*` attributes other than `data-gt-id` (T13's markup, e.g.
+   * `data-gt-checked`), by name.
+   */
+  attributes?: Record<string, string>;
+  /** Type-specific data collected in the browser (T13: `ElementDetails`). */
   details?: unknown;
 }
 
@@ -55,4 +60,10 @@ export interface Measurement {
   pages: MeasuredPage[];
   /** Every visible `data-gt` element, in document order. */
   elements: MeasuredElement[];
+}
+
+/** What the collector reads per block type for T13's detail readers. */
+export interface ElementDetails {
+  /** checkbox: the `checked` property of each checkbox or radio input, the element itself first. */
+  inputs?: boolean[];
 }

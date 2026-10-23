@@ -1,0 +1,36 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 is 595.28 x 841.89 with 54pt margins.
+All marked blocks have border-box width 300pt and height 24pt, no margins.
+They stack at x=54, y=54+24*n (n=0..7), so x1=354 and y1=y+24.
+Inputs have explicit size and zero margin; descendant inputs are inline and
+cannot change the parent box. The last two blocks are themselves inputs.
+Rendered text is the trimmed label text (inputs themselves have no innerText).
+State comes from explicit true/false, or the input checked property; the two
+explicit attributes with inputs agree. Expected JSON is hand-written from
+this design, never obtained from the reader.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>同意事項</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+[data-gt] { display: block; width: 300pt; height: 24pt; margin: 0; padding: 0; }
+input { width: 12pt; height: 12pt; margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<div data-gt="checkbox" data-gt-id="symbol-yes" data-gt-checked="true">  ☑ 同意  </div>
+<div data-gt="checkbox" data-gt-id="symbol-no" data-gt-checked="false">☐ 不同意</div>
+<div data-gt="checkbox" data-gt-id="native-yes"><input type="checkbox" checked>同意</div>
+<div data-gt="checkbox" data-gt-id="native-no"><input type="checkbox">不同意</div>
+<div data-gt="checkbox" data-gt-id="agree-yes" data-gt-checked="true"><input type="radio" checked>是</div>
+<div data-gt="checkbox" data-gt-id="agree-no" data-gt-checked="false"><input type="radio">否</div>
+<input data-gt="checkbox" data-gt-id="self-yes" type="checkbox" checked>
+<input data-gt="checkbox" data-gt-id="self-no" type="radio">
+</body>
+</html>

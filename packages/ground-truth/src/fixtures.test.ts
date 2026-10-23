@@ -17,8 +17,13 @@ afterAll(async () => {
   await browser?.close();
 });
 
-describe('hand-authored multi-page fixture ground truth', () => {
-  for (const name of ['monthly-report', 'incident-form']) {
+describe('hand-authored fixture ground truth', () => {
+  for (const name of [
+    'monthly-report',
+    'incident-form',
+    'checkbox',
+    'blank-field',
+  ]) {
     test(`${name} matches every hand-derived block after pagination`, async () => {
       const html = await readFile(
         new URL(`../fixtures/${name}.html`, import.meta.url),

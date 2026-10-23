@@ -1,6 +1,12 @@
 import type { GroundTruth } from '@pdf-generator/contract';
 import { type BuildOptions, buildGroundTruth } from './build.ts';
-import type { MeasuredElement, Measurement, Region } from './measurement.ts';
+import type {
+  ElementDetails,
+  MeasuredElement,
+  Measurement,
+  Region,
+} from './measurement.ts';
+import { builtInReaders } from './readers.ts';
 
 /**
  * The part of a browser page the reader needs: Playwright's and
@@ -14,6 +20,8 @@ export interface EvaluatingPage {
 /**
  * Reads gt.json from a page Paged.js has finished paginating (after its
  * `PagedConfig.after`), in the session that prints the PDF (T03 rules 1–3).
+ * Table, checkbox and formula details and image text come from the built-in
+ * readers; `options.detailReaders` replaces them per type.
  */
 export async function readGroundTruth(
   page: EvaluatingPage,
@@ -21,7 +29,10 @@ export async function readGroundTruth(
   options: BuildOptions = {},
 ): Promise<GroundTruth> {
   const measurement = (await page.evaluate(collectExpression)) as Measurement;
-  return buildGroundTruth(measurement, source, options);
+  return buildGroundTruth(measurement, source, {
+    ...options,
+    detailReaders: { ...builtInReaders, ...options.detailReaders },
+  });
 }
 
 /**
@@ -50,8 +61,24 @@ function collect(): Measurement {
     .map((element): MeasuredElement => {
       const pageElement = element.closest('.pagedjs_page');
       const { x, y, width, height } = element.getBoundingClientRect();
+      const type = element.getAttribute('data-gt') ?? '';
+      const details: ElementDetails | undefined =
+        type === 'checkbox'
+          ? {
+              inputs: [
+                element,
+                ...Array.from(element.querySelectorAll('input')),
+              ]
+                .filter(
+                  input =>
+                    input instanceof HTMLInputElement &&
+                    (input.type === 'checkbox' || input.type === 'radio'),
+                )
+                .map(input => (input as HTMLInputElement).checked),
+            }
+          : undefined;
       return {
-        type: element.getAttribute('data-gt') ?? '',
+        type,
         id: element.getAttribute('data-gt-id'),
         ref: element.getAttribute('data-ref'),
         splitFrom: element.getAttribute('data-split-from'),
@@ -62,6 +89,15 @@ function collect(): Measurement {
         rect: { x, y, width, height },
         text: element instanceof HTMLElement ? element.innerText : '',
         nested: element.parentElement?.closest('[data-gt]') != null,
+        attributes: Object.fromEntries(
+          Array.from(element.attributes)
+            .filter(
+              ({ name }) =>
+                name.startsWith('data-gt-') && name !== 'data-gt-id',
+            )
+            .map(({ name, value }) => [name, value]),
+        ),
+        ...(details && { details }),
       };
     });
   // Paged.js puts the declared page size on :root as `--pagedjs-width` and

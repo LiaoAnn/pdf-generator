@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "checkbox",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "symbol-yes",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 54, 354, 78],
+      "order": 0,
+      "text": "☑ 同意",
+      "checked": true
+    },
+    {
+      "id": "symbol-no",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 78, 354, 102],
+      "order": 1,
+      "text": "☐ 不同意",
+      "checked": false
+    },
+    {
+      "id": "native-yes",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 102, 354, 126],
+      "order": 2,
+      "text": "同意",
+      "checked": true
+    },
+    {
+      "id": "native-no",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 126, 354, 150],
+      "order": 3,
+      "text": "不同意",
+      "checked": false
+    },
+    {
+      "id": "agree-yes",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 150, 354, 174],
+      "order": 4,
+      "text": "是",
+      "checked": true
+    },
+    {
+      "id": "agree-no",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 174, 354, 198],
+      "order": 5,
+      "text": "否",
+      "checked": false
+    },
+    {
+      "id": "self-yes",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 198, 354, 222],
+      "order": 6,
+      "text": "",
+      "checked": true
+    },
+    {
+      "id": "self-no",
+      "type": "checkbox",
+      "page": 1,
+      "bbox": [54, 222, 354, 246],
+      "order": 7,
+      "text": "",
+      "checked": false
+    }
+  ]
+}
