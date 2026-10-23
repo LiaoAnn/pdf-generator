@@ -28,4 +28,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm knip
+      # Headless Chromium for the ground-truth tests, at the revision of the
+      # pinned playwright-core.
+      - run: pnpm --filter @pdf-generator/ground-truth exec playwright-core install --with-deps --only-shell chromium
       - run: pnpm test

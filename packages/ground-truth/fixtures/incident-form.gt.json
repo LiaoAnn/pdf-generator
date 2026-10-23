@@ -1,0 +1,94 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "incident-form",
+    "templateVersion": 1,
+    "seed": "T08-fixture",
+    "index": 0
+  },
+  "pages": [
+    {
+      "width": 595.28,
+      "height": 841.89
+    },
+    {
+      "width": 595.28,
+      "height": 841.89
+    }
+  ],
+  "blocks": [
+    {
+      "id": "page_number-1",
+      "type": "page_number",
+      "page": 1,
+      "bbox": [468, 762, 528, 786],
+      "order": 0,
+      "text": "第 1 頁"
+    },
+    {
+      "id": "title-1",
+      "type": "title",
+      "page": 1,
+      "bbox": [54, 54, 414, 90],
+      "order": 1,
+      "text": "青禾實業設備異常通報單"
+    },
+    {
+      "id": "heading-1",
+      "type": "heading",
+      "page": 1,
+      "bbox": [54, 90, 414, 114],
+      "order": 2,
+      "text": "通報編號：維修一一五〇九〇一"
+    },
+    {
+      "id": "label-1",
+      "type": "label",
+      "page": 1,
+      "bbox": [54, 114, 414, 132],
+      "order": 3,
+      "text": "通報地點"
+    },
+    {
+      "id": "field-1",
+      "type": "field",
+      "page": 1,
+      "bbox": [54, 132, 414, 156],
+      "order": 4,
+      "text": "臺中市西屯區作業中心"
+    },
+    {
+      "id": "paragraph-1",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [54, 738, 414, 774],
+      "order": 5,
+      "text": "上午巡檢發現異音。\n值班人員立即停機。"
+    },
+    {
+      "id": "paragraph-1-2",
+      "type": "paragraph",
+      "page": 2,
+      "bbox": [54, 54, 414, 126],
+      "order": 6,
+      "text": "現場設置警示標誌。\n維修人員完成檢查。\n零件更換後試運轉。\n主管確認恢復作業。",
+      "continues": "paragraph-1"
+    },
+    {
+      "id": "reference-1",
+      "type": "reference",
+      "page": 2,
+      "bbox": [54, 126, 414, 150],
+      "order": 7,
+      "text": "附件：設備維修紀錄單。"
+    },
+    {
+      "id": "page_number-2",
+      "type": "page_number",
+      "page": 2,
+      "bbox": [54, 762, 414, 786],
+      "order": 8,
+      "text": "第 2 頁"
+    }
+  ]
+}

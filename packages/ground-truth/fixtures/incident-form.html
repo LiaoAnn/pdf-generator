@@ -1,0 +1,43 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 reports declared 595.28 x 841.89; margins 54
+(72 CSS px), content height approximately 733.89. Every marked block is
+360pt wide except the 60pt page-1 number, and has zero margin.
+At (54,54), heights 36+24+18+24=102, then spacer 582: paragraph y=738.
+Only two 18pt lines fit before content bottom 787.89; the remaining four
+lines occupy y=54..126 on page 2. Reference 24 then spacer 612 places
+page-2 number at y=762..786. Page-1 number is absolutely positioned beside
+the paragraph at (468,762)..(528,786). The split paragraph has no explicit
+id: its two fragments must retain the paragraph-1 base with continues.
+No width or block position is calculated from fractional A4 dimensions.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>設備異常通報單</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+h1, h2, p, div { margin: 0; padding: 0; }
+[data-gt] { width: 360pt; }
+.h36 { height: 36pt; } .h24 { height: 24pt; } .h18 { height: 18pt; }
+.anchor { position: relative; height: 0; }
+.number-one { position: absolute; left: 414pt; top: 708pt; width: 60pt; height: 24pt; }
+.story { line-height: 18pt; white-space: nowrap; orphans: 1; widows: 1; }
+</style>
+</head>
+<body>
+<div class="anchor"><div class="number-one" data-gt="page_number">第 1 頁</div></div>
+<h1 class="h36" data-gt="title">青禾實業設備異常通報單</h1>
+<h2 class="h24" data-gt="heading">通報編號：維修一一五〇九〇一</h2>
+<div class="h18" data-gt="label">通報地點</div>
+<div class="h24" data-gt="field">臺中市西屯區作業中心</div>
+<div style="height:582pt"></div>
+<p class="story" data-gt="paragraph">上午巡檢發現異音。<br>值班人員立即停機。<br>現場設置警示標誌。<br>維修人員完成檢查。<br>零件更換後試運轉。<br>主管確認恢復作業。</p>
+<div class="h24" data-gt="reference">附件：設備維修紀錄單。</div>
+<div style="height:612pt"></div>
+<div class="h24" data-gt="page_number">第 2 頁</div>
+</body>
+</html>

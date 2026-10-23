@@ -1,0 +1,78 @@
+<!doctype html>
+<!--
+Hand derivation (pt): page 600 x 792, margins 54, content 492 x 684.
+Flow blocks have width 360, zero margins and border-box sizing. Flow starts
+at (54,54). Page 1 block heights: 36,24,18,24,24,48,18,24,24,18,18
+(total 276), then 354 spacer: the paragraph starts at y=684. Three 18pt
+lines fit before y=738; its last three lines occupy y=54..108 on page 2.
+Page 2 then has a 606 spacer and 24pt page number at y=714. Page 3 is
+forced: heading 24, paragraph 36, spacer 600, number 24 at y=714.
+Page 1 number is positioned at content (414,660), beside the split text.
+Running blocks are 360 x 18, with auto inline margins in the 492pt-wide
+margin content, so x=54+(492-360)/2=120. In the 54pt margin rows,
+header y=18, footer y=756. Every length affecting flow is whole CSS px.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>青禾實業月報</title>
+<style>
+@page {
+  size: 600pt 792pt;
+  margin: 54pt;
+  @top-center { content: element(report-header); }
+  @bottom-center { content: element(report-footer); }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+h1, h2, p, div { margin: 0; padding: 0; }
+[data-gt] { width: 360pt; }
+.header {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js implements running elements. */
+  position: running(report-header);
+  height: 18pt;
+  margin-inline: auto;
+}
+.footer {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js implements running elements. */
+  position: running(report-footer);
+  height: 18pt;
+  margin-inline: auto;
+}
+.h36 { height: 36pt; } .h24 { height: 24pt; } .h18 { height: 18pt; }
+.seal { height: 48pt; border: 3pt solid #b11; color: #b11; }
+.barcode { height: 24pt; border: 0.75pt solid black; }
+.hidden { display: none; }
+.anchor { position: relative; height: 0; }
+.number-one { position: absolute; left: 414pt; top: 660pt; width: 60pt; height: 24pt; }
+.story { line-height: 18pt; white-space: nowrap; orphans: 1; widows: 1; }
+.next { break-before: page; }
+</style>
+</head>
+<body>
+<div class="header" data-gt="page_header" data-gt-id="company-header">青禾實業股份有限公司｜營運月報</div>
+<div class="footer" data-gt="page_footer">內部資料｜請妥善保管</div>
+<div class="hidden" data-gt="paragraph">草稿備註：不可出現在成品</div>
+<div class="anchor"><div class="number-one" data-gt="page_number">第 1 頁</div></div>
+<h1 class="h36" data-gt="title" data-gt-id="report-title">民國一一五年九月營運月報</h1>
+<h2 class="h24" data-gt="heading">一、基本資料</h2>
+<div class="h18" data-gt="label">承辦單位</div>
+<div class="h24" data-gt="field">臺北市信義區營運處</div>
+<div class="h24" data-gt="field"></div>
+<div class="seal" data-gt="image">青禾實業核章</div>
+<div class="h18" data-gt="caption">圖一：本月核定章</div>
+<div class="barcode" data-gt="barcode">115090001</div>
+<div class="h24" data-gt="list_item">一、本月交貨均依排程完成。</div>
+<div class="h18" data-gt="footnote">註：金額均以新臺幣計。</div>
+<div class="h18" data-gt="reference">資料來源：九月營運彙整表。</div>
+<div style="height:354pt"></div>
+<p class="story" data-gt="paragraph" data-gt-id="operations">九月接單維持穩定。<br>倉儲盤點如期完成。<br>出貨文件逐件覆核。<br>十月持續追蹤庫存。<br>採購依核定預算辦理。<br>異常事項另案列管。</p>
+<div style="height:606pt"></div>
+<div class="h24" data-gt="page_number">第 2 頁</div>
+<h2 class="next h24" data-gt="heading">二、主管核示</h2>
+<p class="h36" data-gt="paragraph">請各單位依本月決議辦理。<br>下月會議再行追蹤。</p>
+<div style="height:600pt"></div>
+<div class="h24" data-gt="page_number">第 3 頁</div>
+</body>
+</html>
