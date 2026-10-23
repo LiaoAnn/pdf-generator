@@ -15,9 +15,10 @@ const detailsOf = (element: MeasuredElement): ElementDetails =>
  * or radio input. Inputs that disagree with the attribute, no source, or
  * several inputs without the attribute are errors.
  */
-function readCheckbox(element: MeasuredElement): { checked: boolean } {
-  const declared = element.attributes?.['data-gt-checked'];
-  const inputs = detailsOf(element).inputs ?? [];
+function checkedState(
+  declared: string | undefined,
+  inputs: boolean[],
+): boolean {
   if (declared !== undefined) {
     if (declared !== 'true' && declared !== 'false') {
       throw new GroundTruthError([
@@ -30,7 +31,7 @@ function readCheckbox(element: MeasuredElement): { checked: boolean } {
         `data-gt-checked="${declared}" disagrees with its input's checked state`,
       ]);
     }
-    return { checked };
+    return checked;
   }
   const [input, ...more] = inputs;
   if (input === undefined) {
@@ -43,7 +44,16 @@ function readCheckbox(element: MeasuredElement): { checked: boolean } {
       `checkbox has ${inputs.length} checkbox/radio inputs; without data-gt-checked it needs exactly one`,
     ]);
   }
-  return { checked: input };
+  return input;
+}
+
+function readCheckbox(element: MeasuredElement): { checked: boolean } {
+  return {
+    checked: checkedState(
+      element.attributes?.['data-gt-checked'],
+      detailsOf(element).inputs ?? [],
+    ),
+  };
 }
 
 /**
@@ -131,6 +141,7 @@ function readTable(element: MeasuredElement): { table: GtTable } {
   if (lost.length > 0) throw new GroundTruthError(lost);
   const covered = rows.map(() => new Set<number>());
   const cells: GtCell[] = [];
+  const problems: string[] = [];
   let cols = 0;
   rows.forEach((row, r) => {
     let col = 0;
@@ -142,6 +153,26 @@ function readTable(element: MeasuredElement): { table: GtTable } {
       for (let i = 0; i < rowSpan; i += 1) {
         for (let j = 0; j < colSpan; j += 1) covered[r + i]?.add(col + j);
       }
+      const checkboxes = cell.checkboxes?.map((checkbox, k) => {
+        try {
+          return {
+            checked: checkedState(
+              checkbox.declared ?? undefined,
+              checkbox.inputs,
+            ),
+            text: checkbox.label.replace(/\s+/g, ' ').trim(),
+            bbox: pageBbox(checkbox.rect),
+          };
+        } catch (error) {
+          if (!(error instanceof GroundTruthError)) throw error;
+          problems.push(
+            ...error.issues.map(
+              issue => `row ${r} col ${col} checkbox ${k + 1}: ${issue}`,
+            ),
+          );
+          return undefined;
+        }
+      });
       cells.push({
         row: r,
         col,
@@ -150,11 +181,15 @@ function readTable(element: MeasuredElement): { table: GtTable } {
         header: cell.header,
         text: cell.text.trim(),
         bbox: pageBbox(cell.rect),
+        ...(checkboxes && {
+          checkboxes: checkboxes.filter(checkbox => checkbox !== undefined),
+        }),
       });
       col += colSpan;
       cols = Math.max(cols, col);
     }
   });
+  if (problems.length > 0) throw new GroundTruthError(problems);
   if (cols === 0) throw new GroundTruthError(['table has no printed cells']);
   return { table: { rows: rows.length, cols, cells } };
 }

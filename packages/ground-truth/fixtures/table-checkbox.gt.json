@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "table-checkbox",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "choices",
+      "type": "table",
+      "page": 1,
+      "bbox": [54, 54, 414, 150],
+      "order": 0,
+      "text": "欄位\t☑審核\n是否受理\t☑是☐否\n事故類型\t  火災漏水其他   原因\n空白選項",
+      "table": {
+        "rows": 4,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "欄位",
+            "bbox": [54, 54, 234, 78]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "☑審核",
+            "bbox": [234, 54, 414, 78],
+            "checkboxes": [
+              { "checked": true, "text": "審核", "bbox": [234, 54, 246, 66] }
+            ]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "是否受理",
+            "bbox": [54, 78, 234, 102]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是☐否",
+            "bbox": [234, 78, 414, 102],
+            "checkboxes": [
+              { "checked": true, "text": "是", "bbox": [234, 78, 246, 90] },
+              { "checked": false, "text": "否", "bbox": [294, 78, 306, 90] }
+            ]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "事故類型",
+            "bbox": [54, 102, 234, 126]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "火災漏水其他   原因",
+            "bbox": [234, 102, 414, 126],
+            "checkboxes": [
+              { "checked": true, "text": "火災", "bbox": [234, 102, 246, 114] },
+              {
+                "checked": false,
+                "text": "漏水",
+                "bbox": [294, 102, 306, 114]
+              },
+              {
+                "checked": false,
+                "text": "其他 原因",
+                "bbox": [354, 102, 366, 114]
+              }
+            ]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "空白選項",
+            "bbox": [54, 126, 234, 150]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "",
+            "bbox": [234, 126, 414, 150],
+            "checkboxes": [
+              { "checked": false, "text": "", "bbox": [234, 126, 246, 138] }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

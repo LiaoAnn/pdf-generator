@@ -100,4 +100,21 @@ export interface MeasuredCell {
    * area's hidden overflow (T03 §5).
    */
   printed: boolean;
+  /** The checkboxes printed inside it, in document order (none: absent). */
+  checkboxes?: MeasuredCheckbox[];
+}
+
+/**
+ * A checkbox inside a table cell: an element with `data-gt-checked`, or a
+ * checkbox or radio input outside such an element.
+ */
+export interface MeasuredCheckbox {
+  /** Its `data-gt-checked` attribute, or null. */
+  declared: string | null;
+  /** The `checked` property of each checkbox or radio input, itself first. */
+  inputs: boolean[];
+  /** The visible text after it, up to the next checkbox or the cell's end. */
+  label: string;
+  /** Its border box relative to its `.pagedjs_page`, in CSS px. */
+  rect: Rect;
 }

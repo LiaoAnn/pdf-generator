@@ -10,6 +10,7 @@ export {
 export type {
   ElementDetails,
   MeasuredCell,
+  MeasuredCheckbox,
   MeasuredElement,
   MeasuredPage,
   MeasuredRow,

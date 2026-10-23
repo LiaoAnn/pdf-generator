@@ -832,6 +832,167 @@ describe('T13 single-page table grid boundaries and markup errors', () => {
   );
 });
 
+describe('T13 checkboxes inside table cells', () => {
+  const tableCss = `table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 180pt; }
+    tr { height: 24pt; } td, th { padding: 0; border: 0; vertical-align: top; }
+    .mark, input { display: inline-block; vertical-align: top; width: 12pt; height: 12pt; margin: 0; padding: 0; }`;
+
+  test('uses live native choice states in cells rather than their stale checked attributes', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<table data-gt="table" data-gt-id="live-choices"><tbody><tr>
+          <td><input type="checkbox">是</td><td><input type="radio" checked>否</td>
+        </tr></tbody></table>`,
+        tableCss,
+      );
+      await page.evaluate(`
+        const inputs = document.querySelectorAll('.pagedjs_page table input');
+        inputs[0].checked = true;
+        inputs[1].checked = false;
+      `);
+      const result = await readGroundTruth(page, source);
+      const block = result.blocks[0];
+      expect(block?.type).toBe('table');
+      if (block?.type !== 'table') return;
+      expect(block.table.cells.map(cell => cell.checkboxes)).toEqual([
+        [{ checked: true, text: '是', bbox: [48, 60, 60, 72] }],
+        [{ checked: false, text: '否', bbox: [138, 60, 150, 72] }],
+      ]);
+    });
+  }, 30_000);
+
+  test('omits hidden marks and inputs without splitting the visible option label or adding an empty checkboxes key', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<table data-gt="table" data-gt-id="hidden-choices"><tbody><tr>
+          <td><span class="mark" data-gt-checked="true">☑</span>同<span style="display:none"><span data-gt-checked="false">☐</span>SECRET<input type="radio" checked></span>意</td>
+          <td><input type="checkbox" checked style="display:none"><span data-gt-checked="false" style="display:none">☐SECRET</span>無</td>
+        </tr></tbody></table>`,
+        tableCss,
+      );
+      const result = await readGroundTruth(page, source);
+      const block = result.blocks[0];
+      expect(block?.type).toBe('table');
+      if (block?.type !== 'table') return;
+      expect(block.table.cells).toEqual([
+        {
+          row: 0,
+          col: 0,
+          rowSpan: 1,
+          colSpan: 1,
+          header: false,
+          text: '☑同意',
+          bbox: [48, 60, 138, 84],
+          checkboxes: [{ checked: true, text: '同意', bbox: [48, 60, 60, 72] }],
+        },
+        {
+          row: 0,
+          col: 1,
+          rowSpan: 1,
+          colSpan: 1,
+          header: false,
+          text: '無',
+          bbox: [138, 60, 228, 84],
+        },
+      ]);
+    });
+  }, 30_000);
+
+  test('counts a marked wrapper with agreeing inner inputs once and uses the wrapper box and only its following label', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<table data-gt="table" data-gt-id="wrapped-choice"><tbody><tr><td><span style="display:inline-block;vertical-align:top;width:24pt">前綴</span><span class="mark" data-gt-checked="true"><input type="checkbox" checked><input type="radio" checked>☑</span>  外部 <em>標籤</em></td></tr></tbody></table>`,
+        `${tableCss} .mark { width: 36pt; height: 24pt; } input { width: 3pt; height: 3pt; }`,
+      );
+      const result = await readGroundTruth(page, source);
+      const block = result.blocks[0];
+      expect(block?.type).toBe('table');
+      if (block?.type !== 'table') return;
+      expect(block.table.cells[0]?.checkboxes).toEqual([
+        { checked: true, text: '外部 標籤', bbox: [72, 60, 108, 84] },
+      ]);
+    });
+  }, 30_000);
+
+  test('rejects an invalid cell checkbox state with the table id and the invalid value', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        '<table data-gt="table" data-gt-id="invalid-choice"><tbody><tr><td><span class="mark" data-gt-checked="yes">☑</span>是</td></tr></tbody></table>',
+        tableCss,
+      );
+      await expectMarkupIssues(page, [
+        { id: 'invalid-choice', problem: /yes|(?:true.*false|false.*true)/i },
+      ]);
+    });
+  }, 30_000);
+
+  test.each([
+    {
+      attribute: 'true',
+      inputs: '<input type="checkbox" checked><input type="radio">',
+    },
+    {
+      attribute: 'false',
+      inputs: '<input type="checkbox"><input type="radio" checked>',
+    },
+  ])(
+    'rejects $attribute when any inner choice input disagrees, even if the first agrees',
+    async ({ attribute, inputs }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<table data-gt="table" data-gt-id="state-pair-cell"><tbody><tr><td><span class="mark" data-gt-checked="${attribute}">${inputs}</span>同意</td></tr></tbody></table>`,
+          tableCss,
+        );
+        await expectMarkupIssues(page, [
+          { id: 'state-pair-cell', problem: /disagree|conflict|mismatch/i },
+        ]);
+      });
+    },
+    30_000,
+  );
+
+  test.each(['tr', 'caption'])(
+    'rejects data-gt-checked on %s outside a cell while accepting a valid cell mark',
+    async tag => {
+      await withPage(async page => {
+        const caption =
+          tag === 'caption'
+            ? '<caption data-gt-checked="true">選項</caption>'
+            : '';
+        const rowAttribute = tag === 'tr' ? 'data-gt-checked="true"' : '';
+        await paginate(
+          page,
+          `<table data-gt="table" data-gt-id="outside-choice">${caption}<tbody><tr ${rowAttribute}><td>是</td></tr></tbody></table>
+           <table data-gt="table" data-gt-id="allowed-choice"><tbody><tr><td><span class="mark" data-gt-checked="false">☐</span>否</td></tr></tbody></table>`,
+          tableCss,
+        );
+        const error = await readGroundTruth(page, source).catch(
+          (error: unknown) => error,
+        );
+        expect(error).toBeInstanceOf(GroundTruthError);
+        if (!(error instanceof GroundTruthError)) return;
+        expect(
+          error.issues.some(
+            issue =>
+              issue.includes('outside-choice') && /data-gt-checked/.test(issue),
+          ),
+        ).toBe(true);
+        // A blanket ban must not masquerade as validating the misplaced mark.
+        // Do not prescribe how many diagnostics describe that actual problem.
+        expect(
+          error.issues.some(issue => issue.includes('allowed-choice')),
+        ).toBe(false);
+      });
+    },
+    30_000,
+  );
+});
+
 // T03 §5: exercise the actual Paged.js failure, not a mocked measurement or
 // manually moved cell. The 12pt remainder at H=420 loses the next 24pt row.
 describe('T13 lost rows in cross-page tables', () => {

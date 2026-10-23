@@ -104,7 +104,79 @@ function collect(): Measurement {
                           .filter(cell => cell.getClientRects().length > 0)
                           .map(cell => {
                             const box = cell.getBoundingClientRect();
+                            // Printed checkboxes: marked elements, and
+                            // checkbox or radio inputs outside them.
+                            const marks = Array.from(
+                              cell.querySelectorAll('[data-gt-checked], input'),
+                            ).filter(
+                              mark =>
+                                (mark.hasAttribute('data-gt-checked') ||
+                                  (mark instanceof HTMLInputElement &&
+                                    (mark.type === 'checkbox' ||
+                                      mark.type === 'radio') &&
+                                    mark.parentElement?.closest(
+                                      '[data-gt-checked]',
+                                    ) == null)) &&
+                                mark.getClientRects().length > 0,
+                            );
+                            const walker = document.createTreeWalker(
+                              cell,
+                              NodeFilter.SHOW_TEXT,
+                            );
+                            const texts: Node[] = [];
+                            for (
+                              let node = walker.nextNode();
+                              node !== null;
+                              node = walker.nextNode()
+                            ) {
+                              texts.push(node);
+                            }
+                            const checkboxes = marks.map((mark, k) => {
+                              const next = marks[k + 1];
+                              const markBox = mark.getBoundingClientRect();
+                              return {
+                                declared: mark.getAttribute('data-gt-checked'),
+                                inputs: [
+                                  mark,
+                                  ...Array.from(mark.querySelectorAll('input')),
+                                ]
+                                  .filter(
+                                    input =>
+                                      input instanceof HTMLInputElement &&
+                                      (input.type === 'checkbox' ||
+                                        input.type === 'radio'),
+                                  )
+                                  .map(
+                                    input =>
+                                      (input as HTMLInputElement).checked,
+                                  ),
+                                // Visible text after the mark, up to the next.
+                                label: texts
+                                  .filter(
+                                    text =>
+                                      !mark.contains(text) &&
+                                      (mark.compareDocumentPosition(text) &
+                                        Node.DOCUMENT_POSITION_FOLLOWING) !==
+                                        0 &&
+                                      (next === undefined ||
+                                        (next.compareDocumentPosition(text) &
+                                          Node.DOCUMENT_POSITION_PRECEDING) !==
+                                          0) &&
+                                      (text.parentElement?.getClientRects()
+                                        .length ?? 0) > 0,
+                                  )
+                                  .map(text => text.textContent ?? '')
+                                  .join(''),
+                                rect: {
+                                  x: markBox.x - origin.x,
+                                  y: markBox.y - origin.y,
+                                  width: markBox.width,
+                                  height: markBox.height,
+                                },
+                              };
+                            });
                             return {
+                              ...(checkboxes.length > 0 && { checkboxes }),
                               rowSpan: cell.rowSpan,
                               colSpan: cell.colSpan,
                               header:
@@ -153,7 +225,16 @@ function collect(): Measurement {
         innerAttributes: Array.from(element.querySelectorAll('*')).flatMap(
           inner =>
             Array.from(inner.attributes)
-              .filter(({ name }) => name.startsWith('data-gt-'))
+              .filter(
+                ({ name }) =>
+                  name.startsWith('data-gt-') &&
+                  // A checkbox inside one of this table's cells (T02-2).
+                  !(
+                    name === 'data-gt-checked' &&
+                    inner.parentElement?.closest('td, th')?.closest('table') ===
+                      element
+                  ),
+              )
               .map(({ name }) => ({ tag: inner.tagName.toLowerCase(), name })),
         ),
         ...(details && { details }),
