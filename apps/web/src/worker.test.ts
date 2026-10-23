@@ -158,7 +158,7 @@ describe('Access gate at the Worker request boundary', () => {
     },
   );
 
-  test.each(['/api/templates', '/api/me/details'])(
+  test.each(['/api/unknown', '/api/me/details'])(
     'returns a contract 404 for authenticated unknown API %s without invoking pages',
     async path => {
       const { fetch, pages } = setup();

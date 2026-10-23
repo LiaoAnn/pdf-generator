@@ -4,6 +4,7 @@ import { Effect } from 'effect';
 import { type AccessConfig, authenticate } from './access/verify.ts';
 import { ApiFailure, apiErrorResponse } from './api/errors.ts';
 import { isApiPath, routeApi } from './api/router.ts';
+import { provideServices } from './services.ts';
 
 export interface FetchHandlerOptions {
   /** TanStack Start's handler: pages and assets. */
@@ -44,7 +45,11 @@ export function createFetchHandler(
 
     const handle = Effect.gen(function* () {
       const identity = yield* authenticate(request, config);
-      if (api) return yield* routeApi({ request, identity });
+      if (api) {
+        return yield* routeApi({ request, identity }).pipe(
+          provideServices(env),
+        );
+      }
       return yield* Effect.promise(() => options.pages(request));
     });
 

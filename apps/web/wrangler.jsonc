@@ -13,6 +13,24 @@
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
   },
+  // Template packs, generated fixtures and their metadata. T15 and T16 add
+  // their tables in src/db/schema.ts and their objects under their own key
+  // prefixes. database_id is a placeholder until the remote database exists;
+  // local dev and tests don't need a real one.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pdf-generator",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "pdf-generator-files",
+    },
+  ],
   "observability": {
     "enabled": true,
   },
