@@ -6,6 +6,13 @@
   "main": "src/server.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat_v2"],
+  // Cloudflare Access (see src/access/verify.ts). Empty until the Access
+  // application exists; the Worker refuses every request while they are empty.
+  // `vite dev` ignores them and uses a local stand-in.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+  },
   "observability": {
     "enabled": true,
   },
