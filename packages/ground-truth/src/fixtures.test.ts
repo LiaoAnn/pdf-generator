@@ -17,8 +17,21 @@ afterAll(async () => {
   await browser?.close();
 });
 
-describe('hand-authored multi-page fixture ground truth', () => {
-  for (const name of ['monthly-report', 'incident-form']) {
+describe('hand-authored fixture ground truth', () => {
+  for (const name of [
+    'monthly-report',
+    'incident-form',
+    'checkbox',
+    'blank-field',
+    'formula',
+    'image-text',
+    'table-grid',
+    'table-borders',
+    'table-merged',
+    'table-checkbox',
+    'table-cross-page',
+    'table-repeat-header',
+  ]) {
     test(`${name} matches every hand-derived block after pagination`, async () => {
       const html = await readFile(
         new URL(`../fixtures/${name}.html`, import.meta.url),
@@ -38,7 +51,11 @@ describe('hand-authored multi-page fixture ground truth', () => {
       try {
         await page.setContent(html);
         await page.evaluate(`window.__pagedDone = false;
-          window.PagedConfig = { auto: true, after: () => { window.__pagedDone = true; } };`);
+          window.PagedConfig = {
+            auto: true,
+            before: () => window.registerFixtureHandlers?.(),
+            after: () => { window.__pagedDone = true; }
+          };`);
         await page.addScriptTag({ path: polyfill });
         // T03: the first page appearing is not completion; wait for after().
         await page.waitForFunction('window.__pagedDone === true');

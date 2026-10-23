@@ -1,6 +1,12 @@
 import type { GroundTruth } from '@pdf-generator/contract';
 import { type BuildOptions, buildGroundTruth } from './build.ts';
-import type { MeasuredElement, Measurement, Region } from './measurement.ts';
+import type {
+  ElementDetails,
+  MeasuredElement,
+  Measurement,
+  Region,
+} from './measurement.ts';
+import { builtInReaders } from './readers.ts';
 
 /**
  * The part of a browser page the reader needs: Playwright's and
@@ -14,6 +20,8 @@ export interface EvaluatingPage {
 /**
  * Reads gt.json from a page Paged.js has finished paginating (after its
  * `PagedConfig.after`), in the session that prints the PDF (T03 rules 1–3).
+ * Table, checkbox and formula details and image text come from the built-in
+ * readers; `options.detailReaders` replaces them per type.
  */
 export async function readGroundTruth(
   page: EvaluatingPage,
@@ -21,7 +29,10 @@ export async function readGroundTruth(
   options: BuildOptions = {},
 ): Promise<GroundTruth> {
   const measurement = (await page.evaluate(collectExpression)) as Measurement;
-  return buildGroundTruth(measurement, source, options);
+  return buildGroundTruth(measurement, source, {
+    ...options,
+    detailReaders: { ...builtInReaders, ...options.detailReaders },
+  });
 }
 
 /**
@@ -50,8 +61,176 @@ function collect(): Measurement {
     .map((element): MeasuredElement => {
       const pageElement = element.closest('.pagedjs_page');
       const { x, y, width, height } = element.getBoundingClientRect();
+      const origin = pageElement?.getBoundingClientRect() ?? {
+        x: 0,
+        y: 0,
+        right: 0,
+        bottom: 0,
+      };
+      const type = element.getAttribute('data-gt') ?? '';
+      const details: ElementDetails | undefined =
+        type === 'checkbox'
+          ? {
+              inputs: [
+                element,
+                ...Array.from(element.querySelectorAll('input')),
+              ]
+                .filter(
+                  input =>
+                    input instanceof HTMLInputElement &&
+                    (input.type === 'checkbox' || input.type === 'radio'),
+                )
+                .map(input => (input as HTMLInputElement).checked),
+            }
+          : type === 'formula'
+            ? {
+                annotations: Array.from(
+                  element.querySelectorAll(
+                    'annotation[encoding="application/x-tex"]',
+                  ),
+                ).map(annotation => annotation.textContent ?? ''),
+                visibleParts: Array.from(
+                  element.querySelectorAll('.katex-html'),
+                ).map(part => (part as HTMLElement).innerText),
+              }
+            : type === 'table' && element instanceof HTMLTableElement
+              ? {
+                  table: {
+                    rows: Array.from(element.rows)
+                      // Not laid out (display: none): not printed.
+                      .filter(row => row.getClientRects().length > 0)
+                      .map((row, _, printed) => ({
+                        // Rows in the same thead, tbody or tfoot share one.
+                        group: printed.findIndex(
+                          other => other.parentElement === row.parentElement,
+                        ),
+                        cells: Array.from(row.cells)
+                          .filter(cell => cell.getClientRects().length > 0)
+                          .map(cell => {
+                            const box = cell.getBoundingClientRect();
+                            // Printed checkboxes: marked elements, and
+                            // checkbox or radio inputs outside them.
+                            const marks = Array.from(
+                              cell.querySelectorAll('[data-gt-checked], input'),
+                            ).filter(
+                              mark =>
+                                (mark.hasAttribute('data-gt-checked') ||
+                                  (mark instanceof HTMLInputElement &&
+                                    (mark.type === 'checkbox' ||
+                                      mark.type === 'radio') &&
+                                    mark.parentElement?.closest(
+                                      '[data-gt-checked]',
+                                    ) == null)) &&
+                                mark.getClientRects().length > 0,
+                            );
+                            // Text nodes, and a line break for each <br>
+                            // and block box, each with the node whose
+                            // layout decides whether it is printed.
+                            const walker = document.createTreeWalker(
+                              cell,
+                              NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+                            );
+                            const texts: {
+                              node: Node;
+                              shown: Element | null;
+                              text: string;
+                            }[] = [];
+                            for (
+                              let node = walker.nextNode();
+                              node !== null;
+                              node = walker.nextNode()
+                            ) {
+                              if (node instanceof Element) {
+                                const display = getComputedStyle(node).display;
+                                if (
+                                  node.tagName === 'BR' ||
+                                  !(
+                                    display.startsWith('inline') ||
+                                    display === 'contents'
+                                  )
+                                ) {
+                                  texts.push({ node, shown: node, text: '\n' });
+                                }
+                              } else {
+                                texts.push({
+                                  node,
+                                  shown: node.parentElement,
+                                  text: node.textContent ?? '',
+                                });
+                              }
+                            }
+                            const checkboxes = marks.map((mark, k) => {
+                              const next = marks[k + 1];
+                              const markBox = mark.getBoundingClientRect();
+                              return {
+                                declared: mark.getAttribute('data-gt-checked'),
+                                inputs: [
+                                  mark,
+                                  ...Array.from(mark.querySelectorAll('input')),
+                                ]
+                                  .filter(
+                                    input =>
+                                      input instanceof HTMLInputElement &&
+                                      (input.type === 'checkbox' ||
+                                        input.type === 'radio'),
+                                  )
+                                  .map(
+                                    input =>
+                                      (input as HTMLInputElement).checked,
+                                  ),
+                                // Visible text after the mark, up to the next.
+                                label: texts
+                                  .filter(
+                                    ({ node, shown }) =>
+                                      !mark.contains(node) &&
+                                      (mark.compareDocumentPosition(node) &
+                                        Node.DOCUMENT_POSITION_FOLLOWING) !==
+                                        0 &&
+                                      (next === undefined ||
+                                        (next.compareDocumentPosition(node) &
+                                          Node.DOCUMENT_POSITION_PRECEDING) !==
+                                          0) &&
+                                      (shown?.getClientRects().length ?? 0) > 0,
+                                  )
+                                  .map(({ text }) => text)
+                                  .join(''),
+                                rect: {
+                                  x: markBox.x - origin.x,
+                                  y: markBox.y - origin.y,
+                                  width: markBox.width,
+                                  height: markBox.height,
+                                },
+                              };
+                            });
+                            return {
+                              ...(checkboxes.length > 0 && { checkboxes }),
+                              rowSpan: cell.rowSpan,
+                              colSpan: cell.colSpan,
+                              header:
+                                cell.tagName === 'TH' ||
+                                row.parentElement?.tagName === 'THEAD',
+                              text: cell.innerText,
+                              rect: {
+                                x: box.x - origin.x,
+                                y: box.y - origin.y,
+                                width: box.width,
+                                height: box.height,
+                              },
+                              // Half a px of slack for subpixel layout.
+                              printed:
+                                cell.getClientRects().length === 1 &&
+                                box.x >= origin.x - 0.5 &&
+                                box.y >= origin.y - 0.5 &&
+                                box.right <= origin.right + 0.5 &&
+                                box.bottom <= origin.bottom + 0.5,
+                            };
+                          }),
+                      })),
+                  },
+                }
+              : undefined;
       return {
-        type: element.getAttribute('data-gt') ?? '',
+        type,
         id: element.getAttribute('data-gt-id'),
         ref: element.getAttribute('data-ref'),
         splitFrom: element.getAttribute('data-split-from'),
@@ -62,6 +241,30 @@ function collect(): Measurement {
         rect: { x, y, width, height },
         text: element instanceof HTMLElement ? element.innerText : '',
         nested: element.parentElement?.closest('[data-gt]') != null,
+        attributes: Object.fromEntries(
+          Array.from(element.attributes)
+            .filter(
+              ({ name }) =>
+                name.startsWith('data-gt-') && name !== 'data-gt-id',
+            )
+            .map(({ name, value }) => [name, value]),
+        ),
+        innerAttributes: Array.from(element.querySelectorAll('*')).flatMap(
+          inner =>
+            Array.from(inner.attributes)
+              .filter(
+                ({ name }) =>
+                  name.startsWith('data-gt-') &&
+                  // A checkbox inside one of this table's cells (T02-2).
+                  !(
+                    name === 'data-gt-checked' &&
+                    inner.parentElement?.closest('td, th')?.closest('table') ===
+                      element
+                  ),
+              )
+              .map(({ name }) => ({ tag: inner.tagName.toLowerCase(), name })),
+        ),
+        ...(details && { details }),
       };
     });
   // Paged.js puts the declared page size on :root as `--pagedjs-width` and

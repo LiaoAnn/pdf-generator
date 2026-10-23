@@ -11,9 +11,13 @@ import type {
   Region,
 } from './measurement.ts';
 
+type Bbox = [number, number, number, number];
+
 /**
  * Turns one element's collected `details` into the type-specific fields the
- * contract requires for its block type (e.g. `checked` for a checkbox).
+ * contract requires for its block type (e.g. `checked` for a checkbox). It
+ * reports a problem by throwing a `GroundTruthError`; its issues are listed
+ * with the block's location.
  */
 export type DetailReader = (
   element: MeasuredElement,
@@ -43,6 +47,13 @@ const detailTypes: ReadonlySet<string> = new Set([
   'checkbox',
   'formula',
 ]);
+
+/** T13's `data-gt-*` attributes and the one block type each is allowed on. */
+const markupAttributes: Readonly<Record<string, BlockType>> = {
+  'data-gt-checked': 'checkbox',
+  'data-gt-latex': 'formula',
+  'data-gt-text': 'image',
+};
 
 const regionRank: Record<Region, number> = {
   top: 0,
@@ -110,6 +121,21 @@ export function buildGroundTruth(
         `${where}: block type "${element.type}" needs a detail reader (T13)`,
       );
     }
+    for (const name of Object.keys(element.attributes ?? {})) {
+      const owner = markupAttributes[name];
+      if (owner === undefined) {
+        problems.push(`${where}: unknown attribute ${name}`);
+      } else if (owner !== element.type) {
+        problems.push(
+          `${where}: ${name} is only allowed on data-gt="${owner}"`,
+        );
+      }
+    }
+    for (const { tag, name } of element.innerAttributes ?? []) {
+      problems.push(
+        `${where}: ${name} on <${tag}> inside the block is not allowed`,
+      );
+    }
     const origin =
       element.splitFrom === null ? undefined : byRef.get(element.splitFrom);
     if (element.splitFrom !== null && origin === undefined) {
@@ -142,6 +168,14 @@ export function buildGroundTruth(
     const id = seen === 1 ? base : `${base}-${seen}`;
     if (element.ref !== null) byRef.set(element.ref, { base, id });
 
+    let details: Record<string, unknown> = {};
+    try {
+      details = reader?.(element) ?? details;
+    } catch (error) {
+      if (!(error instanceof GroundTruthError)) throw error;
+      issues.push(...error.issues.map(issue => `${where}: ${issue}`));
+      continue;
+    }
     blocks.push({
       id,
       type: element.type,
@@ -150,7 +184,7 @@ export function buildGroundTruth(
       order: blocks.length,
       text: element.text.trim(),
       ...(origin === undefined ? {} : { continues: origin.id }),
-      ...reader?.(element),
+      ...details,
     });
   }
 
@@ -180,8 +214,11 @@ export function buildGroundTruth(
 }
 
 /** `[x0, y0, x1, y1]` in pt relative to the page; each edge rounded on its own. */
-function bbox(rect: Rect, page: Rect): [number, number, number, number] {
-  const x = rect.x - page.x;
-  const y = rect.y - page.y;
-  return [toPt(x), toPt(y), toPt(x + rect.width), toPt(y + rect.height)];
+function bbox(rect: Rect, page: Rect): Bbox {
+  return pageBbox({ ...rect, x: rect.x - page.x, y: rect.y - page.y });
+}
+
+/** A rect already relative to its page, in CSS px, as a gt.json bbox. */
+export function pageBbox({ x, y, width, height }: Rect): Bbox {
+  return [toPt(x), toPt(y), toPt(x + width), toPt(y + height)];
 }

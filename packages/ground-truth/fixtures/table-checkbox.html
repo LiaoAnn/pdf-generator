@@ -1,0 +1,51 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 595.28 x 841.89, margins 54pt. The table has
+two 180pt columns and four 24pt rows, with no padding/borders/spacing:
+table [54,54,414,150], column edges 54,234,414, row edges 54,78,102,126,150.
+Cells align their contents to the top. Each option is a 60pt inline-block;
+each mark/input is a top-aligned 12pt square with zero margin/padding.
+Thus marks start at the cell's x plus 0,60,120 and at the cell's y.
+The header mark is [234,54,246,66]; yes/no marks are [234,78,246,90]
+and [294,78,306,90]; hazard marks are [234,102,246,114],
+[294,102,306,114], [354,102,366,114]; the unlabeled mark is
+[234,126,246,138]. DOM order is option order, including nested labels.
+Adjacent options have no intervening whitespace. Glyphs remain in cell
+text; native inputs and the empty CSS-drawn mark contribute no text.
+The hazard cell uses white-space:pre: its two spaces before 火災 and three
+between 其他 and 原因 stay in cell text, but labels collapse those runs.
+The last mark has no following text, so its option label is empty.
+Header cells have header=true; the first column has no checkboxes key.
+Expected JSON is hand-written from this design, never from reader output.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>事故通報選項</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 360pt; }
+col { width: 180pt; }
+tr { height: 24pt; }
+td, th { padding: 0; border: 0; vertical-align: top; text-align: left; font-weight: normal; }
+.option { display: inline-block; width: 60pt; vertical-align: top; }
+.mark, input { display: inline-block; vertical-align: top; width: 12pt; height: 12pt; margin: 0; padding: 0; }
+.drawn { border: 1pt solid black; }
+.hazards { white-space: pre; }
+</style>
+</head>
+<body>
+<table data-gt="table" data-gt-id="choices">
+<colgroup><col><col></colgroup>
+<thead><tr><th>欄位</th><th><span class="option"><span class="mark" data-gt-checked="true">☑</span>審核</span></th></tr></thead>
+<tbody>
+<tr><td>是否受理</td><td><span class="option"><span class="mark" data-gt-checked="true">☑</span>是</span><span class="option"><span class="mark" data-gt-checked="false">☐</span>否</span></td></tr>
+<tr><td>事故類型</td><td class="hazards"><span class="option"><input type="checkbox" checked>  火災</span><span class="option"><input type="radio">漏水</span><span class="option"><span class="mark drawn" data-gt-checked="false"></span>其他   <em>原因</em></span></td></tr>
+<tr><td>空白選項</td><td><input type="checkbox"></td></tr>
+</tbody>
+</table>
+</body>
+</html>

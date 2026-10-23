@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "table-merged",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "merged",
+      "type": "table",
+      "page": 1,
+      "bbox": [54, 54, 294, 150],
+      "order": 0,
+      "text": "A\tB\tC\nD\tE\nF\tG\tH\nI\tJ",
+      "table": {
+        "rows": 4,
+        "cols": 4,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 2,
+            "colSpan": 1,
+            "header": true,
+            "text": "A",
+            "bbox": [54, 54, 114, 102]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 2,
+            "header": true,
+            "text": "B",
+            "bbox": [114, 54, 234, 78]
+          },
+          {
+            "row": 0,
+            "col": 3,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "C",
+            "bbox": [234, 54, 294, 78]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 2,
+            "header": true,
+            "text": "D",
+            "bbox": [114, 78, 234, 102]
+          },
+          {
+            "row": 1,
+            "col": 3,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "E",
+            "bbox": [234, 78, 294, 102]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 2,
+            "colSpan": 2,
+            "header": false,
+            "text": "F",
+            "bbox": [54, 102, 174, 150]
+          },
+          {
+            "row": 2,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "G",
+            "bbox": [174, 102, 234, 126]
+          },
+          {
+            "row": 2,
+            "col": 3,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "H",
+            "bbox": [234, 102, 294, 126]
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "I",
+            "bbox": [174, 126, 234, 150]
+          },
+          {
+            "row": 3,
+            "col": 3,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "J",
+            "bbox": [234, 126, 294, 150]
+          }
+        ]
+      }
+    }
+  ]
+}

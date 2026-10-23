@@ -35,7 +35,14 @@ export interface MeasuredElement {
   text: string;
   /** True when it lies inside another `data-gt` element. */
   nested: boolean;
-  /** Type-specific data collected in the browser (T13). */
+  /**
+   * Its `data-gt-*` attributes other than `data-gt-id` (T13's markup, e.g.
+   * `data-gt-checked`), by name.
+   */
+  attributes?: Record<string, string>;
+  /** `data-gt-*` attributes on elements inside it (T13 allows none). */
+  innerAttributes?: { tag: string; name: string }[];
+  /** Type-specific data collected in the browser (T13: `ElementDetails`). */
   details?: unknown;
 }
 
@@ -55,4 +62,64 @@ export interface Measurement {
   pages: MeasuredPage[];
   /** Every visible `data-gt` element, in document order. */
   elements: MeasuredElement[];
+}
+
+/** What the collector reads per block type for T13's detail readers. */
+export interface ElementDetails {
+  /** checkbox: the `checked` property of each checkbox or radio input, the element itself first. */
+  inputs?: boolean[];
+  /** formula: the text of each `<annotation encoding="application/x-tex">`, untrimmed. */
+  annotations?: string[];
+  /**
+   * formula: the rendered innerText of each KaTeX `.katex-html` part, the
+   * visible rendering without the hidden MathML copy.
+   */
+  visibleParts?: string[];
+  /** table: the rows printed on this page, when the element is a `<table>`. */
+  table?: { rows: MeasuredRow[] };
+}
+
+/** A printed table row, in visual order (thead, bodies, tfoot). */
+export interface MeasuredRow {
+  /** Its row group (thead, a tbody, tfoot): rows with the same value share one. */
+  group: number;
+  cells: MeasuredCell[];
+}
+
+export interface MeasuredCell {
+  /** The `rowSpan` property: 0 means to the last row of its row group. */
+  rowSpan: number;
+  colSpan: number;
+  /** A `<th>`, or a cell in `<thead>`. */
+  header: boolean;
+  /** Its `innerText`. */
+  text: string;
+  /** Its border box relative to its `.pagedjs_page`, in CSS px. */
+  rect: Rect;
+  /**
+   * False when it can't be in the PDF: it has more than one client rect or
+   * lies outside its page, as in a row Paged.js 0.4.3 left in the content
+   * area's hidden overflow (T03 §5).
+   */
+  printed: boolean;
+  /** The checkboxes printed inside it, in document order (none: absent). */
+  checkboxes?: MeasuredCheckbox[];
+}
+
+/**
+ * A checkbox inside a table cell: an element with `data-gt-checked`, or a
+ * checkbox or radio input outside such an element.
+ */
+export interface MeasuredCheckbox {
+  /** Its `data-gt-checked` attribute, or null. */
+  declared: string | null;
+  /** The `checked` property of each checkbox or radio input, itself first. */
+  inputs: boolean[];
+  /**
+   * The visible text after it, up to the next checkbox or the cell's end; a
+   * `<br>` or a block box adds a line break.
+   */
+  label: string;
+  /** Its border box relative to its `.pagedjs_page`, in CSS px. */
+  rect: Rect;
 }

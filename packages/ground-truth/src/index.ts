@@ -8,8 +8,12 @@ export {
   GroundTruthError,
 } from './build.ts';
 export type {
+  ElementDetails,
+  MeasuredCell,
+  MeasuredCheckbox,
   MeasuredElement,
   MeasuredPage,
+  MeasuredRow,
   Measurement,
   Rect,
   Region,

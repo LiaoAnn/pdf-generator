@@ -1,0 +1,27 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 is 595.28 x 841.89; margins 54pt. Each field's
+border box is 300 x 24pt including its 3pt border and 3pt padding, with
+zero margins. Thus boxes are [54,54,354,78], [54,78,354,102] and
+[54,102,354,126]. Empty, ASCII whitespace and non-breaking spaces all
+trim to text "". Expected JSON is hand-written from these CSS dimensions.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>空白填寫欄</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+[data-gt] { width: 300pt; height: 24pt; margin: 0; padding: 3pt; border: 3pt solid black; }
+</style>
+</head>
+<body>
+<div data-gt="field" data-gt-id="empty"></div>
+<div data-gt="field" data-gt-id="whitespace"> 
+   </div>
+<div data-gt="field" data-gt-id="nbsp"> &nbsp;&nbsp; </div>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 is 595.28 x 841.89 with 54pt margins.
+Five border-box images/elements, each 240pt x 48pt without margins,
+stack at x=54, y=54+48*n (n=0..4); x1=294 and y1=y+48.
+The first image's declared text is trimmed; its alt text is deliberately
+different and is not rendered innerText. The second is a CSS image whose
+declared text is used. The third has rendered text and no declaration.
+The last two have no rendered text: absent and whitespace-only declarations
+both produce the empty string. Explicit display:block avoids img baselines.
+All images are inline data URIs: no network or OCR is involved.
+Expected JSON is hand-written from this design, never from the reader.
+-->
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>圖片內文字</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+[data-gt] { display: block; width: 240pt; height: 48pt; margin: 0; padding: 0; }
+.background { background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='gray'/%3E%3C/svg%3E"); }
+</style>
+</head>
+<body>
+<img data-gt="image" data-gt-id="declared-img" data-gt-text="  台灣研究院  " alt="Alternative description, not fixture text" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='gray'/%3E%3C/svg%3E">
+<div class="background" data-gt="image" data-gt-id="declared-background" data-gt-text="  核准  "></div>
+<div class="background" data-gt="image" data-gt-id="rendered-fallback">  圖中文字  <span style="display:none">不應讀取</span></div>
+<img data-gt="image" data-gt-id="empty-img" alt="No declared text" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'/%3E">
+<img data-gt="image" data-gt-id="blank-declaration" data-gt-text="   " alt="Not the declared text" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'/%3E">
+</body>
+</html>

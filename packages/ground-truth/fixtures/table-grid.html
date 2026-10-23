@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 595.28 x 841.89, margins 54pt. The table starts
+at (54,54), width 240pt, four 24pt rows: border box [54,54,294,150].
+Columns are 72,96,72pt, so vertical edges are 54,126,222,294;
+horizontal edges are 54,78,102,126,150. Zero borders/padding/spacing
+make these the cell border boxes. The ragged third row has two real cells,
+not a synthetic blank at col=2; the second row's last cell IS a real blank.
+The first row's td is a header because it is in thead; the last row's th
+is a header despite being in tfoot. Tea/Leaf uses two 12pt lines within its
+24pt row; its hidden span contributes no rendered text. InnerText separates cells with
+TAB and rows with LF, including the real blank cell's preceding TAB.
+Expected JSON is hand-written from this design, never from reader output.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Table grid</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/12pt sans-serif; }
+table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 240pt; }
+tr { height: 24pt; }
+td, th { padding: 0; border: 0; }
+</style>
+</head>
+<body>
+<table data-gt="table" data-gt-id="grid">
+<colgroup><col style="width:72pt"><col style="width:96pt"><col style="width:72pt"></colgroup>
+<thead><tr><th>Item</th><th>Qty</th><td>Note</td></tr></thead>
+<tbody><tr><td>  Tea<br>Leaf<span style="display:none">SECRET</span>  </td><td>2</td><td> </td></tr><tr><td>Total</td><td>0</td></tr></tbody>
+<tfoot><tr><th>End</th><td>3</td><td>Done</td></tr></tfoot>
+</table>
+</body>
+</html>

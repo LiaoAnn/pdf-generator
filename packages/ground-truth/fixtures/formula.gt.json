@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "formula",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "inline-energy",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 54, 354, 90],
+      "order": 0,
+      "text": "E=mc²",
+      "latex": "E=mc^2"
+    },
+    {
+      "id": "display-ratio",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 90, 354, 126],
+      "order": 1,
+      "text": "a/b",
+      "latex": "\\frac{a}{b}"
+    },
+    {
+      "id": "plain-explicit",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 126, 354, 162],
+      "order": 2,
+      "text": "x + y",
+      "latex": "x +  y"
+    },
+    {
+      "id": "matching-sources",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 162, 354, 198],
+      "order": 3,
+      "text": "z²",
+      "latex": "z^2"
+    },
+    {
+      "id": "multiple-parts",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 198, 354, 234],
+      "order": 4,
+      "text": "a +b",
+      "latex": "a+b"
+    },
+    {
+      "id": "explicit-multiple",
+      "type": "formula",
+      "page": 1,
+      "bbox": [54, 234, 354, 270],
+      "order": 5,
+      "text": "x x",
+      "latex": "x"
+    }
+  ]
+}

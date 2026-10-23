@@ -1,0 +1,41 @@
+<!doctype html>
+<!--
+Hand derivation (pt): A4 595.28 x 841.89, margins 54pt. Table border box
+[54,54,294,150], four columns of 60pt and four rows of 24pt. Column edges
+54,114,174,234,294; row edges 54,78,102,126,150. No padding/border/spacing.
+A covers rows 0..1 at col 0. B covers cols 1..2 at row 0; D covers those
+columns at row 1 (skipping A). F covers rows 2..3 AND cols 0..1. I and J
+therefore start at cols 2 and 3 in the last row. Covered slots produce no
+cells. All thead cells (including td E) are headers, as is tbody th I.
+Table innerText is A TAB B TAB C LF D TAB E LF F TAB G TAB H LF I TAB J.
+Expected JSON is hand-written from this design, never from reader output.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Merged table</title>
+<style>
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 240pt; }
+col { width: 60pt; }
+tr { height: 24pt; }
+td, th { padding: 0; border: 0; }
+</style>
+</head>
+<body>
+<table data-gt="table" data-gt-id="merged">
+<colgroup><col><col><col><col></colgroup>
+<thead>
+<tr><th rowspan="2">A</th><th colspan="2">B</th><th>C</th></tr>
+<tr><th colspan="2">D</th><td>E</td></tr>
+</thead>
+<tbody>
+<tr><td rowspan="2" colspan="2">F</td><td>G</td><td>H</td></tr>
+<tr><th>I</th><td>J</td></tr>
+</tbody>
+</table>
+</body>
+</html>

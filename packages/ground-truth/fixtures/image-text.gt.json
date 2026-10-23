@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "image-text",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "declared-img",
+      "type": "image",
+      "page": 1,
+      "bbox": [54, 54, 294, 102],
+      "order": 0,
+      "text": "台灣研究院"
+    },
+    {
+      "id": "declared-background",
+      "type": "image",
+      "page": 1,
+      "bbox": [54, 102, 294, 150],
+      "order": 1,
+      "text": "核准"
+    },
+    {
+      "id": "rendered-fallback",
+      "type": "image",
+      "page": 1,
+      "bbox": [54, 150, 294, 198],
+      "order": 2,
+      "text": "圖中文字"
+    },
+    {
+      "id": "empty-img",
+      "type": "image",
+      "page": 1,
+      "bbox": [54, 198, 294, 246],
+      "order": 3,
+      "text": ""
+    },
+    {
+      "id": "blank-declaration",
+      "type": "image",
+      "page": 1,
+      "bbox": [54, 246, 294, 294],
+      "order": 4,
+      "text": ""
+    }
+  ]
+}
