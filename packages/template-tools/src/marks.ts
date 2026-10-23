@@ -2,7 +2,7 @@
 // element marked with a contract block type. Checked on the template source,
 // so every issue points at a line and column the pack author wrote.
 import { blockTypes } from '@pdf-generator/contract';
-import { type DefaultTreeAdapterTypes as Html, parse } from 'parse5';
+import type { Html, TemplateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { position } from './text.ts';
 
@@ -28,49 +28,12 @@ const types = new Set<string>(blockTypes);
 /** Whitespace in source text, including the no-break space as an entity. */
 const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 
-/**
- * The template as HTML: Handlebars block tags, `{{else}}` and comments become
- * spaces (newlines kept), so offsets in it are offsets in the template and
- * both branches of every block are checked. Mustaches stay, as text.
- */
-function asHtml(source: string, ast: hbs.AST.Program): string {
-  const lineStarts = [0];
-  for (let i = 0; i < source.length; i++) {
-    if (source[i] === '\n') lineStarts.push(i + 1);
-  }
-  const offset = ({ line, column }: hbs.AST.Position) =>
-    (lineStarts[line - 1] ?? 0) + column;
-  const html = source.replace(/[^\n]/g, ' ').split('');
-  const keep = (node: hbs.AST.Node) => {
-    const start = offset(node.loc.start);
-    const end = offset(node.loc.end);
-    for (let i = start; i < end; i++) html[i] = source[i] ?? ' ';
-  };
-  const visit = (program: hbs.AST.Program | undefined) => {
-    for (const statement of program?.body ?? []) {
-      if (
-        statement.type === 'ContentStatement' ||
-        statement.type === 'MustacheStatement'
-      ) {
-        keep(statement);
-      } else if (statement.type === 'BlockStatement') {
-        const block = statement as hbs.AST.BlockStatement;
-        visit(block.program);
-        visit(block.inverse);
-      }
-    }
-  };
-  visit(ast);
-  return html.join('');
-}
-
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
   source: string,
-  ast: hbs.AST.Program,
+  { html, document }: TemplateHtml,
   file: string,
 ): PackIssue[] {
-  const html = asHtml(source, ast);
   const issues: PackIssue[] = [];
   const report = (code: string, offset: number, message: string) =>
     issues.push({ code, file, ...position(source, offset), message });
@@ -131,6 +94,6 @@ export function markIssues(
       visit(element, marked);
     }
   };
-  visit(parse(html, { sourceCodeLocationInfo: true }), false);
+  visit(document, false);
   return issues;
 }

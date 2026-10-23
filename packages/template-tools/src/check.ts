@@ -6,8 +6,10 @@ import {
 } from '@pdf-generator/contract';
 import { type FakeRecord, recordSchema } from '@pdf-generator/fake-data';
 import type { z } from 'zod';
+import { assetIssues } from './assets.ts';
 import { type PackFiles, readFiles } from './files.ts';
 import { parseTemplate, renderTemplate, TemplateError } from './fill.ts';
+import { templateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { markIssues } from './marks.ts';
 import { decode, jsonPosition, parseJson } from './text.ts';
@@ -162,7 +164,18 @@ export function checkPack(
     const parsed = parseTemplate(templateText, template);
     issues.push(...parsed.issues);
     if (parsed.ast !== undefined) {
-      issues.push(...markIssues(templateText, parsed.ast, template));
+      const html = templateHtml(templateText, parsed.ast);
+      issues.push(...markIssues(templateText, html, template));
+      issues.push(
+        ...assetIssues(
+          { file: template, text: templateText, html },
+          styles.flatMap((file, i) => {
+            const text = styleTexts[i];
+            return text === undefined ? [] : [{ file, text }];
+          }),
+          path => files[path] !== undefined,
+        ),
+      );
       if (parsed.issues.length === 0 && parsedSample !== undefined) {
         try {
           renderTemplate(parsed.ast, parsedSample, template);
