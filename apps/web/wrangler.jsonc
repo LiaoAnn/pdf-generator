@@ -12,7 +12,12 @@
   "vars": {
     "ACCESS_TEAM_DOMAIN": "",
     "ACCESS_AUD": "",
+    // Days a finished batch's results are kept before the daily cron deletes
+    // them (src/batch/retention.ts). A positive whole number; anything else
+    // deletes nothing.
+    "BATCH_RETENTION_DAYS": "30",
   },
+  "triggers": { "crons": ["17 3 * * *"] },
   // Template packs, generated fixtures and their metadata. T15 and T16 add
   // their tables in src/db/schema.ts and their objects under their own key
   // prefixes. database_id is a placeholder until the remote database exists;
@@ -31,6 +36,33 @@
       "bucket_name": "pdf-generator-files",
     },
   ],
+  // Batches (T16): one Workflow instance per batch, id = batch id
+  // (src/batch/workflow.ts).
+  "workflows": [
+    {
+      "name": "pdf-generator-batch",
+      "binding": "BATCH_WORKFLOW",
+      "class_name": "BatchWorkflow",
+    },
+  ],
+  // Fixtures (T16): one message per fixture, consumed by src/batch/queue.ts.
+  // max_retries is a backstop above the consumer's own maxAttempts (3).
+  "queues": {
+    "producers": [{ "binding": "FIXTURES", "queue": "pdf-generator-fixtures" }],
+    "consumers": [
+      {
+        "queue": "pdf-generator-fixtures",
+        "max_batch_size": 4,
+        "max_batch_timeout": 1,
+        "max_retries": 5,
+      },
+    ],
+  },
+  // The print Worker (apps/print). Locally, run it next to `pnpm dev` with
+  // `pnpm dev:print`; both find each other through the dev registry.
+  "services": [{ "binding": "PRINT", "service": "pdf-generator-print" }],
+  // PRINT_TOKEN: the print Worker's bearer token (the same secret on both).
+  "secrets": { "required": ["PRINT_TOKEN"] },
   "observability": {
     "enabled": true,
   },

@@ -2,6 +2,7 @@
 // migrations by hand (AGENTS.md).
 import { sql } from 'drizzle-orm';
 import {
+  index,
   integer,
   primaryKey,
   sqliteTable,
@@ -25,4 +26,48 @@ export const templates = sqliteTable(
       .default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
   },
   table => [primaryKey({ columns: [table.id, table.version] })],
+);
+
+/** A batch: `count` fixtures from one template version and seed (T16). */
+export const batches = sqliteTable(
+  'batches',
+  {
+    id: text('id').primaryKey(),
+    templateId: text('template_id').notNull(),
+    templateVersion: integer('template_version').notNull(),
+    count: integer('count').notNull(),
+    seed: text('seed').notNull(),
+    status: text('status', {
+      enum: ['queued', 'running', 'completed', 'failed'],
+    }).notNull(),
+    rerunOf: text('rerun_of'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
+    finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+  },
+  table => [index('batches_created_at').on(table.createdAt)],
+);
+
+/**
+ * One finished fixture of a batch. A fixture without a row is still pending;
+ * its files are in R2 under the batch's prefix (src/batch/files.ts).
+ */
+export const fixtures = sqliteTable(
+  'fixtures',
+  {
+    batchId: text('batch_id')
+      .notNull()
+      .references(() => batches.id, { onDelete: 'cascade' }),
+    index: integer('fixture_index').notNull(),
+    status: text('status', { enum: ['completed', 'failed'] }).notNull(),
+    error: text('error'),
+    attempts: integer('attempts').notNull(),
+    pageCount: integer('page_count'),
+    /** SHA-256 hex of the stored files, to compare a batch with its re-run. */
+    dataSha256: text('data_sha256'),
+    gtSha256: text('gt_sha256'),
+    pdfSha256: text('pdf_sha256'),
+  },
+  table => [primaryKey({ columns: [table.batchId, table.index] })],
 );

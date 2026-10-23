@@ -32,6 +32,10 @@ beforeAll(async () => {
   );
   worker = await unstable_startWorker({
     config: resolve(serverRoot, 'wrangler.json'),
+    // The print Worker isn't running here, and a service binding to a Worker
+    // that isn't running stops the runtime from starting. Nothing in these
+    // tests prints.
+    bindings: { PRINT: { type: 'plain_text', value: 'not used' } },
     dev: {
       remote: false,
       persist: false,

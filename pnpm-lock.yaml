@@ -236,6 +236,9 @@ importers:
       '@pdf-generator/contract':
         specifier: workspace:*
         version: link:../../packages/contract
+      '@pdf-generator/fake-data':
+        specifier: workspace:*
+        version: link:../../packages/fake-data
       '@tanstack/react-router':
         specifier: ^1.160.0
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -251,6 +254,9 @@ importers:
       effect:
         specifier: ^4.0.0
         version: 4.0.5
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       jose:
         specifier: ^6.2.0
         version: 6.2.13
@@ -2457,6 +2463,9 @@ packages:
 
   fetchdts@0.2.0:
     resolution: {integrity: sha512-PJb4ZTGT2/wK78RmVrxZITStWabhZlKBsL52VOgq+c7clEkdHdEB+0rtzrXCbZJqeYJj+IwNWYqB5/G6vouA6A==}
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   formatly@0.7.1:
     resolution: {integrity: sha512-ESuCEJE0SGgabl9q+zABI8LhJDmF+8nhpuqDzuM48HfJ9QTD5o6PqFJDFZY7w6f8xsh5lixuj5nJsQNvYOWvKQ==}
@@ -4864,6 +4873,8 @@ snapshots:
       picomatch: 4.0.7
 
   fetchdts@0.2.0: {}
+
+  fflate@0.8.3: {}
 
   formatly@0.7.1:
     dependencies:
