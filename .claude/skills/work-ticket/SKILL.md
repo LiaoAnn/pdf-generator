@@ -17,7 +17,7 @@ This skill sets this project's rules for the global `/plan-it`, `/implement-plan
 | 3. Implement | `/implement-plan`, then `/tdd` at each Red step |
 | Before the first delegation | `/cross-model-delegate` |
 | Each Acceptance | `/verification-evidence` |
-| Each review (per slice and final) | `/review-change` |
+| The final review (step 4), not per slice | `/review-change` |
 | An unexplained failure | `/diagnose-bug` |
 | A Drizzle schema or migration | `/drizzle-orm` |
 
@@ -70,7 +70,7 @@ Run `/implement-plan` and follow its slice loop, with these changes:
 3. **Green**: the slice's tests and the tests near the change, through `wt-exec`.
 4. **Mechanical checks**: every command in `AGENTS.md`'s Commands table.
 5. **Acceptance** on your running stack, per the plan: a real request to `https://app-<wt>.pdf-generator.liaoann.net`, a CLI run, a rendered PDF opened and checked, a browser flow with screenshots. Do visual checks with T3's preview tools on the worktree URL. Run `/verification-evidence` and record evidence as it says. Where the real check needs an external service you haven't been cleared for, report it **inconclusive** with the reason; don't work around it.
-6. **Review**: run `/review-change` with Correctness and Test Quality (add Design Fit, Simplicity, and Security when `review-change` calls for them), every lens through `/cross-model-delegate`. Fix confirmed Blockers, then rerun 3–5 for what the fix touched and do another review round for those lenses.
+6. **No per-slice review.** Skip `/implement-plan`'s step 6: code review runs once, over the whole ticket, in step 4 below.
 7. **Commit**: `git -C <path> commit` per `AGENTS.md`'s Git rules.
 
 A surprise whose cause isn't obvious goes through `/diagnose-bug` before more editing. A slice that outgrows its Boundary stops and re-cuts the plan; if the new plan has a `STOP` item, send an `ASK`.
@@ -78,7 +78,7 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 ## 4. Finish
 
 1. **Whole-ticket acceptance**: rerun every 驗收測試 item end to end on the stack, after the last slice, with evidence.
-2. **Final review**: run `/review-change` over `origin/main...HEAD` with Correctness, Test Quality, Design Fit and Simplicity, plus Security if applicable, each through `/cross-model-delegate`, in parallel. Fix Blockers until a round reports none.
+2. **Final review** (the only code review): run `/review-change` over `origin/main...HEAD` with Correctness, Test Quality, Design Fit and Simplicity, plus Security if applicable, each lens a subagent through `/cross-model-delegate`, in parallel. Fix confirmed Blockers, rerun the tests, checks and acceptance for what each fix touched, and start a new round for those lenses until one reports none.
 3. **Rebase** onto the latest `origin/main` (`git -C <path> fetch origin && git -C <path> rebase origin/main`). For conflicts in `pnpm-lock.yaml` or D1 migrations, follow `AGENTS.md`'s Generated files rules, then rerun the tests and checks.
 4. **PR**: `git -C <path> push -u origin <branch>`, then `gh pr create --base main` with:
    - title `TNN: <ticket title in English>`

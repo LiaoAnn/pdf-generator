@@ -56,7 +56,7 @@ T01 adds the test, typecheck and CI commands; until then a ticket states its own
 - **One ticket = one T3 thread = one worktree = one branch = one PR**, about 500–2000 changed lines (generated files such as lockfiles and migrations don't count). Over 2000: the ticket is split. Under 300: it is merged into another.
 - A **coordinator** thread (the user's main conversation, in the main checkout) tracks every ticket, starts **worker** threads, relays their questions to the user, and merges PRs. Workers never talk to the user directly; they talk to the coordinator.
 - A ticket may start once every ticket in its **Blocked by** has merged. Anything else it needs that isn't merged yet is replaced by a **stub** behind the same interface. Don't wait for it, and don't build it.
-- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, tests first (written by a different model) → implement → verify on the real stack → review (by a different model) → PR. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
+- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, red tests first (written by a different model) → implement → verify on the real stack; after the last slice, one code review of the whole ticket (by a different model) → PR. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
 
 | Skill | Who uses it |
 | --- | --- |
