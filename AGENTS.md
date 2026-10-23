@@ -34,22 +34,37 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 - `docs/tickets.md`: all tickets (Chinese): goal, Blocked by, Blocks, collision risk, acceptance tests, out of scope, estimated lines. **The source of truth for scope.**
 - Ticket status is not stored in the repo. A ticket is running when its T3 thread (`TNN …`) is open, and done when its PR (branch `tNN-…`) has merged.
 - `.claude/skills/`: this project's skills (below). General skills (`plan-it`, `implement-plan`, `tdd`, `review-change`, `verification-evidence`, `diagnose-bug`, `drizzle-orm`) are installed globally; the project skills add rules on top of them and win where they differ.
-- The monorepo layout, stack and commands are created by T01. Until T01 merges, the repo is a single-Worker template (`src/index.ts`, `wrangler.jsonc`, Biome, Knip, TypeScript 7).
+- The platform is a pnpm monorepo. Every workspace package is named `@pdf-generator/<dir>`, is TypeScript source with no build step (`exports` points at `src/index.ts`), and has its own `tsconfig.json` (extending `tsconfig.base.json`), `vitest.config.ts` and tests next to the code (`src/**/*.test.ts`). Until its ticket fills it, a package holds only a placeholder export and test.
 
-<!-- T01: replace this list with the real package map and the commands below. -->
+| Path | Package | What it is | Filled by |
+| --- | --- | --- | --- |
+| `packages/contract` | `@pdf-generator/contract` | Shared contract: zod schemas, exported JSON Schema | T02 |
+| `packages/fake-data` | `@pdf-generator/fake-data` | Seeded fake-data engine, Taiwanese fields | T05, T12 |
+| `packages/template-tools` | `@pdf-generator/template-tools` | Handlebars fill and template-pack checks (platform and local) | T06 |
+| `packages/ground-truth` | `@pdf-generator/ground-truth` | Reads `gt.json` blocks from a printed page | T08, T13 |
+| `apps/web` | `@pdf-generator/web` | The website Worker (TanStack Start), `wrangler dev` on port 8787 | T09 |
+| `apps/print` | `@pdf-generator/print` | The PDF print Worker (Browser Rendering, Paged.js), port 8788 | T07 |
+
+- Shared tool versions (`typescript`, `vitest`, `wrangler`) live in the `catalog:` of `pnpm-workspace.yaml`; a package lists them as `"catalog:"`. Vitest stays on 4.x so `@cloudflare/vitest-pool-workers` can be added when a Worker needs tests inside workerd.
+- Each Worker app has its own `wrangler.jsonc` and generated `worker-configuration.d.ts` (`pnpm cf-typegen`).
+- `.devcontainer/`: the per-worktree environment (Dev Container + compose; no host ports). `.github/workflows/ci.yml`: CI runs install, typecheck, lint, knip and test on every PR and on `main`.
 
 ## Commands
 
-Run every project command inside your worktree's stack (see "Environment"), never on the VM host.
+Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
 | Command | Purpose |
 | --- | --- |
-| `pnpm lint` | Biome check |
-| `pnpm knip` | Unused files, exports, dependencies |
+| `pnpm typecheck` | TypeScript 7 (`tsc`) in every package |
+| `pnpm test` | Vitest across every package, then the dev-container script tests |
+| `pnpm exec vitest run --project @pdf-generator/<dir>` | One package's tests |
+| `pnpm lint` | Biome check (whole repo) |
+| `pnpm knip` | Unused files, exports, dependencies (all workspaces) |
 | `pnpm check` | Apply Biome fixes |
-| `pnpm cf-typegen` | Regenerate Worker binding types after changing bindings |
-
-T01 adds the test, typecheck and CI commands; until then a ticket states its own.
+| `pnpm verify` | Everything CI runs: typecheck, lint, knip, test |
+| `pnpm dev --ip 0.0.0.0` | `wrangler dev` for `apps/web` (port 8787, the worktree's `app` URL) |
+| `pnpm dev:print --ip 0.0.0.0` | `wrangler dev` for `apps/print` (port 8788, inside the stack only) |
+| `pnpm cf-typegen` | Regenerate every Worker's binding types after changing its `wrangler.jsonc` |
 
 ## How work is organized
 

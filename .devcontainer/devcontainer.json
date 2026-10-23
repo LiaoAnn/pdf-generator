@@ -1,5 +1,5 @@
 {
-  "name": "cf-worker-typescript-template",
+  "name": "pdf-generator",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
