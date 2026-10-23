@@ -1,4 +1,5 @@
 // The template read as HTML, with offsets that are offsets in the template.
+import { decodeHTMLAttribute } from 'entities';
 import { type DefaultTreeAdapterTypes as Html, parse } from 'parse5';
 
 export type { Html };
@@ -34,9 +35,12 @@ function asHtml(
   branches: [number, number][];
   statements: Statement[];
 } {
+  // Lines as Handlebars' lexer counts them: CR LF, CR and LF each end one.
   const lineStarts = [0];
   for (let i = 0; i < source.length; i++) {
-    if (source[i] === '\n') lineStarts.push(i + 1);
+    if (source[i] === '\n' || (source[i] === '\r' && source[i + 1] !== '\n')) {
+      lineStarts.push(i + 1);
+    }
   }
   const offset = ({ line, column }: hbs.AST.Position) =>
     (lineStarts[line - 1] ?? 0) + column;
@@ -113,21 +117,39 @@ export function templateHtml(
   ast: hbs.AST.Program,
 ): TemplateHtml {
   const { html, branches, statements } = asHtml(source, ast);
-  // Branches nest, so the innermost one containing an offset is the
-  // shortest; templates have few blocks, so a scan is fine.
+  // Branches nest. Sorted by start, each one's parent is the nearest earlier
+  // branch that contains it; the innermost branch containing an offset is
+  // then the last one starting at or before it, or one of its ancestors.
+  const order = branches
+    .map((range, i) => ({ range, i }))
+    .sort((a, b) => a.range[0] - b.range[0]);
+  const parents: number[] = [];
+  const open: number[] = [];
+  order.forEach(({ range }, k) => {
+    while (open.length > 0) {
+      const top = order[open.at(-1) ?? 0]?.range ?? [0, 0];
+      if (range[0] < top[1]) break;
+      open.pop();
+    }
+    parents.push(open.at(-1) ?? -1);
+    open.push(k);
+  });
   const branchAt = (at: number) => {
-    let best = -1;
-    branches.forEach(([start, end], i) => {
-      const current = branches[best];
-      if (
-        start <= at &&
-        at < end &&
-        (current === undefined || end - start < current[1] - current[0])
-      ) {
-        best = i;
-      }
-    });
-    return best;
+    let low = 0;
+    let high = order.length - 1;
+    let k = -1;
+    while (low <= high) {
+      const middle = (low + high) >> 1;
+      if ((order[middle]?.range[0] ?? 0) <= at) {
+        k = middle;
+        low = middle + 1;
+      } else high = middle - 1;
+    }
+    for (; k >= 0; k = parents[k] ?? -1) {
+      const entry = order[k];
+      if (entry && at < entry.range[1]) return entry.i;
+    }
+    return -1;
   };
   const inBranch = (at: number, branch: number) => {
     const range = branches[branch];
@@ -172,4 +194,29 @@ export function lastContent(
     } else if ('tagName' in node) last = location.startOffset;
   }
   return last;
+}
+
+/**
+ * An attribute value as the browser reads it (entities decoded, CR LF and CR
+ * as LF), with, for each offset in it, the offset in the raw value.
+ */
+export function decodedOffsets(raw: string): {
+  decoded: string;
+  raw: number[];
+} {
+  let decoded = '';
+  const offsets: number[] = [];
+  for (const token of raw.matchAll(
+    /\r\n?|&(?:#\d+|#[xX][\da-fA-F]+|[A-Za-z][A-Za-z\d]*);?|[\s\S]/g,
+  )) {
+    const text = token[0].startsWith('\r')
+      ? '\n'
+      : token[0].startsWith('&')
+        ? decodeHTMLAttribute(token[0])
+        : token[0];
+    for (let i = 0; i < text.length; i++) offsets.push(token.index);
+    decoded += text;
+  }
+  offsets.push(raw.length);
+  return { decoded, raw: offsets };
 }

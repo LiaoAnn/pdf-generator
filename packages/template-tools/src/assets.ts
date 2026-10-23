@@ -4,7 +4,12 @@
 // against the file containing it, as in a browser loading the pack's files at
 // their pack paths.
 import { fontFaces, type Reference, scanCss, usedFamilies } from './css.ts';
-import { attributeOf, type Html, type TemplateHtml } from './html.ts';
+import {
+  attributeOf,
+  decodedOffsets,
+  type Html,
+  type TemplateHtml,
+} from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { isRefused } from './policy.ts';
 import { decode, position } from './text.ts';
@@ -156,31 +161,39 @@ export function assetIssues(
       reached.push(problem.path);
     }
   };
-  /** CSS found at `start` in `source`: a stylesheet or a style element. */
-  const css = (source: Source, css: string, start: number, rules: boolean) => {
+  /**
+   * CSS found in `source`; `at` turns an offset in `css` into one in the
+   * source (they differ in attribute values, which are entity-decoded).
+   */
+  const css = (
+    source: Source,
+    css: string,
+    at: (offset: number) => number,
+    rules: boolean,
+  ) => {
     const { references, escapes, dynamic } = scanCss(css);
     for (const offset of dynamic) {
       issue(
         'asset-dynamic',
         source,
-        start + offset,
+        at(offset),
         'image-set() takes its URLs from var()/env()/attr() here: write them out',
       );
     }
     for (const ref of references) {
-      reference(source, { ...ref, offset: start + ref.offset });
+      reference(source, { ...ref, offset: at(ref.offset) });
     }
     for (const offset of escapes) {
       issue(
         'css-escape',
         source,
-        start + offset,
+        at(offset),
         'a backslash escape outside a CSS string: write names out plainly',
       );
     }
     if (rules) {
       for (const face of fontFaces(css)) {
-        faces.push({ ...source, ...face, offset: start + face.offset });
+        faces.push({ ...source, ...face, offset: at(face.offset) });
       }
     }
     const used = usedFamilies(css);
@@ -189,11 +202,26 @@ export function assetIssues(
   };
 
   const { html, document } = template.html;
-  const valueStart = (location: { startOffset: number; endOffset: number }) => {
+  /**
+   * Maps an offset in an attribute's value as parse5 decoded it (entities,
+   * CR LF → LF) to an offset in the template.
+   */
+  const valueAt = (
+    location: { startOffset: number; endOffset: number },
+    decoded: string,
+  ) => {
     const attr = html.slice(location.startOffset, location.endOffset);
     const equals = attr.indexOf('=');
-    const quote = /^\s*["']?/.exec(attr.slice(equals + 1))?.[0].length ?? 0;
-    return location.startOffset + equals + 1 + quote;
+    const quote = /^\s*["']?/.exec(attr.slice(equals + 1))?.[0] ?? '';
+    const start = location.startOffset + equals + 1 + quote.length;
+    const raw = html.slice(
+      start,
+      location.endOffset - (/["']$/.test(quote) ? 1 : 0),
+    );
+    const map = decodedOffsets(raw);
+    return map.decoded === decoded
+      ? (offset: number) => start + (map.raw[offset] ?? raw.length)
+      : (offset: number) => start + offset;
   };
   const visit = (node: Html.ParentNode) => {
     for (const child of node.childNodes) {
@@ -210,14 +238,14 @@ export function assetIssues(
         const attr = attributeOf(element, name);
         const at = attrAt(name);
         if (attr === undefined || at === undefined) continue;
-        const start = valueStart(at);
+        const start = valueAt(at, attr.value);
         // Any data in a srcset, descriptors included, can carry a URL.
         const dynamicAt = attr.value.indexOf('{{');
         if (name === 'srcset' && dynamicAt >= 0) {
           issue(
             'asset-dynamic',
             template,
-            start + dynamicAt,
+            start(dynamicAt),
             'a srcset may not depend on the data: write it out',
           );
           continue;
@@ -230,7 +258,7 @@ export function assetIssues(
         for (const { url, offset } of urls) {
           reference(
             template,
-            { url, offset: start + offset, kind },
+            { url, offset: start(offset), kind },
             'attribute',
           );
         }
@@ -243,7 +271,7 @@ export function assetIssues(
         issue(
           'asset-dynamic',
           template,
-          valueStart(linkAt),
+          valueAt(linkAt, link.value)(0),
           `${link.value} depends on the data: write the link out`,
         );
       }
@@ -253,15 +281,13 @@ export function assetIssues(
           const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
           const at = attrAt(name);
           if (name === 'style' || name.endsWith('href') || !at) continue;
-          if (attr.value.includes('url(') || attr.value.includes('image-set')) {
-            css(template, attr.value, valueStart(at), false);
-          }
+          css(template, attr.value, valueAt(at, attr.value), false);
         }
       }
       const style = attributeOf(element, 'style');
       const styleAt = attrAt('style');
       if (style !== undefined && styleAt !== undefined) {
-        css(template, style.value, valueStart(styleAt), false);
+        css(template, style.value, valueAt(styleAt, style.value), false);
       }
       const family = attributeOf(element, 'font-family');
       if (family !== undefined) {
@@ -277,7 +303,7 @@ export function assetIssues(
           css(
             template,
             html.slice(at.startOffset, at.endOffset),
-            at.startOffset,
+            offset => at.startOffset + offset,
             true,
           );
         }
@@ -286,7 +312,8 @@ export function assetIssues(
     }
   };
   visit(document);
-  for (const style of styles) css(style, style.text, 0, true);
+  const same = (offset: number) => offset;
+  for (const style of styles) css(style, style.text, same, true);
   // Stylesheets reached by <link> or @import, each once.
   for (let path = reached.shift(); path !== undefined; path = reached.shift()) {
     const bytes = read(path);
@@ -297,7 +324,7 @@ export function assetIssues(
         file: path,
         message: 'not valid UTF-8 text',
       });
-    } else css({ file: path, text }, text, 0, true);
+    } else css({ file: path, text }, text, same, true);
   }
 
   for (const face of faces) {

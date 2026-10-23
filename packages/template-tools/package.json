@@ -21,6 +21,7 @@
   "dependencies": {
     "@pdf-generator/contract": "workspace:*",
     "@pdf-generator/fake-data": "workspace:*",
+    "entities": "^8.1.0",
     "fflate": "^0.8.3",
     "handlebars": "^4.7.10",
     "jsonc-parser": "^3.3.1",

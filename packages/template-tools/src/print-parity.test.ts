@@ -409,3 +409,100 @@ it('checks 20,000 marked mustache paragraphs in under three seconds', () => {
   expect(result).toMatchObject({ ok: true, issues: [] });
   expect(elapsed).toBeLessThan(3_000);
 }, 30_000);
+
+describe('print parity: round 4 SVG attribute CSS scanning', () => {
+  it.each(['URL', 'Url'])(
+    'checks %s(https://outside.invalid/leak.svg#x) in SVG fill',
+    fn => {
+      rejects(
+        pack(
+          `<svg data-gt="image"><rect fill="${fn}(https://outside.invalid/leak.svg#x)"/></svg>`,
+        ),
+        'asset-external',
+        ['https://outside.invalid/leak.svg#x'],
+      );
+    },
+  );
+  it.each(['fill', 'data-paint'])(
+    'rejects the reviewed escaped u\\72l in SVG %s at the backslash',
+    attribute => {
+      rejects(
+        pack(
+          `<svg data-gt="image"><rect ${attribute}="u\\72l(https://outside.invalid/leak.svg#x)"/></svg>`,
+        ),
+        'css-escape',
+        ['\\72l'],
+      );
+    },
+  );
+  it('rejects an SVG attribute escape with no URL-like text', () => {
+    rejects(
+      pack('<svg data-gt="image"><rect fill="r\\65 d"/></svg>'),
+      'css-escape',
+      ['\\65'],
+    );
+  });
+  it.each([
+    '<svg data-gt="image"><rect fill="url(#g)"/></svg>',
+    '<svg data-gt="image"><rect fill="red"/></svg>',
+    '<svg data-gt="image"><path d="M0 0L10 10"/></svg>',
+    '<svg data-gt="image" viewBox="0 0 10 10"></svg>',
+    '<svg data-gt="image"><text font-family="Report">x</text></svg>',
+  ])('round 4 positive control: accepts ordinary SVG values: %s', template => {
+    accepts(
+      pack(
+        template,
+        template.includes('font-family')
+          ? '@font-face{font-family:Report;src:url(logo.svg)}'
+          : '',
+      ),
+    );
+  });
+});
+
+describe('print parity: round 4 CSS bad-string newlines', () => {
+  for (const [name, newline] of [
+    ['CR', '\r'],
+    ['CRLF', '\r\n'],
+    ['form feed', '\f'],
+    ['LF', '\n'],
+  ]) {
+    it.each(['file', 'style element', 'style attribute', 'SVG attribute'])(
+      `finds the URL after an unterminated string ended by ${name} in %s`,
+      context => {
+        // These are literal CSS newlines at runtime, not backslash escapes.
+        // Keep the reviewed stylesheet trigger verbatim in file/style cases.
+        const declaration = `--x:"${newline};background-image:url(https://outside.invalid/leak);`;
+        const stylesheet = `p{${declaration}}`;
+        const files =
+          context === 'file'
+            ? pack(undefined, stylesheet)
+            : pack(
+                context === 'style element'
+                  ? `<style>${stylesheet}</style>`
+                  : context === 'style attribute'
+                    ? `<p data-gt="paragraph" style='${declaration}'>x</p>`
+                    : `<svg data-gt="image"><rect fill='${declaration}'/></svg>`,
+              );
+        rejects(
+          files,
+          'asset-external',
+          ['https://outside.invalid/leak'],
+          context === 'file' ? cssFile : templateFile,
+        );
+      },
+    );
+  }
+});
+
+it('checks 8,000 complete if branches in under three seconds', () => {
+  checkPack(pack('{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'));
+  const files = pack(
+    '{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'.repeat(8_000),
+  );
+  const start = performance.now();
+  const result = checkPack(files);
+  const elapsed = performance.now() - start;
+  expect(result).toMatchObject({ ok: true, issues: [] });
+  expect(elapsed).toBeLessThan(3_000);
+}, 30_000);

@@ -378,6 +378,9 @@ importers:
       '@pdf-generator/fake-data':
         specifier: workspace:*
         version: link:../fake-data
+      entities:
+        specifier: ^8.1.0
+        version: 8.1.0
       fflate:
         specifier: ^0.8.3
         version: 0.8.3

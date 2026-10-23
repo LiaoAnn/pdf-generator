@@ -44,7 +44,12 @@ export function scanCss(css: string): {
       i = end < 0 ? css.length : end + 2;
     } else if (c === '"' || c === "'") {
       let end = i + 1;
-      while (end < css.length && css[end] !== c && css[end] !== '\n') {
+      // CR and form feed end a line in CSS as LF does.
+      while (
+        end < css.length &&
+        css[end] !== c &&
+        !/[\n\r\f]/.test(css[end] ?? '')
+      ) {
         end += css[end] === '\\' ? 2 : 1;
       }
       const inside = functions.at(-1) ?? '';
