@@ -81,11 +81,13 @@ export interface ElementDetails {
 
 /** A printed table row, in visual order (thead, bodies, tfoot). */
 export interface MeasuredRow {
+  /** Its row group (thead, a tbody, tfoot): rows with the same value share one. */
+  group: number;
   cells: MeasuredCell[];
 }
 
 export interface MeasuredCell {
-  /** The `rowSpan` property: 0 means to the last row. */
+  /** The `rowSpan` property: 0 means to the last row of its row group. */
   rowSpan: number;
   colSpan: number;
   /** A `<th>`, or a cell in `<thead>`. */
@@ -113,7 +115,10 @@ export interface MeasuredCheckbox {
   declared: string | null;
   /** The `checked` property of each checkbox or radio input, itself first. */
   inputs: boolean[];
-  /** The visible text after it, up to the next checkbox or the cell's end. */
+  /**
+   * The visible text after it, up to the next checkbox or the cell's end; a
+   * `<br>` or a block box adds a line break.
+   */
   label: string;
   /** Its border box relative to its `.pagedjs_page`, in CSS px. */
   rect: Rect;

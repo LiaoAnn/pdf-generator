@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "table-borders",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 600, "height": 800 }],
+  "blocks": [
+    {
+      "id": "borders",
+      "type": "table",
+      "page": 1,
+      "bbox": [48, 60, 288, 126],
+      "order": 0,
+      "text": "A\tB",
+      "table": {
+        "rows": 1,
+        "cols": 2,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "A",
+            "bbox": [57, 69, 168, 117]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "B",
+            "bbox": [168, 69, 279, 117]
+          }
+        ]
+      }
+    }
+  ]
+}

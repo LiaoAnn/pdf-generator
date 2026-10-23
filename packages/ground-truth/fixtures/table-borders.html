@@ -1,0 +1,37 @@
+<!doctype html>
+<!--
+Hand derivation (pt): page 600 x 800, margins 60pt top/bottom and 48pt
+left/right. Table border box starts at (48,60), width 240pt, border 3pt,
+padding 6pt, separate borders, zero spacing. Its inner grid therefore starts
+at (57,69); two fixed 111pt columns end at 168 and 279. One 48pt row ends
+at y=117. Table height is 3+6+48+6+3=66pt, ending at (288,126).
+Cell A border widths (top,right,bottom,left) are (3,6,9,12)pt and padding
+is (6,9,3,6)pt. Its border box is [57,69,168,117], whereas its content box
+is [75,78,153,105]. Cell B border widths are (6,3,3,9)pt and padding is
+(3,6,9,12)pt: border box [168,69,279,117], content box [189,78,270,105].
+Both cells have a single 12pt text line that fits inside those content boxes.
+The table content box is [57,69,279,117]. Thus returning content boxes
+instead of border boxes changes every expected bbox, including the table's.
+All geometry is in multiples of 3pt (4 CSS px). Expected JSON is written
+from this design, never from reader output.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Table border boxes include asymmetric padding and borders</title>
+<style>
+@page { size: 600pt 800pt; margin: 60pt 48pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/12pt sans-serif; }
+table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 240pt; border: 3pt solid black; padding: 6pt; }
+tr { height: 48pt; }
+td { border-style: solid; vertical-align: top; }
+.a { border-width: 3pt 6pt 9pt 12pt; padding: 6pt 9pt 3pt 6pt; }
+.b { border-width: 6pt 3pt 3pt 9pt; padding: 3pt 6pt 9pt 12pt; }
+</style>
+</head>
+<body>
+<table data-gt="table" data-gt-id="borders"><colgroup><col style="width:111pt"><col style="width:111pt"></colgroup><tbody><tr><td class="a">A</td><td class="b">B</td></tr></tbody></table>
+</body>
+</html>

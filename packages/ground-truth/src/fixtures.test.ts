@@ -26,6 +26,7 @@ describe('hand-authored fixture ground truth', () => {
     'formula',
     'image-text',
     'table-grid',
+    'table-borders',
     'table-merged',
     'table-checkbox',
     'table-cross-page',

@@ -715,6 +715,75 @@ describe('T13 single-page table grid boundaries and markup errors', () => {
     30_000,
   );
 
+  test.each([
+    { group: 'tbody', span: '0' },
+    { group: 'tbody', span: '3' },
+    { group: 'thead', span: '0' },
+    { group: 'thead', span: '3' },
+  ])(
+    'clips rowspan="$span" to its $group before assigning the next tbody slots',
+    async ({ group, span }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<table data-gt="table"><${group}><tr><td rowspan="${span}">A</td><td>B</td></tr></${group}><tbody><tr><td>C</td><td>D</td></tr></tbody></table>`,
+          tableCss,
+        );
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks).toHaveLength(1);
+        const block = result.blocks[0];
+        expect(block?.type).toBe('table');
+        if (block?.type !== 'table') return;
+        // Each group has one printed row. A cannot occupy C's slot: the
+        // browser lays out two 90pt columns and two 24pt rows at (48,60).
+        expect(block.table).toEqual({
+          rows: 2,
+          cols: 2,
+          cells: [
+            {
+              row: 0,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: group === 'thead',
+              text: 'A',
+              bbox: [48, 60, 138, 84],
+            },
+            {
+              row: 0,
+              col: 1,
+              rowSpan: 1,
+              colSpan: 1,
+              header: group === 'thead',
+              text: 'B',
+              bbox: [138, 60, 228, 84],
+            },
+            {
+              row: 1,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'C',
+              bbox: [48, 84, 138, 108],
+            },
+            {
+              row: 1,
+              col: 1,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'D',
+              bbox: [138, 84, 228, 108],
+            },
+          ],
+        });
+        expect(gtSchema.parse(result)).toEqual(result);
+      });
+    },
+    30_000,
+  );
+
   test('counts only printed rows and orders an early tfoot after multiple bodies', async () => {
     await withPage(async page => {
       await paginate(
@@ -836,6 +905,40 @@ describe('T13 checkboxes inside table cells', () => {
   const tableCss = `table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 180pt; }
     tr { height: 24pt; } td, th { padding: 0; border: 0; vertical-align: top; }
     .mark, input { display: inline-block; vertical-align: top; width: 12pt; height: 12pt; margin: 0; padding: 0; }`;
+
+  test.each([
+    { breakType: 'br', label: 'First<br>Second' },
+    {
+      breakType: 'adjacent blocks',
+      label: '<div>First</div><div>Second</div>',
+    },
+  ])(
+    'preserves $breakType as whitespace in a cell checkbox label and stops at the next mark',
+    async ({ label }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<table data-gt="table"><tbody><tr><td><span class="mark" data-gt-checked="true">☑</span>${label}<span class="mark" data-gt-checked="false">☐</span>  Last   <em>label</em>  </td></tr></tbody></table>`,
+          `${tableCss} tr { height: 72pt; }`,
+        );
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks).toHaveLength(1);
+        const block = result.blocks[0];
+        expect(block?.type).toBe('table');
+        if (block?.type !== 'table') return;
+        expect(
+          block.table.cells[0]?.checkboxes?.map(({ checked, text }) => ({
+            checked,
+            text,
+          })),
+        ).toEqual([
+          { checked: true, text: 'First Second' },
+          { checked: false, text: 'Last label' },
+        ]);
+      });
+    },
+    30_000,
+  );
 
   test('uses live native choice states in cells rather than their stale checked attributes', async () => {
     await withPage(async page => {

@@ -99,7 +99,11 @@ function collect(): Measurement {
                     rows: Array.from(element.rows)
                       // Not laid out (display: none): not printed.
                       .filter(row => row.getClientRects().length > 0)
-                      .map(row => ({
+                      .map((row, _, printed) => ({
+                        // Rows in the same thead, tbody or tfoot share one.
+                        group: printed.findIndex(
+                          other => other.parentElement === row.parentElement,
+                        ),
                         cells: Array.from(row.cells)
                           .filter(cell => cell.getClientRects().length > 0)
                           .map(cell => {
@@ -119,17 +123,41 @@ function collect(): Measurement {
                                     ) == null)) &&
                                 mark.getClientRects().length > 0,
                             );
+                            // Text nodes, and a line break for each <br>
+                            // and block box, each with the node whose
+                            // layout decides whether it is printed.
                             const walker = document.createTreeWalker(
                               cell,
-                              NodeFilter.SHOW_TEXT,
+                              NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
                             );
-                            const texts: Node[] = [];
+                            const texts: {
+                              node: Node;
+                              shown: Element | null;
+                              text: string;
+                            }[] = [];
                             for (
                               let node = walker.nextNode();
                               node !== null;
                               node = walker.nextNode()
                             ) {
-                              texts.push(node);
+                              if (node instanceof Element) {
+                                const display = getComputedStyle(node).display;
+                                if (
+                                  node.tagName === 'BR' ||
+                                  !(
+                                    display.startsWith('inline') ||
+                                    display === 'contents'
+                                  )
+                                ) {
+                                  texts.push({ node, shown: node, text: '\n' });
+                                }
+                              } else {
+                                texts.push({
+                                  node,
+                                  shown: node.parentElement,
+                                  text: node.textContent ?? '',
+                                });
+                              }
                             }
                             const checkboxes = marks.map((mark, k) => {
                               const next = marks[k + 1];
@@ -153,19 +181,18 @@ function collect(): Measurement {
                                 // Visible text after the mark, up to the next.
                                 label: texts
                                   .filter(
-                                    text =>
-                                      !mark.contains(text) &&
-                                      (mark.compareDocumentPosition(text) &
+                                    ({ node, shown }) =>
+                                      !mark.contains(node) &&
+                                      (mark.compareDocumentPosition(node) &
                                         Node.DOCUMENT_POSITION_FOLLOWING) !==
                                         0 &&
                                       (next === undefined ||
-                                        (next.compareDocumentPosition(text) &
+                                        (next.compareDocumentPosition(node) &
                                           Node.DOCUMENT_POSITION_PRECEDING) !==
                                           0) &&
-                                      (text.parentElement?.getClientRects()
-                                        .length ?? 0) > 0,
+                                      (shown?.getClientRects().length ?? 0) > 0,
                                   )
-                                  .map(text => text.textContent ?? '')
+                                  .map(({ text }) => text)
                                   .join(''),
                                 rect: {
                                   x: markBox.x - origin.x,

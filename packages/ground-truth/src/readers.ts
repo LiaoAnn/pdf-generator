@@ -118,7 +118,8 @@ function readImage(element: MeasuredElement): { text?: string } {
 /**
  * A table's grid on this page: each printed cell placed by the HTML table
  * algorithm (the first column a rowspan from above doesn't cover), its
- * rowspan clipped to the printed rows (0 = to the last row).
+ * rowspan clipped to the printed rows of its row group (0 = to the group's
+ * last row).
  */
 function readTable(element: MeasuredElement): { table: GtTable } {
   const { table } = detailsOf(element);
@@ -147,7 +148,9 @@ function readTable(element: MeasuredElement): { table: GtTable } {
     let col = 0;
     for (const cell of row.cells) {
       while (covered[r]?.has(col)) col += 1;
-      const left = rows.length - r;
+      // A rowspan never leaves its row group (HTML table model).
+      const left =
+        rows.findLastIndex(other => other.group === row.group) + 1 - r;
       const rowSpan = cell.rowSpan === 0 ? left : Math.min(cell.rowSpan, left);
       const colSpan = Math.max(cell.colSpan, 1);
       for (let i = 0; i < rowSpan; i += 1) {
