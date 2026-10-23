@@ -55,7 +55,7 @@ Run from the repository root, inside the container.
 | `pnpm dev:cron` | Run the local cron scheduler in the foreground (Linux) |
 | `pnpm typecheck` | Type-check every package with TypeScript 7 |
 | `pnpm test` | Run every package's Vitest tests and the cron script tests |
-| `pnpm test:cron` | Test cron scheduling and Worker discovery |
+| `pnpm test:cron` | Test the local cron scheduler |
 | `pnpm lint` | Check formatting and lint rules |
 | `pnpm knip` | Find unused files, exports, and dependencies |
 | `pnpm format` | Format files |
@@ -75,65 +75,37 @@ Rebuild the container once after adopting this configuration, or run
 It waits for `pnpm install` to finish before starting. A workspace lock prevents
 duplicate schedulers, including when running `pnpm dev:cron` manually.
 
-Start your Worker or Vite application normally. The scheduler discovers
-`wrangler.jsonc` files recursively within the workspace and reads their
-`triggers.crons`. It skips hidden directories, `node_modules`, `dist`, `build`,
-`coverage`, and symbolic links. Configuration and running servers are checked
+The scheduler finds `wrangler.jsonc` files recursively within the workspace and
+reads their `triggers.crons`. It skips hidden directories, `node_modules`,
+`dist`, `build`, `coverage`, and symbolic links. Configuration is reread
 approximately every five seconds.
 
-Destination selection, in order:
-
-1. An explicit `url` in `.devcontainer/cron-targets.jsonc`.
-2. A running Vite or local Wrangler dev server associated with the config. On
-   Linux, the scheduler matches process working directories and `--config` paths,
-   then reads the sockets owned by those processes. Wrangler's child `workerd`
-   processes are included because they can own the public HTTP socket.
-
-Vite servers are identified through `/@vite/client`. Wrangler servers are
-identified through the read-only `/cdn-cgi/local/explorer/api/local/workers` API,
-including a check of the local Worker's name when configured. Inspector and
-internal runtime sockets are distinguished from the public server. Discovery
-never invokes a scheduled handler as a port probe.
-
-For example, `vite dev --port 3000 --host` uses the actual Vite port even when
-`vite.config.ts` has no port. Wrangler CLI port overrides, OS-assigned ports, and
-port changes after restarts are also discovered. If a server automatically picks
-another port, its actual socket is used. Some versions fail on a port conflict
-instead; an app that failed to start is not scheduled. An occupied port alone
-does not establish which Worker owns it.
-
-When no matching dev server is running, the scheduler waits for the next scan.
-It never falls back to `server.port`, `dev.port`, 5173, or 8787. Explicit URLs are
-the escape hatch for servers that cannot be discovered automatically.
-
-Vite configuration is located alongside the Worker config or in a parent
-directory up to the nearest package boundary. Imported config dependencies and
-development `.env` files are watched by modification time. Vite configuration is
-only evaluated when a running server needs its custom base path or HTTPS setting;
-its configured port is never used as a destination. Use explicit URLs for custom
-server wrappers, other Vite modes, older Wrangler versions without the Local
-Explorer API, or ambiguous multi-server setups.
-
-Example `.devcontainer/cron-targets.jsonc`:
+It triggers a Worker only at the `url` listed for it in
+`.devcontainer/cron-targets.jsonc`. It doesn't look for running dev servers or
+probe ports: each Worker's `wrangler dev` port is fixed in its `wrangler.jsonc`,
+and the targets file names it:
 
 ```jsonc
 {
   "workers": {
-    "apps/api/wrangler.jsonc": { "url": "http://127.0.0.1:8788" },
-    "apps/web/wrangler.jsonc": { "url": "http://localhost:3000" },
-    "apps/jobs/wrangler.jsonc": { "environment": "development" },
+    "apps/web/wrangler.jsonc": { "url": "http://127.0.0.1:8787" },
+    "apps/print/wrangler.jsonc": { "url": "http://127.0.0.1:8788" },
+    "apps/jobs/wrangler.jsonc": { "url": "http://[::1]:8789", "environment": "development" },
     "apps/disabled/wrangler.jsonc": { "enabled": false }
   }
 }
 ```
 
-Keys are workspace-relative paths. `environment` selects that environment's
-triggers, inheriting the top-level triggers when not overridden, just as Wrangler
-does. Running Wrangler's `--env` is detected automatically; an explicitly selected
-environment must match it. For Vite or an explicit URL, select the environment
-that the application is running with. URLs must be local origins:
-loopback addresses or `host.docker.internal`. Workers sharing an origin are skipped
-with a diagnostic until their destinations are made distinct.
+Keys are workspace-relative paths. A URL must be an origin with a loopback IP
+literal, `127.0.0.1` (or another `127.x.x.x`) or `[::1]`, matching the address
+the dev server listens on. `localhost` is rejected, because whether it resolves
+to IPv4 or IPv6 first varies by machine. A Worker with cron triggers but no
+`url` is not scheduled, and the log says so. `environment` selects that
+environment's triggers, inheriting the top-level triggers when not overridden,
+just as Wrangler does; set it to the `--env` the dev server runs with. Workers
+sharing an origin are skipped with a diagnostic until their URLs are made
+distinct. When a listed server isn't running, its scheduled requests fail and
+are logged; they are not retried.
 
 At each matching UTC minute, the scheduler sends a GET request to
 `/cdn-cgi/local/scheduled` with the original `cron` and the scheduled `time` in

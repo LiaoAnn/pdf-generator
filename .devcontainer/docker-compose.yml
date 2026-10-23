@@ -2,6 +2,8 @@ services:
   app:
     image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
     command: sleep infinity
+    # PID 1 reaps orphans, so stopped dev servers' workerd children don't stay <defunct>.
+    init: true
     user: node
     environment:
       # Playwright's browsers live on the shared playwright_browsers volume.

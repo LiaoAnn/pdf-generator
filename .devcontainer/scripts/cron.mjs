@@ -1,15 +1,9 @@
-import { readdir, readFile, stat } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { Cron } from 'croner';
 import { parse, printParseErrorCode } from 'jsonc-parser';
-import {
-  runningDevServers,
-  viteOrigin,
-  wranglerOrigin,
-} from './dev-servers.mjs';
 
 const MINUTE = 60_000;
 const excludedDirectories = new Set([
@@ -18,75 +12,6 @@ const excludedDirectories = new Set([
   'build',
   'coverage',
 ]);
-const viteCache = new Map();
-
-async function modifiedAt(path) {
-  try {
-    return (await stat(path)).mtimeMs;
-  } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  }
-}
-
-async function findViteConfig(directory, root) {
-  while (true) {
-    for (const extension of ['ts', 'mts', 'js', 'mjs', 'cts', 'cjs']) {
-      const path = join(directory, `vite.config.${extension}`);
-      if ((await modifiedAt(path)) !== null) return path;
-    }
-    if (
-      directory === root ||
-      (await modifiedAt(join(directory, 'package.json'))) !== null
-    ) {
-      return null;
-    }
-    directory = dirname(directory);
-  }
-}
-
-async function readViteConfig(path) {
-  const cached = viteCache.get(path);
-  if (cached) {
-    const stamps = await Promise.all(cached.files.map(modifiedAt));
-    if (JSON.stringify(stamps) === JSON.stringify(cached.stamps))
-      return cached.settings;
-  }
-  const directory = dirname(path);
-  const require = createRequire(path);
-  // Resolve the app's own Vite, not a separate version installed by this helper.
-  const { resolveConfig } = await import(
-    pathToFileURL(require.resolve('vite')).href
-  );
-  const config = await resolveConfig(
-    { root: directory, configFile: path, logLevel: 'silent' },
-    'serve',
-  );
-  const settings = {
-    port: config.server.port ?? 5173,
-    protocol: config.server.https ? 'https' : 'http',
-    base: config.base,
-  };
-  const files = [
-    ...new Set([
-      path,
-      ...(config.configFileDependencies ?? []),
-      join(directory, 'package.json'),
-      ...[
-        '.env',
-        '.env.local',
-        '.env.development',
-        '.env.development.local',
-      ].map(name => join(config.envDir ?? directory, name)),
-    ]),
-  ];
-  viteCache.set(path, {
-    files,
-    stamps: await Promise.all(files.map(modifiedAt)),
-    settings,
-  });
-  return settings;
-}
 
 async function readJsonc(path) {
   const errors = [];
@@ -143,24 +68,14 @@ export function parseCron(expression) {
   });
 }
 
-async function findWranglerConfig(directory, root) {
-  while (!relative(root, directory).startsWith('..')) {
-    const path = join(directory, 'wrangler.jsonc');
-    if ((await modifiedAt(path)) !== null) return path;
-    if (directory === root) break;
-    directory = dirname(directory);
-  }
-  return null;
-}
-
 function explicitUrl(value) {
   const url = new URL(value);
-  const local =
-    ['localhost', '[::1]', 'host.docker.internal'].includes(url.hostname) ||
-    /^127\.\d+\.\d+\.\d+$/.test(url.hostname);
-  if (!local || !['http:', 'https:'].includes(url.protocol)) {
+  // IP literals only: which address `localhost` resolves to first varies.
+  const loopback =
+    url.hostname === '[::1]' || /^127\.\d+\.\d+\.\d+$/.test(url.hostname);
+  if (!loopback || !['http:', 'https:'].includes(url.protocol)) {
     throw new Error(
-      'Use a local HTTP(S) URL (loopback or host.docker.internal)',
+      'Use a loopback HTTP(S) URL with an IP literal (127.0.0.1 or [::1])',
     );
   }
   if (
@@ -177,98 +92,15 @@ function explicitUrl(value) {
   return url.origin;
 }
 
-async function workerTarget(
-  config,
-  override,
-  path,
-  root,
-  resolveVite,
-  servers,
-) {
-  if (override.url)
-    return {
-      url: explicitUrl(override.url),
-      environment: override.environment,
-    };
-  const vitePath = await findViteConfig(dirname(path), root);
-  let project = dirname(path);
-  while (
-    project !== root &&
-    (await modifiedAt(join(project, 'package.json'))) === null
-  ) {
-    if (vitePath && dirname(vitePath) === project) break;
-    project = dirname(project);
-  }
-  const running = [];
-  for (const server of servers) {
-    if (server.kind === 'wrangler') {
-      const configPath =
-        server.config ?? (await findWranglerConfig(server.root, root));
-      if (configPath === path) running.push(server);
-    } else if (
-      server.config && vitePath
-        ? server.config === vitePath
-        : server.root === project
-    ) {
-      running.push(server);
-    }
-  }
-  if (running.length > 1) {
-    throw new Error(
-      'Multiple dev servers for this Worker; specify url in cron-targets.jsonc',
-    );
-  }
-  if (!running.length) return null;
-  const server = running[0];
-  if (server.kind === 'wrangler') {
-    if (
-      override.environment !== undefined &&
-      override.environment !== server.environment
-    ) {
-      throw new Error(
-        'Selected environment does not match the running Wrangler --env',
-      );
-    }
-    const environment = server.environment;
-    const name =
-      server.name ??
-      config.env?.[environment]?.name ??
-      (environment && config.name
-        ? `${config.name}-${environment}`
-        : config.name);
-    const url = await wranglerOrigin(server, {
-      name,
-      protocol: config.dev?.local_protocol,
-    });
-    return { url, environment };
-  }
-  let url;
-  try {
-    url = await viteOrigin(server, {});
-  } catch (error) {
-    // A custom base path or HTTPS server may need settings from vite.config.*.
-    if (!vitePath) throw error;
-    url = await viteOrigin(server, await resolveVite(vitePath));
-  }
-  return { url, environment: override.environment };
-}
-
-export async function loadSchedules(
-  root,
-  { resolveVite = readViteConfig, servers } = {},
-) {
+export async function loadSchedules(root) {
   const diagnostics = [];
-  let overrides = {};
+  let targets = {};
   try {
     const config = await readJsonc(
       join(root, '.devcontainer/cron-targets.jsonc'),
     );
-    overrides = config.workers ?? {};
-    if (
-      typeof overrides !== 'object' ||
-      !overrides ||
-      Array.isArray(overrides)
-    ) {
+    targets = config.workers ?? {};
+    if (typeof targets !== 'object' || !targets || Array.isArray(targets)) {
       throw new Error('workers must be an object keyed by wrangler.jsonc path');
     }
   } catch (error) {
@@ -281,41 +113,21 @@ export async function loadSchedules(
   }
 
   const workers = [];
-  servers ??= await runningDevServers();
   const paths = await findConfigs(root, diagnostics);
   const found = new Set(paths.map(path => relative(root, path)));
-  for (const key of Object.keys(overrides)) {
+  for (const key of Object.keys(targets)) {
     if (!found.has(key))
       diagnostics.push(`${key}: target config was not found`);
   }
   for (const path of paths) {
     const label = relative(root, path);
     try {
-      const override = overrides[label] ?? {};
-      if (typeof override !== 'object' || Array.isArray(override)) {
-        throw new Error('Target override must be an object');
+      const target = targets[label] ?? {};
+      if (typeof target !== 'object' || !target || Array.isArray(target)) {
+        throw new Error('Target must be an object');
       }
-      if (override.enabled === false) continue;
+      if (target.enabled === false) continue;
       const config = await readJsonc(path);
-      const target = await workerTarget(
-        config,
-        override,
-        path,
-        root,
-        resolveVite,
-        servers,
-      );
-      if (!target) {
-        if (
-          config.triggers?.crons?.length ||
-          Object.values(config.env ?? {}).some(
-            env => env.triggers?.crons?.length,
-          )
-        ) {
-          diagnostics.push(`${label}: waiting for a running dev server`);
-        }
-        continue;
-      }
       let triggers = config.triggers;
       if (target.environment !== undefined) {
         if (
@@ -329,7 +141,15 @@ export async function loadSchedules(
       const crons = triggers?.crons ?? [];
       if (!Array.isArray(crons))
         throw new Error('triggers.crons must be an array');
-      const { url } = target;
+      if (target.url === undefined) {
+        if (crons.length) {
+          diagnostics.push(
+            `${label}: not scheduled; add its url to .devcontainer/cron-targets.jsonc`,
+          );
+        }
+        continue;
+      }
+      const url = explicitUrl(target.url);
       const jobs = [];
       for (const expression of new Set(crons)) {
         try {
@@ -348,13 +168,9 @@ export async function loadSchedules(
   }
 
   const jobs = [];
-  const destination = origin =>
-    origin.replace(/localhost|\[::1\]/, '127.0.0.1');
   for (const worker of workers) {
     if (!worker.jobs.length) continue;
-    const collisions = workers.filter(
-      other => destination(other.url) === destination(worker.url),
-    );
+    const collisions = workers.filter(other => other.url === worker.url);
     if (collisions.length > 1) {
       diagnostics.push(
         `${worker.label}: shared URL ${worker.url}; set unique URLs in cron-targets.jsonc (${collisions.map(item => item.label).join(', ')})`,
@@ -444,7 +260,7 @@ if (
       await scheduler.tick();
     } catch (error) {
       scheduler.log(
-        `Discovery failed: ${error.message}; checking again shortly`,
+        `Loading schedules failed: ${error.message}; checking again shortly`,
       );
     }
     await delay(Math.min(5_000, MINUTE - (Date.now() % MINUTE)));
