@@ -176,7 +176,7 @@ describe('checkPack template coverage diagnostics', () => {
 
   it('ignores whitespace, nbsp entities, HTML and Handlebars comments, and nonprinted subtrees', () => {
     accepted(
-      '<!doctype html><html><head><title>標題</title><meta charset="utf-8"></head><body>\n \t&nbsp;&#160;&#xA0;\n<!-- ignored <img> text -->\n{{! ignored }}\n{{!-- ignored\n<img> --}}\n<script>const text = "unmarked";</script><style>p::before { content: "x"; }</style><template><p>hidden</p><img></template><noscript><p>hidden</p><img></noscript>\n</body></html>',
+      '<!doctype html><html><head><title>標題</title><meta charset="utf-8"></head><body>\n \t&nbsp;&#160;&#xA0;\n<!-- ignored <img> text -->\n{{! ignored }}\n{{!-- ignored\n<img> --}}\n<style>p::before { content: "x"; }</style><template><p>hidden</p><img></template><noscript><p>hidden</p><img></noscript>\n</body></html>',
     );
   });
 
@@ -201,7 +201,11 @@ describe('checkPack template coverage diagnostics', () => {
         'footnote',
         'reference',
       ]
-        .map(type => `<div data-gt="${type}">{{holder}}</div>`)
+        .map(type =>
+          type === 'table'
+            ? '<table data-gt="table"><tr><td>{{holder}}</td></tr></table>'
+            : `<div data-gt="${type}"${type === 'checkbox' ? ' data-gt-checked="true"' : type === 'formula' ? ' data-gt-latex="x"' : ''}>{{holder}}</div>`,
+        )
         .join('\n'),
     );
   });
@@ -212,9 +216,9 @@ describe('checkPack template coverage diagnostics', () => {
     );
   });
 
-  it('allows dynamic and repeated ids and leaves other data-gt attributes unchecked', () => {
+  it('allows dynamic and repeated ids for downstream suffixing', () => {
     accepted(
-      '{{#each rows}}\n<p data-gt="field" data-gt-id="row-{{@index}}" data-gt-custom="">{{this}}</p>\n{{/each}}\n<p data-gt="field" data-gt-id="same">甲</p><p data-gt="field" data-gt-id="same">乙</p>',
+      '{{#each rows}}\n<p data-gt="field" data-gt-id="row-{{@index}}">{{this}}</p>\n{{/each}}\n<p data-gt="field" data-gt-id="same">甲</p><p data-gt="field" data-gt-id="same">乙</p>',
     );
   });
 });

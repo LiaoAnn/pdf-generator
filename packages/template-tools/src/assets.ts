@@ -3,31 +3,29 @@
 // declared face before it paginates; T03 Must 8). A reference resolves
 // against the file containing it, as in a browser loading the pack's files at
 // their pack paths.
-import {
-  cssReferences,
-  fontFaces,
-  type Reference,
-  usedFamilies,
-} from './css.ts';
+// The template is also inert: no script, event handler or embedded document
+// runs when it is printed.
+import { fontFaces, type Reference, scanCss, usedFamilies } from './css.ts';
 import { attributeOf, type Html, type TemplateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
-import { position } from './text.ts';
+import { decode, position } from './text.ts';
 
 /** Attributes that make the browser load a URL, by element. */
-const loaders: Record<string, string[]> = {
-  img: ['src', 'srcset'],
-  source: ['src', 'srcset'],
-  video: ['src', 'poster'],
-  audio: ['src'],
-  iframe: ['src'],
-  embed: ['src'],
-  script: ['src'],
-  input: ['src'],
-  object: ['data'],
-  link: ['href'],
-  image: ['href', 'xlink:href'],
-  use: ['href', 'xlink:href'],
-};
+const loaders = new Map<string, string[]>([
+  ['img', ['src', 'srcset']],
+  ['source', ['src', 'srcset']],
+  ['video', ['src', 'poster']],
+  ['audio', ['src']],
+  ['iframe', ['src']],
+  ['embed', ['src']],
+  ['input', ['src']],
+  ['object', ['data']],
+  ['link', ['href']],
+  ['image', ['href', 'xlink:href']],
+  ['use', ['href', 'xlink:href']],
+]);
+/** Elements whose URL loads a document, where a data: URL is a page. */
+const documents = new Set(['iframe', 'object', 'embed']);
 
 /** A text file of the pack: the template or a stylesheet. */
 type Source = { file: string; text: string };
@@ -37,7 +35,7 @@ function resolve(
   file: string,
   url: string,
 ): { path: string } | { code: string; message: string } | undefined {
-  if (url === '' || url.startsWith('#') || url.includes('{{')) return;
+  if (url === '' || url.startsWith('#')) return;
   if (/^data:/i.test(url)) return;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) {
     return {
@@ -85,40 +83,88 @@ function srcsetUrls(value: string): Reference[] {
   return urls;
 }
 
-/** Asset and font issues of a pack's template and stylesheets. */
+/** Asset, font and active-content issues of a pack's template and styles. */
 export function assetIssues(
   template: Source & { html: TemplateHtml },
   styles: Source[],
-  exists: (path: string) => boolean,
+  read: (path: string) => Uint8Array | undefined,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
   const faces: (Source & { family: string; name: string; offset: number })[] =
     [];
   const families = new Set<string>();
   const shorthandFirsts: string[] = [];
+  /** Stylesheets checked or queued, so each is read once (imports cycle). */
+  const sheets = new Set(styles.map(style => style.file));
+  const reached: string[] = [];
 
-  const reference = ({ file, text }: Source, { url, offset }: Reference) => {
+  const issue = (
+    code: string,
+    source: Source,
+    offset: number,
+    message: string,
+  ) =>
+    issues.push({
+      code,
+      file: source.file,
+      ...position(source.text, offset),
+      message,
+    });
+
+  const reference = (
+    source: Source,
+    { url, offset }: Reference,
+    element?: string,
+  ) => {
     const trimmed = url.trimStart();
-    const problem = resolve(file, trimmed.trimEnd());
-    const at = position(text, offset + url.length - trimmed.length);
-    if (problem === undefined) return;
-    if ('path' in problem) {
-      if (!exists(problem.path)) {
-        issues.push({
-          code: 'asset-missing',
-          file,
-          ...at,
-          message: `${url} points to ${problem.path}, which is not in the pack`,
-        });
-      }
+    const at = offset + url.length - trimmed.length;
+    if (source === template && url.includes('{{')) {
+      issue(
+        'asset-dynamic',
+        source,
+        at,
+        `${url} depends on the data: write the path out, and pick between paths with {{#if}}`,
+      );
       return;
     }
-    issues.push({ ...problem, file, ...at });
+    if (element && documents.has(element) && /^\s*data:/i.test(url)) {
+      issue(
+        'html-active',
+        source,
+        at,
+        `<${element}> may not load a data: document`,
+      );
+      return;
+    }
+    const problem = resolve(source.file, trimmed.trimEnd());
+    if (problem === undefined) return;
+    if (!('path' in problem)) {
+      issue(problem.code, source, at, problem.message);
+    } else if (read(problem.path) === undefined) {
+      issue(
+        'asset-missing',
+        source,
+        at,
+        `${url} points to ${problem.path}, which is not in the pack`,
+      );
+    } else if (/\.css$/i.test(problem.path) && !sheets.has(problem.path)) {
+      sheets.add(problem.path);
+      reached.push(problem.path);
+    }
   };
   /** CSS found at `start` in `source`: a stylesheet or a style element. */
   const css = (source: Source, css: string, start: number, rules: boolean) => {
-    for (const ref of cssReferences(css)) {
+    const { references, escapes } = scanCss(css);
+    for (const ref of references) {
       reference(source, { url: ref.url, offset: start + ref.offset });
+    }
+    for (const offset of escapes) {
+      issue(
+        'css-escape',
+        source,
+        start + offset,
+        'a backslash escape outside a CSS string: write names out plainly',
+      );
     }
     if (rules) {
       for (const face of fontFaces(css)) {
@@ -145,7 +191,32 @@ export function assetIssues(
       const attrAt = (name: string) =>
         location?.attrs?.[name] ??
         location?.attrs?.[name.split(':').pop() ?? ''];
-      for (const name of loaders[element.tagName] ?? []) {
+      const tag = element.tagName;
+      const active = (offset: number | undefined, message: string) =>
+        issue('html-active', template, offset ?? 0, message);
+
+      if (
+        tag === 'script' ||
+        tag === 'base' ||
+        (tag === 'meta' &&
+          attributeOf(element, 'http-equiv')?.value.toLowerCase() === 'refresh')
+      ) {
+        active(
+          location?.startOffset,
+          `<${tag}> is not allowed in a pack: printing must not run code or change where the page loads from`,
+        );
+        continue;
+      }
+      for (const attr of element.attrs) {
+        const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
+        if (name.startsWith('on') || name === 'srcdoc') {
+          active(
+            attrAt(name)?.startOffset,
+            `${name} is not allowed in a pack: printing must not run code`,
+          );
+        }
+      }
+      for (const name of loaders.get(tag) ?? []) {
         const attr = attributeOf(element, name);
         const at = attrAt(name);
         if (attr === undefined || at === undefined) continue;
@@ -155,7 +226,7 @@ export function assetIssues(
             ? srcsetUrls(attr.value)
             : [{ url: attr.value, offset: 0 }];
         for (const { url, offset } of urls) {
-          reference(template, { url, offset: start + offset });
+          reference(template, { url, offset: start + offset }, tag);
         }
       }
       const style = attributeOf(element, 'style');
@@ -163,7 +234,14 @@ export function assetIssues(
       if (style !== undefined && styleAt !== undefined) {
         css(template, style.value, valueStart(styleAt), false);
       }
-      if (element.tagName === 'style') {
+      const family = attributeOf(element, 'font-family');
+      if (family !== undefined) {
+        for (const name of usedFamilies(`font-family:${family.value}`)
+          .families) {
+          families.add(name);
+        }
+      }
+      if (tag === 'style') {
         for (const text of element.childNodes) {
           const at = (text as Html.TextNode).sourceCodeLocation;
           if (text.nodeName !== '#text' || !at) continue;
@@ -175,11 +253,23 @@ export function assetIssues(
           );
         }
       }
-      visit(element);
+      visit(tag === 'template' ? (element as Html.Template).content : element);
     }
   };
   visit(document);
   for (const style of styles) css(style, style.text, 0, true);
+  // Stylesheets reached by <link> or @import, each once.
+  for (let path = reached.shift(); path !== undefined; path = reached.shift()) {
+    const bytes = read(path);
+    const text = bytes && decode(bytes);
+    if (text === undefined) {
+      issues.push({
+        code: 'text-encoding',
+        file: path,
+        message: 'not valid UTF-8 text',
+      });
+    } else css({ file: path, text }, text, 0, true);
+  }
 
   for (const face of faces) {
     const used =
@@ -188,12 +278,12 @@ export function assetIssues(
         first => first === face.family || first.endsWith(` ${face.family}`),
       );
     if (!used) {
-      issues.push({
-        code: 'font-unused',
-        file: face.file,
-        ...position(face.text, face.offset),
-        message: `@font-face "${face.name}" is declared but no font-family or font uses it; Paged.js would download it anyway`,
-      });
+      issue(
+        'font-unused',
+        face,
+        face.offset,
+        `@font-face "${face.name}" is declared but no font-family or font uses it; Paged.js would download it anyway`,
+      );
     }
   }
   return issues;

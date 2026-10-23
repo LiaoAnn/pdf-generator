@@ -39,7 +39,30 @@ type Json = { text: string; value: unknown };
  */
 export function checkPack(
   input: Uint8Array | PackFiles,
-  { maxBytes }: { maxBytes?: number } = {},
+  options: { maxBytes?: number } = {},
+): CheckResult {
+  try {
+    return check(input, options);
+  } catch (error) {
+    // The parsers and walkers recurse; nesting deep enough to overflow the
+    // stack is a broken pack, not a crash of the caller (a Worker request).
+    if (!(error instanceof RangeError)) throw error;
+    return {
+      ok: false,
+      issues: [
+        {
+          code: 'pack-too-complex',
+          file: '.',
+          message: `the pack is nested too deeply to check (${error.message})`,
+        },
+      ],
+    };
+  }
+}
+
+function check(
+  input: Uint8Array | PackFiles,
+  { maxBytes }: { maxBytes?: number },
 ): CheckResult {
   const read = readFiles(input, maxBytes);
   if (!('files' in read)) return { ok: false, issues: [read] };
@@ -76,7 +99,22 @@ export function checkPack(
     file: string,
     code: string,
   ): T | undefined => {
-    const result = schema.safeParse(data.value);
+    let result: ReturnType<typeof schema.safeParse>;
+    try {
+      result = schema.safeParse(data.value);
+    } catch (error) {
+      // zod validates recursively: a deep enough file overflows the stack.
+      if (!(error instanceof RangeError)) throw error;
+      issues.push({
+        code,
+        file,
+        path: [],
+        line: 1,
+        column: 1,
+        message: 'nested too deeply to check',
+      });
+      return undefined;
+    }
     if (result.success) return result.data;
     for (const issue of result.error.issues) {
       const path = issue.path.map(key =>
@@ -173,7 +211,7 @@ export function checkPack(
             const text = styleTexts[i];
             return text === undefined ? [] : [{ file, text }];
           }),
-          path => files[path] !== undefined,
+          path => files[path],
         ),
       );
       if (parsed.issues.length === 0 && parsedSample !== undefined) {

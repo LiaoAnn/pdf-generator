@@ -9,10 +9,12 @@
   "scripts": {
     "check-pack": "node src/cli.ts",
     "test": "vitest run",
-    "typecheck": "tsc && tsc -p tsconfig.cli.json"
+    "typecheck": "tsc && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
+    "esbuild": "0.28.2",
+    "miniflare": "5.20261019.2-beta",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },

@@ -14,9 +14,9 @@
   <p data-gt="field">報表日期：{{date}}</p>
   <p data-gt="field">營收：{{number revenue}} 元</p>
   {{#if approved}}
-  <p data-gt="checkbox">已核准</p>
+  <p data-gt="checkbox" data-gt-checked="true">已核准</p>
   {{else}}
-  <p data-gt="checkbox">待核准</p>
+  <p data-gt="checkbox" data-gt-checked="false">待核准</p>
   {{/if}}
   <table data-gt="table">
     <thead><tr><th>支出項目</th><th>金額</th></tr></thead>

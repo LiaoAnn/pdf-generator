@@ -84,25 +84,19 @@ function accepted(files: PackFiles) {
 }
 
 describe('checkPack template asset references', () => {
-  it.each([
-    'img',
-    'source',
-    'video',
-    'audio',
-    'iframe',
-    'embed',
-    'script',
-    'input',
-  ])('rejects a missing %s src instead of checking only img', tag => {
-    const template = `<section data-gt="paragraph">\n<${tag}\n  src="../assets/missing.png"></${tag}>\n</section>`;
-    rejected(
-      validFiles(template),
-      templateFile,
-      'asset-missing',
-      '../assets/missing.png',
-      'assets/missing.png',
-    );
-  });
+  it.each(['img', 'source', 'video', 'audio', 'iframe', 'embed', 'input'])(
+    'rejects a missing %s src instead of checking only img',
+    tag => {
+      const template = `<section data-gt="paragraph">\n<${tag}\n  src="../assets/missing.png"></${tag}>\n</section>`;
+      rejected(
+        validFiles(template),
+        templateFile,
+        'asset-missing',
+        '../assets/missing.png',
+        'assets/missing.png',
+      );
+    },
+  );
 
   it.each([
     [
@@ -364,11 +358,11 @@ describe('checkPack self-contained asset acceptance', () => {
     accepted(validFiles(`<style>${comment}</style>${markedText}`, comment));
   });
 
-  it('skips data, fragment and dynamic references in HTML, srcset and CSS while allowing ordinary anchor hrefs', () => {
+  it('skips data and fragment references while allowing ordinary anchor hrefs', () => {
     accepted(
       validFiles(
-        `<section data-gt="paragraph"><img src="data:image/png;base64,AA=="><img src="#logo"><img src="{{holder}}"><img srcset="{{holder}} 1x, ../assets/logo.png 2x"><a href="https://example.com">{{holder}}</a><svg><use xlink:href="#logo"/></svg><p style="background: url('{{holder}}')">{{holder}}</p></section><style>p { background: url(#mask); }</style>`,
-        'p { background: url(data:image/png;base64,AA==); mask: url(#mask); border-image: url("{{holder}}"); }',
+        `<section data-gt="paragraph"><img src="data:image/png;base64,AA=="><img src="#logo"><a href="https://example.com">{{holder}}</a><svg><use xlink:href="#logo"/></svg></section><style>p { background: url(#mask); }</style>`,
+        'p { background: url(data:image/png;base64,AA==); mask: url(#mask); }',
       ),
     );
   });

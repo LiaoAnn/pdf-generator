@@ -397,6 +397,12 @@ importers:
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
+      miniflare:
+        specifier: 5.20261019.2-beta
+        version: 5.20261019.2-beta(@types/node@24.13.6)
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

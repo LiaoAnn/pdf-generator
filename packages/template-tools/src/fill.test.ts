@@ -322,3 +322,85 @@ describe('fill diagnostics locate pack author mistakes', () => {
     },
   );
 });
+
+describe('review regressions: Handlebars data frames and boxed strings', () => {
+  it.each([
+    {
+      name: 'parent index follows outer each rather than the current row',
+      template:
+        '{{#each groups}}{{#each rows}}[{{@../index}}:{{@index}}]{{/each}}{{/each}}',
+      data: { groups: [{ rows: ['a', 'b'] }, { rows: ['c'] }] },
+    },
+    {
+      name: 'parent keys and boundary flags survive if, unless and with without extra data frames',
+      template:
+        '{{#each groups}}{{#each rows}}{{#if this}}{{#unless nope}}{{#with detail}}[{{@../key}}:{{@../first}}:{{@../last}}:{{@index}}]{{/with}}{{/unless}}{{/if}}{{/each}}{{/each}}',
+      data: {
+        groups: {
+          a: {
+            rows: [
+              { nope: false, detail: {} },
+              { nope: false, detail: {} },
+            ],
+          },
+          b: { rows: [{ nope: false, detail: {} }] },
+        },
+      },
+    },
+    {
+      name: 'two parent data hops differ from one parent hop',
+      template:
+        '{{#each groups}}{{#each rows}}{{#each this}}[{{@../../index}}:{{@../index}}:{{@index}}]{{/each}}{{/each}}{{/each}}',
+      data: { groups: [{ rows: [['a', 'b'], ['c']] }, { rows: [['d']] }] },
+    },
+    {
+      name: 'string own length is readable without enabling inherited properties',
+      template: '{{name.length}}',
+      data: { name: 'Ann' },
+    },
+    {
+      name: 'lookup reads string own indices',
+      template: '{{lookup name 0}}',
+      data: { name: 'Ann' },
+    },
+  ])('$name', ({ template, data }) => {
+    const expected = Handlebars.compile(template)(data);
+    expect(fill(template, data)).toBe(expected);
+  });
+  it.each(['constructor', 'toString'])(
+    'rejects Object.prototype helper name %s without crashing validation',
+    name => {
+      const error = rejected(
+        `head\n  {{${name} x}}`,
+        { x: 1 },
+        { file: 'prototype.hbs' },
+      );
+      expect(error.issues).toEqual([
+        expect.objectContaining({
+          code: 'template-unsupported',
+          file: 'prototype.hbs',
+          line: 2,
+          column: 3,
+        }),
+      ]);
+    },
+  );
+  it.each([-1, 1.5, 21])(
+    'rejects invalid number decimals=%s at the statement',
+    decimals => {
+      const error = rejected(
+        `head\n  {{number value decimals=${decimals}}}`,
+        { value: 12.34 },
+        { file: 'number.hbs' },
+      );
+      expect(error.issues).toEqual([
+        expect.objectContaining({
+          code: 'template-render',
+          file: 'number.hbs',
+          line: 2,
+          column: 3,
+        }),
+      ]);
+    },
+  );
+});

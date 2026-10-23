@@ -1,8 +1,9 @@
 // The data-gt rule: everything a template prints sits inside exactly one
-// element marked with a contract block type. Checked on the template source,
-// so every issue points at a line and column the pack author wrote.
+// element marked with a contract block type, and the attributes T08 and T13
+// read from that element are well formed. Checked on the template source, so
+// every issue points at a line and column the pack author wrote.
 import { blockTypes } from '@pdf-generator/contract';
-import type { Html, TemplateHtml } from './html.ts';
+import { attributeOf, type Html, type TemplateHtml } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { position } from './text.ts';
 
@@ -24,76 +25,269 @@ const media = new Set([
   'math',
 ]);
 const types = new Set<string>(blockTypes);
+/** The data-gt attributes T08 and T13 read; any other data-gt-* is a typo. */
+const known = new Set([
+  'data-gt',
+  'data-gt-id',
+  'data-gt-checked',
+  'data-gt-latex',
+  'data-gt-text',
+]);
+/** Which block type each detail attribute belongs on. */
+const detailOf: Record<string, string> = {
+  'data-gt-checked': 'checkbox',
+  'data-gt-latex': 'formula',
+  'data-gt-text': 'image',
+};
+/** T08 suffixes a repeated id with -2, -3, …; gt.json ids are 1-64 long. */
+const maxIdLength = 60;
 
 /** Whitespace in source text, including the no-break space as an entity. */
 const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 
+const isGtAttribute = (name: string) =>
+  name === 'data-gt' || name.startsWith('data-gt-');
+
+function* descendants(node: Html.ParentNode): Generator<Html.ChildNode> {
+  for (const child of node.childNodes) {
+    yield child;
+    if ('childNodes' in child) yield* descendants(child);
+  }
+}
+
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
   source: string,
-  { html, document }: TemplateHtml,
+  { html, document, branchAt }: TemplateHtml,
   file: string,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
   const report = (code: string, offset: number, message: string) =>
     issues.push({ code, file, ...position(source, offset), message });
 
-  const visit = (node: Html.ParentNode, marked: boolean) => {
+  /** Offset of the first non-blank character of a text node, if any. */
+  const textStart = (text: Html.TextNode) => {
+    const location = text.sourceCodeLocation;
+    if (!/\S/.test(text.value) || !location) return undefined;
+    const slice = html.slice(location.startOffset, location.endOffset);
+    return location.startOffset + (blank.exec(slice)?.[0].length ?? 0);
+  };
+
+  /** The detail checks of a marked element of a known type. */
+  const details = (
+    element: Html.Element,
+    type: string,
+    at: (name: string) => number,
+  ) => {
+    const checked = attributeOf(element, 'data-gt-checked');
+    const latex = attributeOf(element, 'data-gt-latex');
+    const text = attributeOf(element, 'data-gt-text');
+    for (const attr of [checked, latex, text]) {
+      if (attr !== undefined && detailOf[attr.name] !== type) {
+        report(
+          'gt-attribute',
+          at(attr.name),
+          `${attr.name} belongs on data-gt="${detailOf[attr.name]}", not "${type}"`,
+        );
+      }
+    }
+    const inside = [...descendants(element)];
+    if (type === 'checkbox') {
+      if (
+        checked !== undefined &&
+        !['true', 'false'].includes(checked.value) &&
+        !checked.value.includes('{{')
+      ) {
+        report(
+          'gt-attribute',
+          at('data-gt-checked'),
+          'data-gt-checked must be true, false or a {{field}}',
+        );
+      }
+      const inputs = inside.filter(
+        node =>
+          'tagName' in node &&
+          node.tagName === 'input' &&
+          ['checkbox', 'radio'].includes(
+            attributeOf(node, 'type')?.value.toLowerCase() ?? '',
+          ),
+      );
+      if (checked === undefined && inputs.length !== 1) {
+        report(
+          'gt-checkbox',
+          at('data-gt'),
+          `a checkbox block needs data-gt-checked, or exactly one <input type="checkbox|radio"> (found ${inputs.length})`,
+        );
+      }
+    }
+    if (type === 'formula') {
+      if (latex !== undefined && latex.value === '') {
+        report('gt-attribute', at('data-gt-latex'), 'data-gt-latex is empty');
+      }
+      const annotated = inside.some(
+        node =>
+          'tagName' in node &&
+          node.tagName === 'annotation' &&
+          attributeOf(node, 'encoding')?.value === 'application/x-tex',
+      );
+      if (latex === undefined && !annotated) {
+        report(
+          'gt-formula',
+          at('data-gt'),
+          'a formula block needs data-gt-latex, or a KaTeX <annotation encoding="application/x-tex">',
+        );
+      }
+    }
+    if (type === 'image' && text !== undefined) {
+      for (const node of inside) {
+        const start =
+          node.nodeName === '#text'
+            ? textStart(node as Html.TextNode)
+            : undefined;
+        if (start !== undefined) {
+          report(
+            'gt-image-text',
+            start,
+            'an image block with data-gt-text must not contain printed text',
+          );
+          break;
+        }
+      }
+    }
+    if (type === 'table' && element.tagName !== 'table') {
+      report(
+        'gt-table',
+        at('data-gt'),
+        `data-gt="table" must be on a <table>, not <${element.tagName}>`,
+      );
+    }
+  };
+
+  const visit = (node: Html.ParentNode, marked: boolean, table: boolean) => {
     for (const child of node.childNodes) {
       if (child.nodeName === '#text') {
-        const text = child as Html.TextNode;
-        const location = text.sourceCodeLocation;
-        if (marked || !/\S/.test(text.value) || !location) continue;
-        const slice = html.slice(location.startOffset, location.endOffset);
-        report(
-          'gt-unmarked',
-          location.startOffset + (blank.exec(slice)?.[0].length ?? 0),
-          `text "${text.value.trim().slice(0, 40)}" is not inside an element with data-gt`,
-        );
+        const start = marked ? undefined : textStart(child as Html.TextNode);
+        if (start !== undefined) {
+          const text = (child as Html.TextNode).value.trim().slice(0, 40);
+          report(
+            'gt-unmarked',
+            start,
+            `text "${text}" is not inside an element with data-gt`,
+          );
+        }
         continue;
       }
       if (!('tagName' in child)) continue;
       const element = child as Html.Element;
       if (exempt.has(element.tagName)) continue;
       const location = element.sourceCodeLocation;
-      const attribute = (name: string) =>
-        element.attrs.find(attr => attr.name === name);
-      const attributeAt = (name: string) =>
+      const at = (name: string) =>
         location?.attrs?.[name]?.startOffset ?? location?.startOffset ?? 0;
 
-      const id = attribute('data-gt-id');
-      if (id !== undefined && id.value === '') {
-        report('gt-id', attributeAt('data-gt-id'), 'data-gt-id is empty');
-      }
-      const mark = attribute('data-gt');
-      if (mark !== undefined) {
-        if (marked) {
+      // An element prints whole or not at all only if its tags and its
+      // data-gt attributes are in one Handlebars branch.
+      if (location?.startTag) {
+        const branch = branchAt(location.startTag.startOffset);
+        if (
+          branchAt(location.startTag.endOffset - 1) !== branch ||
+          (location.endTag && branchAt(location.endTag.startOffset) !== branch)
+        ) {
           report(
-            'gt-nested',
-            attributeAt('data-gt'),
-            'data-gt inside another data-gt element: its text would be counted twice',
-          );
-        } else if (!types.has(mark.value)) {
-          report(
-            'gt-type',
-            attributeAt('data-gt'),
-            `data-gt="${mark.value}" is not a block type; use one of ${blockTypes.join(', ')}`,
+            'gt-branch',
+            location.startOffset,
+            `<${element.tagName}> must open and close in the same {{#…}}/{{else}} branch`,
           );
         }
-        visit(element, true);
+        for (const attr of element.attrs) {
+          if (isGtAttribute(attr.name) && branchAt(at(attr.name)) !== branch) {
+            report(
+              'gt-branch',
+              at(attr.name),
+              `${attr.name} can't depend on a {{#…}} block inside the tag: put the block around the whole element`,
+            );
+          }
+        }
+      }
+
+      const gtAttrs = element.attrs.filter(attr => isGtAttribute(attr.name));
+      if (table && ['td', 'th'].includes(element.tagName) && gtAttrs.length) {
+        for (const attr of gtAttrs) {
+          report(
+            'gt-table',
+            at(attr.name),
+            `table cells carry no ${attr.name}: the table block describes them`,
+          );
+        }
+        visit(element, marked, table);
         continue;
       }
-      if (!marked && media.has(element.tagName)) {
+
+      const mark = attributeOf(element, 'data-gt');
+      if (mark !== undefined && marked) {
         report(
-          'gt-unmarked',
-          location?.startOffset ?? 0,
-          `<${element.tagName}> is not inside an element with data-gt`,
+          'gt-nested',
+          at('data-gt'),
+          'data-gt inside another data-gt element: its text would be counted twice',
         );
+        visit(element, true, table);
         continue;
       }
-      visit(element, marked);
+      for (const attr of gtAttrs) {
+        if (attr.name === 'data-gt') continue;
+        if (!known.has(attr.name)) {
+          report(
+            'gt-attribute',
+            at(attr.name),
+            `${attr.name} is not a ground-truth attribute; use data-gt, data-gt-id, data-gt-checked, data-gt-latex or data-gt-text`,
+          );
+        } else if (mark === undefined) {
+          report(
+            'gt-attribute',
+            at(attr.name),
+            `${attr.name} needs data-gt on the same element`,
+          );
+        }
+      }
+      if (mark === undefined) {
+        if (!marked && media.has(element.tagName)) {
+          report(
+            'gt-unmarked',
+            location?.startOffset ?? 0,
+            `<${element.tagName}> is not inside an element with data-gt`,
+          );
+          continue;
+        }
+        visit(element, marked, table);
+        continue;
+      }
+
+      const id = attributeOf(element, 'data-gt-id');
+      if (id !== undefined) {
+        const literal = id.value.replace(/\{\{[\s\S]*?\}\}/g, '');
+        if (id.value === '') {
+          report('gt-id', at('data-gt-id'), 'data-gt-id is empty');
+        } else if (
+          !/^[A-Za-z0-9_-]*$/.test(literal) ||
+          literal.length > maxIdLength
+        ) {
+          report(
+            'gt-id',
+            at('data-gt-id'),
+            `data-gt-id may use only A-Z a-z 0-9 _ - and at most ${maxIdLength} characters`,
+          );
+        }
+      }
+      if (types.has(mark.value)) details(element, mark.value, at);
+      else {
+        report(
+          'gt-type',
+          at('data-gt'),
+          `data-gt="${mark.value}" is not a block type; use one of ${blockTypes.join(', ')}`,
+        );
+      }
+      visit(element, true, mark.value === 'table');
     }
   };
-  visit(document, false);
+  visit(document, false, false);
   return issues;
 }

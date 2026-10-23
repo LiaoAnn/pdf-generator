@@ -43,6 +43,9 @@ const inlineHelpers: Record<string, { params: number; hash: string[] }> = {
   number: { params: 1, hash: ['decimals'] },
 };
 const dataVariables = new Set(['root', 'index', 'key', 'first', 'last']);
+/** Most statements one fill may evaluate, and most characters it may print. */
+const maxSteps = 1_000_000;
+const maxOutput = 16 * 1024 * 1024;
 
 const at = (file: string, node: Node) => ({
   file,
@@ -103,7 +106,9 @@ function unsupported(program: AST, file: string): PackIssue[] {
         ? blockHelpers.has(name)
           ? { params: 1, hash: [] }
           : undefined
-        : inlineHelpers[name];
+        : Object.hasOwn(inlineHelpers, name)
+          ? inlineHelpers[name]
+          : undefined;
     const isCall = block || node.params.length > 0 || node.hash !== undefined;
     if (node.path.type !== 'PathExpression') {
       report(statement, 'a literal cannot be used as a field or helper name');
@@ -173,14 +178,6 @@ type Frame = {
   parent: Frame | undefined;
 };
 
-class Fail extends Error {
-  readonly issue: PackIssue;
-  constructor(issue: PackIssue) {
-    super(issue.message);
-    this.issue = issue;
-  }
-}
-
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
@@ -202,12 +199,14 @@ function groupThousands(value: number, decimals: number | undefined): string {
 
 function render(ast: AST, root: unknown, file: string): string {
   const fail = (node: Node, code: string, message: string): never => {
-    throw new Fail({ code, ...at(file, node), message });
+    throw new TemplateError([{ code, ...at(file, node), message }]);
   };
 
   const property = (value: unknown, key: string, node: Node): unknown => {
     if (value === null || value === undefined) return null;
-    if (!isObject(value) || !Object.hasOwn(value, key)) {
+    // A string's own properties (length, indexes) resolve, as in Handlebars.
+    const target: unknown = typeof value === 'string' ? Object(value) : value;
+    if (!isObject(target) || !Object.hasOwn(target, key)) {
       const where =
         node.type === 'PathExpression'
           ? ` (in {{${(node as Path).original}}})`
@@ -218,7 +217,7 @@ function render(ast: AST, root: unknown, file: string): string {
         `the data has no field "${key}"${where}`,
       );
     }
-    return (value as Record<string, unknown>)[key];
+    return (target as Record<string, unknown>)[key];
   };
 
   const lookupPath = (path: Path, frame: Frame): unknown => {
@@ -226,8 +225,14 @@ function render(ast: AST, root: unknown, file: string): string {
     let value: unknown;
     if (path.data) {
       const [name, ...rest] = parts;
+      // `@../index`: each {{#each}} data frame keeps its parent, as in
+      // Handlebars' createFrame.
+      let data: Record<string, unknown> | undefined = frame.data;
+      for (let i = 0; i < path.depth; i++) {
+        data = data?._parent as Record<string, unknown> | undefined;
+      }
       if (name === 'root') value = root;
-      else value = frame.data[name ?? ''];
+      else value = data?.[name ?? ''];
       parts = rest;
     } else {
       const first = parts[0];
@@ -389,6 +394,7 @@ function render(ast: AST, root: unknown, file: string): string {
           .map(([key, item], i) => {
             const data = {
               ...frame.data,
+              _parent: frame.data,
               index: i,
               key,
               first: i === 0,
@@ -404,10 +410,32 @@ function render(ast: AST, root: unknown, file: string): string {
     }
   };
 
+  // Budgets, so that a pack can't make filling (or checking it) run away.
+  let steps = 0;
+  let size = 0;
+  const output = (text: string, statement: Statement) => {
+    size += text.length;
+    if (size > maxOutput) {
+      fail(
+        statement,
+        'template-render',
+        `the filled template exceeds ${maxOutput} characters`,
+      );
+    }
+    return text;
+  };
+
   const run = (statement: Statement, frame: Frame): string => {
+    if (++steps > maxSteps) {
+      fail(
+        statement,
+        'template-render',
+        `filling took more than ${maxSteps} steps: are {{#each}} blocks nested over the same data?`,
+      );
+    }
     switch (statement.type) {
       case 'ContentStatement':
-        return (statement as hbs.AST.ContentStatement).value;
+        return output((statement as hbs.AST.ContentStatement).value, statement);
       case 'MustacheStatement': {
         const mustache = statement as hbs.AST.MustacheStatement;
         const path = mustache.path as Path;
@@ -416,7 +444,10 @@ function render(ast: AST, root: unknown, file: string): string {
         const value = isHelper
           ? callHelper(mustache as Call, frame, statement)
           : lookupPath(path, frame);
-        return Handlebars.Utils.escapeExpression(value as string);
+        return output(
+          Handlebars.Utils.escapeExpression(value as string),
+          statement,
+        );
       }
       case 'BlockStatement':
         return block(statement as hbs.AST.BlockStatement, frame);
@@ -448,12 +479,7 @@ export function parseTemplate(
 
 /** Renders a template that parseTemplate found no issue in. */
 export function renderTemplate(ast: AST, data: unknown, file: string): string {
-  try {
-    return render(ast, data, file);
-  } catch (error) {
-    if (error instanceof Fail) throw new TemplateError([error.issue]);
-    throw error;
-  }
+  return render(ast, data, file);
 }
 
 /**

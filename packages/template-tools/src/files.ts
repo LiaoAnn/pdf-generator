@@ -55,6 +55,12 @@ export function readFiles(
       );
     }
     if (size > maxBytes) return tooLarge(size, maxBytes);
+    // A zip can understate its sizes; count what was really extracted.
+    const extracted = Object.values(raw).reduce(
+      (sum, bytes) => sum + bytes.byteLength,
+      0,
+    );
+    if (extracted > maxBytes) return tooLarge(extracted, maxBytes);
   } else {
     raw = Object.fromEntries(
       Object.entries(input)
@@ -68,7 +74,8 @@ export function readFiles(
     if (size > maxBytes) return tooLarge(size, maxBytes);
   }
 
-  const files: Record<string, Uint8Array> = {};
+  // No prototype: a pack path such as `constructor` is just a path.
+  const files: Record<string, Uint8Array> = Object.create(null);
   const issues: PackIssue[] = [];
   for (const [path, bytes] of Object.entries(raw)) {
     if (relativePathSchema.safeParse(path).success) files[path] = bytes;
