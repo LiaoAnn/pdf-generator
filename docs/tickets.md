@@ -355,3 +355,21 @@
 - **不做**：自訂網域
 - **來源**：T09 的 ASK（步驟 0～7 與各步的還原方式見 T09 的 thread）；每一步都是外部服務呼叫，執行前要使用者同意
 
+### T07-1 印 PDF：雲端 Chrome 152 驗收
+- **目標**：在真的 Browser Rendering（Chrome 152）上跑 T07 的 3 份驗收文件：部署 `pdf-generator-print`、設 `PRINT_TOKEN`、最多 12 份（含 session 重用），記錄啟動與渲染時間，跑完刪除 Worker；排版有問題就另開修正票
+- **Blocked by**：T07
+- **Blocks**：—（建議在 T16 部署前完成）
+- **撞車風險**：無
+- **驗收測試**：3 份文件在 Chrome 152 上頁數、A4 尺寸、每列只出現一次、每頁表頭都對；Worker 刪除後網址 404
+- **不做**：正式部署（T16）
+- **來源**：T07 的 ASK（步驟與指令見 T07 的 thread）；外部服務，執行前要使用者同意
+
+### T08-1 標準答案：只算 Paged.js 產生的頁面
+- **目標**：`readGroundTruth` 只計 Paged.js 產生的 `.pagedjs_page`（樣板自己用到這個 class 的元素會讓 `gt.pages` 變多，已重現）；瀏覽器端蒐集器不要強迫使用者的 tsconfig 載入 DOM lib
+- **Blocked by**：T08
+- **Blocks**：—（建議在 T16 之前）
+- **撞車風險**：T13 正在改 `packages/ground-truth`；等 T13 merge 後再派
+- **驗收測試**：一份樣板內含 `.pagedjs_page` 元素的 fixture，`gt.pages` 數量正確；apps/print 不需 DOM lib 也能 typecheck
+- **不做**：改區塊讀取規則
+- **來源**：PR #8 的 open risks
+
