@@ -51,13 +51,13 @@ Run `/plan-it` and follow it, with these settings:
 - **Why**: the ticket's 目標 plus the line in `AGENTS.md`'s "What this project is" it serves. Don't ask the user for the Why; the ticket is it.
 - **Acceptance**: the ticket's 驗收測試 is the minimum. Every item maps to at least one slice's Acceptance.
 - **Slices**: 3–5. Each is committed on its own and fits the ticket's 不做 list.
-- **Size**: estimate the changed lines, excluding generated files. Over 2000 is a `STOP` item: propose a split, each part with its own goal, acceptance and dependency.
+- **Size**: not a reason to stop or split; the tickets are already cut. Report the breakdown (production, tests, fixtures, generated) in the PR.
 - **Stubs**: for anything the ticket needs that isn't in its Blocked by and isn't merged, define the interface and a stub, and name in the plan which future ticket replaces it.
 - **Test-first**: TDD for every slice that changes behavior. Tests come from a test author on another model (step 3).
 - **Commits**: one per slice, automatically, once the slice passes step 3.
 - **Feasibility**: check unobserved dependencies for real, but only locally. A check that needs the real Cloudflare account is an `ASK`.
 
-`STOP` items: over 2000 lines; a change to the shared contract; a call to an external service; work outside the ticket's goal; a conflict with T03's or T04's findings. Don't send the plan to the coordinator; carry it out yourself. Only a `STOP` item goes to the coordinator, as an `ASK`, and you wait for the answer before the work it affects.
+`STOP` items: a change to the shared contract; a call to an external service; work outside the ticket's goal; a conflict with T03's or T04's findings. Don't send the plan to the coordinator; carry it out yourself. Only a `STOP` item goes to the coordinator, as an `ASK`, and you wait for the answer before the work it affects.
 
 Save the plan as the first section of your PR description later. Don't commit it to the repo.
 
@@ -96,6 +96,7 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 ## Don't
 
 - Merge your own PR, push to `main`, or touch any branch but yours.
+- Run any git command inside the container, not even `git init` in `/tmp`. Git runs only on the VM as `git -C <path> …`; for a clean copy use `git -C <path> archive` or `git -C <path> worktree add` on the VM.
 - Edit `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`. Propose instead.
 - Change the shared contract, or fix another ticket's code in passing. Propose instead.
 - Edit a delegated test, or skip a review round because the last one "was probably fine".

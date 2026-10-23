@@ -40,18 +40,27 @@ Whether the user wrote, a worker sent a message, or the heartbeat fired:
 3. **Dispatch** ready tickets up to the cap.
 4. **Report to the user**, in Traditional Chinese: questions waiting for them first, then what is running and what merged since the last report.
 
+## Deciding for the user (set 2026-10-24)
+
+Judge by the user's goal first, and decide yourself whenever the goal settles it; hand the user only what it can't settle. The goal is in `AGENTS.md` ("What this project is"): realistic Taiwanese PDF fixtures whose ground truth matches the PDF exactly, reproducible from a seed, reached ticket by ticket toward T22's end-to-end run.
+
+- **Decide yourself, then mention it in one line**: ticket size (never a reason to split; the tickets are already cut); a worker's product choice that fits the tickets and doesn't constrain many later tickets; small edits to `AGENTS.md` or skills that add a fact, a command or a prohibition (not a process change); answers an earlier user decision already settles (quote it).
+- **Backlog, no question**: hardening items and proposed tickets that block nothing. Add them under "待辦" at the end of `docs/tickets.md` with enough detail to dispatch later; dispatch one when a slot is free and nothing on the critical path is ready.
+- **Always the user's**: every external-service call (each time), `wt-down`, a process change, a product decision that shapes many tickets (contract design, scope of a ticket), anything you can't tie to the goal.
+- **Reports** hold three things only: what needs the user's decision, which tickets are running, which merged. Give detail only when asked.
+
 ## Handling worker messages
 
 Every worker message starts with `[TNN] <EVENT>`.
 
 Workers don't send their plans; they plan and carry them out on their own. A plan problem reaches you only as an `ASK` (a `STOP` item) or at the merge bar.
 
-- `ASK`: answer it yourself only if `AGENTS.md`, the ticket, an earlier user decision or T03/T04's findings settle it; quote the source in your answer. Otherwise ask the user with the worker's options and recommendation, and send the answer back word for word plus any context. External-service calls always go to the user, every time.
+- `ASK`: answer it yourself only if `AGENTS.md`, the ticket, an earlier user decision or T03/T04's findings settle it; quote the source in your answer. Otherwise, per "Deciding for the user", decide it yourself when the goal settles it, or ask the user with the worker's options and recommendation, and send the answer back word for word plus any context. External-service calls always go to the user, every time.
 - `BLOCKED`: check it (`wt-status <worker path>`, the thread's evidence). If it's the worker's own layer, say so with the evidence. If it's the VM, Traefik, DNS or `wt-*`, report it to the user; don't fix it.
 - `PR`: check the merge bar.
-- A **split proposal**: ask the user. Once approved, add the parts to `docs/tickets.md` as `T15a`, `T15b`, … with their own fields, update Blocked by/Blocks on both sides, and tell the worker which part it keeps.
+- A **split proposal** for size: refuse it; size is not a reason to split. A split for another reason (scope, dependency): ask the user. Once approved, add the parts to `docs/tickets.md` as `T15a`, `T15b`, … with their own fields, update Blocked by/Blocks on both sides, and tell the worker which part it keeps.
 - A **contract change**: ask the user to approve a small ticket `T02-<n>`, add it, and run it before the ticket that needs it continues.
-- **Proposed new tickets / skill edits**: collect them and present them to the user in your next report. Don't add them yourself.
+- **Proposed new tickets / skill edits**: handle them per "Deciding for the user": backlog, small edit, or the user's call.
 
 ## Dispatch
 
@@ -119,7 +128,7 @@ Merge a PR only when all of these hold. Check each yourself:
 2. **Up to date**: `mergeable` is `MERGEABLE`, and the branch is rebased on the current `main`.
 3. **Acceptance observed**: every 驗收測試 item has observed or executed evidence in the PR body; an item reported inconclusive doesn't block the merge if a later ticket or check will cover it and nothing in the PR depends on it; name it in the merge note and your report. If the ticket's core outcome is inconclusive, send the PR back instead.
 4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by GPT-6.1-Sol or the Sonnet fallback, the last round had no Blockers, and the tests were written by a test author, not the implementer.
-5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`, and not the shared contract unless it's a contract ticket. Size ≤ 2000 changed lines excluding generated files (`gh pr view <n> --json additions,deletions,files`).
+5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`, and not the shared contract unless it's a contract ticket.
 
 Then `gh pr merge <n> --squash --delete-branch`, with the subject `<type>: <summary> (TNN)`. Then:
 
