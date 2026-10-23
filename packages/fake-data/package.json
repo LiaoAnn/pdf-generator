@@ -14,5 +14,8 @@
     "@types/node": "^24.13.6",
     "typescript": "catalog:",
     "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@pdf-generator/contract": "workspace:*"
   }
 }
