@@ -40,6 +40,8 @@ export interface MeasuredElement {
    * `data-gt-checked`), by name.
    */
   attributes?: Record<string, string>;
+  /** `data-gt-*` attributes on elements inside it (T13 allows none). */
+  innerAttributes?: { tag: string; name: string }[];
   /** Type-specific data collected in the browser (T13: `ElementDetails`). */
   details?: unknown;
 }
@@ -73,4 +75,23 @@ export interface ElementDetails {
    * visible rendering without the hidden MathML copy.
    */
   visibleParts?: string[];
+  /** table: the rows printed on this page, when the element is a `<table>`. */
+  table?: { rows: MeasuredRow[] };
+}
+
+/** A printed table row, in visual order (thead, bodies, tfoot). */
+export interface MeasuredRow {
+  cells: MeasuredCell[];
+}
+
+export interface MeasuredCell {
+  /** The `rowSpan` property: 0 means to the last row. */
+  rowSpan: number;
+  colSpan: number;
+  /** A `<th>`, or a cell in `<thead>`. */
+  header: boolean;
+  /** Its `innerText`. */
+  text: string;
+  /** Its border box relative to its `.pagedjs_page`, in CSS px. */
+  rect: Rect;
 }

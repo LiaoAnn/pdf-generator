@@ -131,6 +131,11 @@ export function buildGroundTruth(
         );
       }
     }
+    for (const { tag, name } of element.innerAttributes ?? []) {
+      problems.push(
+        `${where}: ${name} on <${tag}> inside the block is not allowed`,
+      );
+    }
     const origin =
       element.splitFrom === null ? undefined : byRef.get(element.splitFrom);
     if (element.splitFrom !== null && origin === undefined) {
@@ -210,7 +215,10 @@ export function buildGroundTruth(
 
 /** `[x0, y0, x1, y1]` in pt relative to the page; each edge rounded on its own. */
 function bbox(rect: Rect, page: Rect): Bbox {
-  const x = rect.x - page.x;
-  const y = rect.y - page.y;
-  return [toPt(x), toPt(y), toPt(x + rect.width), toPt(y + rect.height)];
+  return pageBbox({ ...rect, x: rect.x - page.x, y: rect.y - page.y });
+}
+
+/** A rect already relative to its page, in CSS px, as a gt.json bbox. */
+export function pageBbox({ x, y, width, height }: Rect): Bbox {
+  return [toPt(x), toPt(y), toPt(x + width), toPt(y + height)];
 }

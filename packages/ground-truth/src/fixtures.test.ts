@@ -25,6 +25,8 @@ describe('hand-authored fixture ground truth', () => {
     'blank-field',
     'formula',
     'image-text',
+    'table-grid',
+    'table-merged',
   ]) {
     test(`${name} matches every hand-derived block after pagination`, async () => {
       const html = await readFile(

@@ -61,6 +61,7 @@ function collect(): Measurement {
     .map((element): MeasuredElement => {
       const pageElement = element.closest('.pagedjs_page');
       const { x, y, width, height } = element.getBoundingClientRect();
+      const origin = pageElement?.getBoundingClientRect() ?? { x: 0, y: 0 };
       const type = element.getAttribute('data-gt') ?? '';
       const details: ElementDetails | undefined =
         type === 'checkbox'
@@ -87,7 +88,36 @@ function collect(): Measurement {
                   element.querySelectorAll('.katex-html'),
                 ).map(part => (part as HTMLElement).innerText),
               }
-            : undefined;
+            : type === 'table' && element instanceof HTMLTableElement
+              ? {
+                  table: {
+                    rows: Array.from(element.rows)
+                      // Not laid out (display: none): not printed.
+                      .filter(row => row.getClientRects().length > 0)
+                      .map(row => ({
+                        cells: Array.from(row.cells)
+                          .filter(cell => cell.getClientRects().length > 0)
+                          .map(cell => {
+                            const box = cell.getBoundingClientRect();
+                            return {
+                              rowSpan: cell.rowSpan,
+                              colSpan: cell.colSpan,
+                              header:
+                                cell.tagName === 'TH' ||
+                                row.parentElement?.tagName === 'THEAD',
+                              text: cell.innerText,
+                              rect: {
+                                x: box.x - origin.x,
+                                y: box.y - origin.y,
+                                width: box.width,
+                                height: box.height,
+                              },
+                            };
+                          }),
+                      })),
+                  },
+                }
+              : undefined;
       return {
         type,
         id: element.getAttribute('data-gt-id'),
@@ -107,6 +137,12 @@ function collect(): Measurement {
                 name.startsWith('data-gt-') && name !== 'data-gt-id',
             )
             .map(({ name, value }) => [name, value]),
+        ),
+        innerAttributes: Array.from(element.querySelectorAll('*')).flatMap(
+          inner =>
+            Array.from(inner.attributes)
+              .filter(({ name }) => name.startsWith('data-gt-'))
+              .map(({ name }) => ({ tag: inner.tagName.toLowerCase(), name })),
         ),
         ...(details && { details }),
       };

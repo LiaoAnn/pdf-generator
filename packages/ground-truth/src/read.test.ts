@@ -608,3 +608,225 @@ describe('T13 formula sources and declared image text', () => {
     });
   }, 30_000);
 });
+
+describe('T13 single-page table grid boundaries and markup errors', () => {
+  const tableCss = `table { table-layout: fixed; border-collapse: separate; border-spacing: 0; width: 180pt; }
+    tr { height: 24pt; } td, th { padding: 0; border: 0; }`;
+
+  test.each([
+    { name: 'rowspan zero extends to the last row', span: 0 },
+    { name: 'an oversized rowspan is clipped to the last row', span: 99 },
+  ])(
+    '$name without emitting covered slots as cells',
+    async ({ span }) => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<table data-gt="table" data-gt-id="span-edge">
+            <colgroup><col style="width:60pt"><col style="width:60pt"><col style="width:60pt"></colgroup>
+            <tbody><tr><td>First</td><td rowspan="${span}">Tall</td><td>Right</td></tr>
+            <tr><td>Left 2</td><td>Right 2</td></tr>
+            <tr><td>Left 3</td><td>Right 3</td></tr></tbody>
+          </table>`,
+          tableCss,
+        );
+        const result = await readGroundTruth(page, source);
+        expect(result.pages).toHaveLength(1);
+        expect(result.blocks).toHaveLength(1);
+        const block = result.blocks[0];
+        expect(block?.type).toBe('table');
+        if (block?.type !== 'table') return;
+        // Margins (48,60), 60pt columns, 24pt rows. The spanning cell
+        // occupies the middle column: later cells must skip it, not just
+        // append after the last occupied column or use their DOM index.
+        expect(block.table).toEqual({
+          rows: 3,
+          cols: 3,
+          cells: [
+            {
+              row: 0,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'First',
+              bbox: [48, 60, 108, 84],
+            },
+            {
+              row: 0,
+              col: 1,
+              rowSpan: 3,
+              colSpan: 1,
+              header: false,
+              text: 'Tall',
+              bbox: [108, 60, 168, 132],
+            },
+            {
+              row: 0,
+              col: 2,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'Right',
+              bbox: [168, 60, 228, 84],
+            },
+            {
+              row: 1,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'Left 2',
+              bbox: [48, 84, 108, 108],
+            },
+            {
+              row: 1,
+              col: 2,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'Right 2',
+              bbox: [168, 84, 228, 108],
+            },
+            {
+              row: 2,
+              col: 0,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'Left 3',
+              bbox: [48, 108, 108, 132],
+            },
+            {
+              row: 2,
+              col: 2,
+              rowSpan: 1,
+              colSpan: 1,
+              header: false,
+              text: 'Right 3',
+              bbox: [168, 108, 228, 132],
+            },
+          ],
+        });
+        expect(gtSchema.parse(result)).toEqual(result);
+      });
+    },
+    30_000,
+  );
+
+  test('counts only printed rows and orders an early tfoot after multiple bodies', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<table data-gt="table" data-gt-id="visual-rows">
+          <tfoot><tr><td>Foot</td></tr></tfoot>
+          <tbody><tr><td>Body 1</td></tr><tr style="display:none"><td>SECRET</td></tr></tbody>
+          <tbody><tr><td>Body 2</td></tr></tbody>
+          <thead><tr><td>Head</td></tr></thead>
+        </table>`,
+        tableCss,
+      );
+      const result = await readGroundTruth(page, source);
+      expect(result.pages).toHaveLength(1);
+      expect(result.blocks).toHaveLength(1);
+      const block = result.blocks[0];
+      expect(block?.type).toBe('table');
+      if (block?.type !== 'table') return;
+      expect(block.table).toEqual({
+        rows: 4,
+        cols: 1,
+        cells: [
+          {
+            row: 0,
+            col: 0,
+            rowSpan: 1,
+            colSpan: 1,
+            header: true,
+            text: 'Head',
+            bbox: [48, 60, 228, 84],
+          },
+          {
+            row: 1,
+            col: 0,
+            rowSpan: 1,
+            colSpan: 1,
+            header: false,
+            text: 'Body 1',
+            bbox: [48, 84, 228, 108],
+          },
+          {
+            row: 2,
+            col: 0,
+            rowSpan: 1,
+            colSpan: 1,
+            header: false,
+            text: 'Body 2',
+            bbox: [48, 108, 228, 132],
+          },
+          {
+            row: 3,
+            col: 0,
+            rowSpan: 1,
+            colSpan: 1,
+            header: false,
+            text: 'Foot',
+            bbox: [48, 132, 228, 156],
+          },
+        ],
+      });
+      expect(gtSchema.parse(result)).toEqual(result);
+    });
+  }, 30_000);
+
+  test('reports non-table markup, an empty table and an all-hidden-row table together with their block ids', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div data-gt="table" data-gt-id="not-table">Pretend table</div>
+         <table data-gt="table" data-gt-id="empty-table"></table>
+         <table data-gt="table" data-gt-id="hidden-rows"><tbody><tr style="display:none"><td>SECRET</td></tr></tbody></table>`,
+        `${tableCss} table { height: 24pt; }`,
+      );
+      await expectMarkupIssues(page, [
+        {
+          id: 'not-table',
+          problem:
+            /(?:must|only|requires?|expected|not|needs).*(?:<table>|table element)|(?:<table>|table element).*(?:required|only)/i,
+        },
+        {
+          id: 'empty-table',
+          problem:
+            /(?:no|zero|0).*(?:printed|visible|rows)|(?:rows).*(?:empty|missing|required)/i,
+        },
+        {
+          id: 'hidden-rows',
+          problem:
+            /(?:no|zero|0).*(?:printed|visible|rows)|(?:rows).*(?:empty|missing|required)/i,
+        },
+      ]);
+    });
+  }, 30_000);
+
+  test.each(['data-gt-id', 'data-gt-checked', 'data-gt-cheked'])(
+    'rejects cell attribute %s rather than silently discarding cell metadata',
+    async attribute => {
+      await withPage(async page => {
+        await paginate(
+          page,
+          `<table data-gt="table" data-gt-id="cell-metadata"><tbody><tr><td ${attribute}="true">Printed</td></tr></tbody></table>`,
+          tableCss,
+        );
+        await expectMarkupIssues(page, [
+          {
+            id: 'cell-metadata',
+            problem: new RegExp(
+              `${attribute}.*(?:not allowed|forbidden|unsupported|must not|unexpected|invalid)|(?:not allowed|forbidden|unsupported|must not|unexpected|invalid).*${attribute}`,
+              'i',
+            ),
+          },
+        ]);
+      });
+    },
+    30_000,
+  );
+});

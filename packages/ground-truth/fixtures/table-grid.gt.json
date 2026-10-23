@@ -1,0 +1,125 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "table-grid",
+    "templateVersion": 1,
+    "seed": "T13-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 595.28, "height": 841.89 }],
+  "blocks": [
+    {
+      "id": "grid",
+      "type": "table",
+      "page": 1,
+      "bbox": [54, 54, 294, 150],
+      "order": 0,
+      "text": "Item\tQty\tNote\nTea\nLeaf\t2\t\nTotal\t0\nEnd\t3\tDone",
+      "table": {
+        "rows": 4,
+        "cols": 3,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Item",
+            "bbox": [54, 54, 126, 78]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Qty",
+            "bbox": [126, 54, 222, 78]
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "Note",
+            "bbox": [222, 54, 294, 78]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "Tea\nLeaf",
+            "bbox": [54, 78, 126, 102]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "2",
+            "bbox": [126, 78, 222, 102]
+          },
+          {
+            "row": 1,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "",
+            "bbox": [222, 78, 294, 102]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "Total",
+            "bbox": [54, 102, 126, 126]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "0",
+            "bbox": [126, 102, 222, 126]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "End",
+            "bbox": [54, 126, 126, 150]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "3",
+            "bbox": [126, 126, 222, 150]
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "Done",
+            "bbox": [222, 126, 294, 150]
+          }
+        ]
+      }
+    }
+  ]
+}
