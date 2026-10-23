@@ -1,16 +1,37 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
-  // The web app (TanStack Start, T09). A placeholder Worker until then.
+  // The web app: TanStack Start on Workers, built by @cloudflare/vite-plugin.
+  // `pnpm dev` serves it through Vite on port 8787 (vite.config.ts).
   "name": "pdf-generator-web",
-  "main": "src/index.ts",
+  "main": "src/server.ts",
   "compatibility_date": "2026-09-20",
   "compatibility_flags": ["nodejs_compat_v2"],
+  // Cloudflare Access (see src/access/verify.ts). Empty until the Access
+  // application exists; the Worker refuses every request while they are empty.
+  // `vite dev` ignores them and uses a local stand-in.
+  "vars": {
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": "",
+  },
+  // Template packs, generated fixtures and their metadata. T15 and T16 add
+  // their tables in src/db/schema.ts and their objects under their own key
+  // prefixes. database_id is a placeholder until the remote database exists;
+  // local dev and tests don't need a real one.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "pdf-generator",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "drizzle",
+    },
+  ],
+  "r2_buckets": [
+    {
+      "binding": "FILES",
+      "bucket_name": "pdf-generator-files",
+    },
+  ],
   "observability": {
     "enabled": true,
-  },
-  "dev": {
-    "ip": "127.0.0.1",
-    "port": 8787,
-    "inspector_port": 9229,
   },
 }
