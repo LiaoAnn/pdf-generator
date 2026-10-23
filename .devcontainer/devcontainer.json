@@ -1,5 +1,5 @@
 {
-  "name": "cf-worker-typescript-template",
+  "name": "pdf-generator",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
@@ -40,14 +40,12 @@
         "js/ts.format.placeOpenBraceOnNewLineForFunctions": false,
         "js/ts.suggest.autoImports": true,
         "js/ts.preferences.importModuleSpecifier": "non-relative",
-        "workbench.editor.enablePreview": true,
+        "workbench.editor.enablePreview": true
       }
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  "forwardPorts": [
-    8787
-  ],
+  "forwardPorts": [8787],
   // Runs on the host before the container is created: make sure the volumes shared
   // by every TypeScript project exist (a no-op when they already do).
   "initializeCommand": "docker volume create pnpm_store && docker volume create playwright_browsers",

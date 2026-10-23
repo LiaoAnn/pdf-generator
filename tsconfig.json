@@ -1,16 +1,9 @@
 {
+  // Editor and root-level files only; each workspace package has its own
+  // tsconfig.json and is checked by `pnpm typecheck`.
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "target": "ESNext",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "skipLibCheck": true,
-    "lib": [
-      "ESNext"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "worker-configuration.d.ts",
-    "src/**/*.ts",
-  ]
+  "include": ["vitest.config.ts"]
 }

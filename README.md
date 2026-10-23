@@ -1,36 +1,44 @@
-# Cloudflare Workers Project Base
+# pdf-generator
 
-A minimal, framework-neutral reference for starting TypeScript projects on
-Cloudflare Workers. Use this repository's tooling and development environment as
-a starting point for an agent to initialize a Hono HTTP server or a TanStack Start
-web application.
+A platform that mass-produces PDF fixtures (realistic documents filled with fake
+but valid Taiwanese data) together with a ground-truth file describing every
+block on every page, for testing and fine-tuning OCR and document-layout models.
+`AGENTS.md` describes the project and how work is organized; `docs/tickets.md`
+holds the tickets.
 
-## Included
+## Layout
 
-- A native Worker entry point in `src/index.ts` that returns `Hello, World!`.
-- Wrangler configuration for local development, deployment, and binding types.
-- Biome for linting and formatting.
-- Knip for finding unused files, exports, and dependencies.
-- A Node.js 24 Dev Container with pnpm and a persistent package store.
+A pnpm monorepo of TypeScript-source packages (no build step), running on
+Cloudflare Workers.
 
-No application framework is installed. Add the framework, dependencies, and
-configuration that the new project needs.
+| Path | Package |
+| --- | --- |
+| `apps/web` | Website Worker (TanStack Start), `wrangler dev` on port 8787 |
+| `apps/print` | PDF print Worker (Browser Rendering, Paged.js), port 8788 |
+| `packages/contract` | Shared contract: zod schemas and exported JSON Schema |
+| `packages/fake-data` | Seeded fake-data engine |
+| `packages/template-tools` | Handlebars fill and template-pack checks |
+| `packages/ground-truth` | Ground truth (`gt.json`) from a printed page |
+
+Tooling: TypeScript 7, Vitest 4 (one project per package), Biome, Knip, and
+GitHub Actions CI (`.github/workflows/ci.yml`).
 
 ## Development
 
 1. Open the repository in VS Code and select **Reopen in Container**. Docker and
-   the Dev Containers extension are required.
-2. The post-create script installs `socat` and configures the pnpm store. Compose
-   creates the store volume automatically; no host store setup is needed.
-3. Set the project name in `package.json` and `wrangler.jsonc`.
-4. Install dependencies and start the Worker:
+   the Dev Containers extension are required. Each checkout (or git worktree)
+   gets its own compose project; the compose file publishes no host ports.
+2. The post-create script installs `socat`, configures the shared pnpm store, and
+   installs Playwright's headless Chromium.
+3. Install dependencies and start the web Worker:
 
    ```bash
    pnpm install
    pnpm dev
    ```
 
-The Worker is available at `http://localhost:8787`.
+The web Worker is available at `http://localhost:8787` through the Dev
+Container's port forwarding. `pnpm dev:print` starts the print Worker on 8788.
 
 The container uses the published TypeScript/Node image directly. Initialization
 lives in `.devcontainer/scripts/post-create.sh`; there is no custom Dockerfile.
@@ -38,34 +46,26 @@ After changing container configuration, select **Rebuild Container**.
 
 ## Commands
 
+Run from the repository root, inside the container.
+
 | Command | Purpose |
 | --- | --- |
-| `pnpm dev` | Start the local Worker |
+| `pnpm dev` | Start the web Worker (`apps/web`) |
+| `pnpm dev:print` | Start the print Worker (`apps/print`) |
 | `pnpm dev:cron` | Run the local cron scheduler in the foreground (Linux) |
+| `pnpm typecheck` | Type-check every package with TypeScript 7 |
+| `pnpm test` | Run every package's Vitest tests and the cron script tests |
 | `pnpm test:cron` | Test cron scheduling and Worker discovery |
-| `pnpm lint` | Check source formatting and lint rules |
+| `pnpm lint` | Check formatting and lint rules |
 | `pnpm knip` | Find unused files, exports, and dependencies |
-| `pnpm format` | Format source files |
-| `pnpm check` | Apply source formatting and lint fixes |
+| `pnpm format` | Format files |
+| `pnpm check` | Apply formatting and lint fixes |
+| `pnpm verify` | Everything CI runs: typecheck, lint, knip, test |
 | `pnpm cf-typegen` | Regenerate Worker types after changing bindings |
-| `pnpm deploy` | Deploy the Worker to Cloudflare |
 
-For Cloudflare authentication inside the container, run `bash wrangler_login.sh`.
+To deploy a Worker, run `pnpm --filter @pdf-generator/<app> run deploy`. For
+Cloudflare authentication inside the container, run `bash wrangler_login.sh`.
 It uses `socat` to forward the local OAuth callback between IPv4 and IPv6.
-
-## Starting a framework project
-
-Ask your agent to use this repository as a tooling reference and initialize the
-chosen framework for Cloudflare Workers:
-
-- **Hono:** install Hono and replace the native Worker entry point with the HTTP
-  application. Add routes and bindings as needed.
-- **TanStack Start:** initialize the framework's Cloudflare setup and adapt its
-  entry points, scripts, TypeScript, and Wrangler configuration. Keep the Biome and
-  Dev Container setup as the shared baseline.
-
-This repository's `src/index.ts` and Wrangler scripts are a minimal Worker example;
-framework projects should use their own required development and build setup.
 
 ## Local cron triggers
 
@@ -150,5 +150,5 @@ retried, and each request has a ten-second timeout.
 
 Read the background log with `tail -f .wrangler/cron.log`. To pause an individual
 Worker, set `enabled: false` in the targets file; stopping the container stops the
-scheduler. The repository's base Worker has no cron triggers, so no scheduled
-requests are sent until you add them.
+scheduler. The Workers have no cron triggers yet, so no scheduled requests are
+sent until you add them.

@@ -1,3 +1,16 @@
+packages:
+  - apps/*
+  - packages/*
+
+# One version of each shared tool across the workspace: reference it as
+# "catalog:" in a package.json.
+catalog:
+  typescript: ^7.0.2
+  # Vitest 4, not 5: @cloudflare/vitest-pool-workers (for tests inside workerd)
+  # supports only Vitest 4.
+  vitest: ^4.1.12
+  wrangler: ^4.152.0
+
 allowBuilds:
   esbuild: true
   workerd: true

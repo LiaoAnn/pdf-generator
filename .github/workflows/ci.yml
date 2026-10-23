@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # The Dev Container's image (.devcontainer/docker-compose.yml), so CI runs
+    # with the same Node, pnpm and network setup as every worktree. The dev cron
+    # tests in particular rely on it: on the bare runner `localhost` resolves to
+    # ::1 first and Wrangler discovery sees two candidate sockets.
+    container:
+      image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm lint
+      - run: pnpm knip
+      - run: pnpm test
