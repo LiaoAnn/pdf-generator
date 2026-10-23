@@ -15,7 +15,18 @@ interface Case {
   pages: number;
   /** Text each page must contain, whitespace removed. */
   pageText: string[][];
+  /**
+   * A table across pages: every row (its text, whitespace removed) is printed
+   * exactly once and whole, and every page with rows has the header text
+   * before its first row. Independent of where the pages break.
+   */
+  table?: { header: string; rows: string[] };
 }
+
+const tableRows = (html: string) =>
+  [...html.matchAll(/<tr>(.*?)<\/tr>/g)]
+    .map(m => (m[1] ?? '').replace(/<[^>]+>/g, '').replace(/\s/g, ''))
+    .filter(row => /^\d{3}/.test(row));
 
 const cases: Case[] = [
   {
@@ -52,6 +63,18 @@ const cases: Case[] = [
         '北區1,200,000',
       ],
     ],
+  },
+  {
+    file: 'table.html',
+    orientation: 'portrait',
+    pages: 4,
+    pageText: [[], ['二、各門市營收明細'], [], ['三、結語']],
+    table: {
+      header: '編號門市營收（元）狀態',
+      rows: tableRows(
+        await readFile(join(import.meta.dirname, 'table.html'), 'utf8'),
+      ),
+    },
   },
 ];
 
@@ -114,6 +137,21 @@ for (const c of cases) {
       .filter(s => !page.includes(s))
       .map(s => `page ${i + 1}: ${s}`);
   });
+  const pages = text.map(t => t.replace(/\s/g, ''));
+  const all = pages.join('');
+  const table = c.table;
+  const rowsOnce =
+    !table ||
+    (table.rows.length > 0 &&
+      table.rows.every(row => all.split(row).length === 2));
+  const headerOnEveryPage =
+    !table ||
+    pages.every(page => {
+      const first = Math.min(
+        ...table.rows.map(row => page.indexOf(row)).filter(at => at !== -1),
+      );
+      return first === Infinity || page.lastIndexOf(table.header, first) !== -1;
+    });
   const checks = {
     pageCount: pdf.numPages === c.pages,
     header: response.headers.get('x-page-count') === String(pdf.numPages),
@@ -121,6 +159,8 @@ for (const c of cases) {
       ([sw = 0, sh = 0]) => Math.abs(sw - w) < 1 && Math.abs(sh - h) < 1,
     ),
     text: missing.length === 0,
+    rowsOnce,
+    headerOnEveryPage,
   };
   results.push({
     file: c.file,

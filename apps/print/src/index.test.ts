@@ -27,7 +27,9 @@ test.each([
 ])(
   'serves committed font %s unchanged with a reusable browser cache',
   async name => {
-    const response = await worker.fetch(
+    // Read large assets over HTTP to avoid the "Body has already been read"
+    // failure observed with worker.fetch under full-suite load.
+    const response = await fetch(
       new URL(`/fonts/${name}`, (await worker.url).href),
     );
     expect(response.status).toBe(200);

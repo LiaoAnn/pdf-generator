@@ -20,7 +20,7 @@ function fakeBrowser() {
     }),
     evaluate: vi.fn(async (_fn: unknown) => {
       calls.push('ready');
-      return { pageCount: 3 };
+      return { pageCount: 3, unloadedFaces: [], fragmentedRows: [] };
     }),
     pdf: vi.fn(async (_options: unknown) => {
       calls.push('pdf');
@@ -98,7 +98,9 @@ test('a caller without an inspect hook still receives the ready page count and P
 test('a pending pagination promise prevents inspection and printing until it resolves', async () => {
   vi.useFakeTimers();
   const fake = fakeBrowser();
-  let finishPagination: (ready: { pageCount: number }) => void = () => {
+  let finishPagination: (
+    ready: Awaited<ReturnType<typeof fake.page.evaluate>>,
+  ) => void = () => {
     throw new Error('pagination evaluation has not started');
   };
   fake.page.evaluate.mockImplementationOnce(
@@ -114,7 +116,7 @@ test('a pending pagination promise prevents inspection and printing until it res
   expect(inspect).not.toHaveBeenCalled();
   expect(fake.page.pdf).not.toHaveBeenCalled();
   expect(fake.page.close).not.toHaveBeenCalled();
-  finishPagination({ pageCount: 7 });
+  finishPagination({ pageCount: 7, unloadedFaces: [], fragmentedRows: [] });
   await expect(rendering).resolves.toEqual({
     pdf: fake.bytes,
     pageCount: 7,

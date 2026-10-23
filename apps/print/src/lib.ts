@@ -15,6 +15,10 @@ export {
 /** What the print runtime (public/print-runtime.js) reports once Paged.js is done. */
 export interface PrintReadyState {
   pageCount: number;
+  /** `"<family> <weight>: <status>"` of every face that is not loaded. */
+  unloadedFaces: string[];
+  /** `"page <n>: <row text>"` of every table row split or outside its page. */
+  fragmentedRows: string[];
 }
 
 /**
@@ -25,7 +29,10 @@ export interface PrintPage {
   evaluate<R>(fn: () => R | Promise<R>): Promise<R>;
 }
 
-export type RenderErrorCode = 'pagination_timeout';
+export type RenderErrorCode =
+  | 'pagination_timeout'
+  | 'font_not_loaded'
+  | 'row_fragmented';
 
 /** A render that must not produce a PDF. */
 export class RenderError extends Error {
@@ -106,6 +113,20 @@ export async function renderPdf<T = undefined>(
     await page.goto(`${options.assetOrigin}/blank`);
     await page.setContent(prepareHtml(request.html, { page: request.page }));
     const ready = await waitForPrintReady(page, options.timeoutMs);
+    if (ready.unloadedFaces.length > 0) {
+      throw new RenderError(
+        'font_not_loaded',
+        'Some font faces did not load',
+        ready.unloadedFaces,
+      );
+    }
+    if (ready.fragmentedRows.length > 0) {
+      throw new RenderError(
+        'row_fragmented',
+        'Some table rows are split or outside their page',
+        ready.fragmentedRows,
+      );
+    }
     const inspected = options.inspect ? await options.inspect(page) : undefined;
     const pdf = await page.pdf({
       preferCSSPageSize: true,

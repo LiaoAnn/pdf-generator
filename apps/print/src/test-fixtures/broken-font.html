@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head><meta charset="utf-8"><style>
+@page { margin: 20mm; }
+/* Invalid embedded bytes keep this failure deterministic and entirely local. */
+@font-face { font-family: "Broken Fixture TC"; src: url("data:font/woff2;base64,AAECAwQ=") format("woff2"); }
+@font-face { font-family: "Unused Broken TC"; src: url("data:font/woff2;base64,AAECAwQ=") format("woff2"); }
+body { font-family: "Broken Fixture TC", sans-serif; }
+</style></head>
+<body><p data-gt="text">字型失敗必須拒絕輸出</p></body>
+</html>

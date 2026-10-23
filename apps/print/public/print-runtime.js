@@ -2,7 +2,8 @@
 // The print runtime: loaded by every document the print Worker prints, before
 // Paged.js (see src/prepare.ts). It declares only the platform font faces the
 // document uses and resolves `window.__pdfgen.ready` once Paged.js has
-// finished (docs/findings/T03.md, Must 1 and 8).
+// finished, with the checks of docs/findings/T03.md Must 4 (DOM part) and
+// Must 5. It also makes tables repeat their header and keep rows whole.
 (() => {
   /** @type {Record<string, { family: string, regular: string, bold?: string }>} */
   const platformFonts = {
@@ -115,7 +116,112 @@
     await Promise.all(faces.map(face => face.load().catch(() => undefined)));
   }
 
-  /** @type {(state: { pageCount: number }) => void} */
+  // Paged.js 0.4.3 neither repeats <thead> on a continued page nor keeps a
+  // row whole: a row that starts near the page bottom can end up in the
+  // page's hidden overflow column and vanish from the PDF (T03 §5).
+  function registerTableHandler() {
+    /** @type {any} */
+    const Paged = /** @type {any} */ (window).Paged;
+    class Tables extends Paged.Handler {
+      // Called for every node Paged.js lays out. When it rebuilds a table on a
+      // new page, the first node it adds sits in a table shell marked
+      // data-split-from: put a copy of the source <thead> there first, so its
+      // height counts when the rows below are laid out.
+      /**
+       * @param {Node} clone the node as laid out on the page
+       * @param {Node} node the node in the source document
+       */
+      renderNode(clone, node) {
+        if (!(clone instanceof Element)) return;
+        const table = clone.closest('table[data-split-from]');
+        if (!table || table.querySelector(':scope > thead')) return;
+        const source = node instanceof Element ? node.closest('table') : null;
+        const thead = source?.querySelector(':scope > thead');
+        if (!thead) return;
+        const copy = /** @type {Element} */ (thead.cloneNode(true));
+        copy.setAttribute('data-repeated-header', '');
+        for (const element of [copy, ...copy.querySelectorAll('[data-ref]')]) {
+          element.removeAttribute('data-ref');
+        }
+        const first = [...table.children].find(
+          child => child.tagName !== 'CAPTION' && child.tagName !== 'COLGROUP',
+        );
+        table.insertBefore(copy, first ?? null);
+      }
+
+      // Called with the range Paged.js is about to move to the next page. If
+      // a body row crosses the bottom (or the overflow column) and doesn't
+      // start at the top of the page, move the whole row instead. A row
+      // taller than a page is left to Paged.js, and the check in `after`
+      // fails the render if it ends up fragmented.
+      /**
+       * @param {Range | undefined} overflow
+       * @param {Element} rendered
+       * @param {DOMRect} bounds
+       */
+      onOverflow(overflow, rendered, bounds) {
+        for (const row of rendered.querySelectorAll('tr')) {
+          if (row.closest('thead')) continue;
+          const box = row.getBoundingClientRect();
+          const rects = row.getClientRects();
+          const crosses =
+            rects.length > 1 ||
+            Math.floor(box.bottom) > Math.round(bounds.bottom) ||
+            Math.floor(box.right) > Math.round(bounds.right) + 1;
+          if (!crosses) continue;
+          if ((rects[0]?.top ?? box.top) <= bounds.top + 1) return undefined;
+          // The overflow already starts at or before this row.
+          if (overflow && overflow.comparePoint(row, 0) >= 0) return undefined;
+          const range = document.createRange();
+          range.setStartBefore(row);
+          range.setEndAfter(/** @type {Node} */ (rendered.lastChild));
+          return range;
+        }
+        return undefined;
+      }
+    }
+    Paged.registerHandlers(Tables);
+  }
+
+  // Faces that did not load: Paged.js only warns about them (T03 Must 5).
+  function unloadedFaces() {
+    /** @type {string[]} */
+    const faces = [];
+    document.fonts.forEach(face => {
+      if (face.status !== 'loaded') {
+        const family = face.family.replace(/^["']|["']$/g, '');
+        faces.push(`${family} ${face.weight}: ${face.status}`);
+      }
+    });
+    return faces;
+  }
+
+  // Rows with text that are split or reach outside their page's content
+  // area: their text may be missing from the PDF (T03 Must 4).
+  function fragmentedRows() {
+    /** @type {string[]} */
+    const rows = [];
+    document.querySelectorAll('.pagedjs_page').forEach((page, i) => {
+      const content = page.querySelector('.pagedjs_page_content');
+      if (!content) return;
+      const area = content.getBoundingClientRect();
+      for (const row of page.querySelectorAll('tr')) {
+        const text = (row.textContent ?? '').replace(/\s+/g, ' ').trim();
+        if (!text) continue;
+        const box = row.getBoundingClientRect();
+        if (
+          row.getClientRects().length > 1 ||
+          box.right > area.right + 1 ||
+          box.bottom > area.bottom + 1
+        ) {
+          rows.push(`page ${i + 1}: ${text.slice(0, 40)}`);
+        }
+      }
+    });
+    return rows;
+  }
+
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
@@ -124,10 +230,17 @@
     __pdfgen: { ready },
     PagedConfig: {
       auto: true,
-      before: loadUsedFaces,
+      before: async () => {
+        registerTableHandler();
+        await loadUsedFaces();
+      },
       /** @param {{ total: number }} flow */
       after: flow => {
-        resolveReady({ pageCount: flow.total });
+        resolveReady({
+          pageCount: flow.total,
+          unloadedFaces: unloadedFaces(),
+          fragmentedRows: fragmentedRows(),
+        });
       },
     },
   });
