@@ -14,8 +14,9 @@ You run as a Local thread in the main checkout `/data/code/pdf-generator`. You c
 - Workers commit, push their own branch and open PRs.
 - You merge a PR yourself, without asking, when it passes "Merge bar" below, and settle the worker's thread once it has cleaned up.
 - At most **3** worker threads running at once.
+- After a ticket merges and its thread is settled, `wt-down` its stack and remove its worktree and local branch ("Cleanup" below). Granted 2026-10-24.
 
-Everything else still needs the user's OK each time: external-service calls (see `AGENTS.md`), `wt-down`, changing a ticket's scope, splitting or merging tickets, contract tickets, edits to `AGENTS.md` or skills.
+Everything else still needs the user's OK each time: external-service calls (see `AGENTS.md`), `wt-down` of any worktree whose ticket hasn't merged, changing a ticket's scope, splitting or merging tickets, contract tickets, edits to `AGENTS.md` or skills.
 
 ## Where a ticket stands
 
@@ -35,7 +36,7 @@ The user needs only two states: running and merged. Report those, plus what is w
 
 Whether the user wrote, a worker sent a message, or the heartbeat fired:
 
-1. **Read the world**: `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`).
+1. **Read the world**: `df -h /data` and `docker ps -a` (see "Cleanup"), `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`).
 2. **Handle messages** (below).
 3. **Dispatch** ready tickets up to the cap.
 4. **Report to the user**, in Traditional Chinese: questions waiting for them first, then what is running and what merged since the last report.
@@ -46,7 +47,7 @@ Judge by the user's goal first, and decide yourself whenever the goal settles it
 
 - **Decide yourself, then mention it in one line**: ticket size (never a reason to split; the tickets are already cut); a worker's product choice that fits the tickets and doesn't constrain many later tickets; small edits to `AGENTS.md` or skills that add a fact, a command or a prohibition (not a process change); answers an earlier user decision already settles (quote it).
 - **Backlog, no question**: hardening items and proposed tickets that block nothing. Add them under "待辦" at the end of `docs/tickets.md` with enough detail to dispatch later; dispatch one when a slot is free and nothing on the critical path is ready.
-- **Always the user's**: every external-service call (each time), `wt-down`, a process change, a product decision that shapes many tickets (contract design, scope of a ticket), anything you can't tie to the goal.
+- **Always the user's**: every external-service call (each time), `wt-down` of an unmerged ticket's worktree, a process change, a product decision that shapes many tickets (contract design, scope of a ticket), anything you can't tie to the goal.
 - **Reports** hold three things only: what needs the user's decision, which tickets are running, which merged. Give detail only when asked.
 
 ## Handling worker messages
@@ -136,10 +137,20 @@ Then `gh pr merge <n> --squash --delete-branch`, with the subject `<type>: <summ
 - Send the worker `[TNN] DONE`.
 - For every other open PR, send its worker "main moved (TNN merged): rebase", most urgently those that touch the same files or the lockfile/migrations.
 - Tell the user, and dispatch what became ready.
-- Check that the worker freed its tmux sessions and previews (`wt-status <worker path>`, `t3_preview_list`); if not, tell it to. Don't `wt-down` the worktree.
+- Check that the worker freed its tmux sessions and previews (`wt-status <worker path>`, `t3_preview_list`); if not, tell it to.
 - Once the worker has stopped with nothing left running, settle its thread: `t3_thread_organize` with `action: "settle"`.
 
 If a check fails, send the worker exactly what failed; don't fix it yourself.
+
+## Cleanup
+
+Merged tickets don't keep a stack or a worktree; `/data` is shared by every worktree.
+
+1. After the merge, the worker's `DONE` cleanup, and settling its thread, check the worktree is clean: `git -C <path> status --porcelain` empty and `git -C <path> log @{u}..HEAD` empty. If not, ask the worker what's left; don't delete it.
+2. `wt-down <path>` (deletes that stack's containers and volumes; shared volumes stay).
+3. `git -C /data/code/pdf-generator worktree remove <path>`, then `git -C /data/code/pdf-generator branch -D <branch>` (the squash commit on `main` and the PR keep the history).
+
+On every wake-up, also check space: `df -h /data` and `docker ps -a`. Clean up any merged ticket whose stack or worktree is still there. If `/data` is above 80% with nothing merged left to clean, tell the user what uses the space (`du -sh /data/worktrees/pdf-generator/*`, `docker system df`); don't prune Docker images, volumes or build cache yourself.
 
 ## Heartbeat
 

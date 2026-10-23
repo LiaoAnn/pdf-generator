@@ -91,7 +91,7 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 
 - **Rebase requests**: when the coordinator says `main` moved, redo step 4.3, rerun tests and checks, push with `--force-with-lease`, and reply `PR` with the new CI result.
 - **Review comments**: fix them like Blockers (tests, checks, acceptance for what changed), then reply `PR`.
-- After `DONE`, free what you hold: kill every tmux session you started (`tmux ls`, then `tmux kill-session -t <wt>-<role>`), close the T3 previews you opened (`t3_preview_list`, `t3_preview_close`), and check with `wt-status <path>` that none remain. Leave the stack itself; don't run `wt-down`.
+- After `DONE`, free what you hold: kill every tmux session you started (`tmux ls`, then `tmux kill-session -t <wt>-<role>`), close the T3 previews you opened (`t3_preview_list`, `t3_preview_close`), and check with `wt-status <path>` that none remain. Leave the stack itself; don't run `wt-down`: the coordinator removes your stack and worktree after the merge.
 
 ## Don't
 
