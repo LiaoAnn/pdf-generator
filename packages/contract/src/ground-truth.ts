@@ -38,6 +38,20 @@ const cellSchema = z.strictObject({
     .describe('A header cell (repeated on every page it is printed on).'),
   text: z.string(),
   bbox: bboxSchema,
+  checkboxes: z
+    .array(
+      z.strictObject({
+        checked: z.boolean(),
+        text: z
+          .string()
+          .describe("The option's label, e.g. 是 for a box printed as □是."),
+        bbox: bboxSchema,
+      }),
+    )
+    .optional()
+    .describe(
+      'Checkboxes printed inside the cell, in the order they appear in it; bbox is the box of the checkbox element itself.',
+    ),
 });
 
 const gtBlockSchema = z.discriminatedUnion('type', [
@@ -103,7 +117,31 @@ export const gtSchema = z
       }
       if (block.type === 'table') {
         const { rows, cols, cells } = block.table;
+        const page = gt.pages[block.page - 1];
         cells.forEach((cell, j) => {
+          // Checked against the page, not the cell: rounding can push a box
+          // a fraction past its cell's edge.
+          cell.checkboxes?.forEach((checkbox, k) => {
+            if (
+              page !== undefined &&
+              (checkbox.bbox[2] > page.width || checkbox.bbox[3] > page.height)
+            ) {
+              ctx.addIssue({
+                code: 'custom',
+                message: 'checkbox bbox lies outside its page',
+                path: [
+                  'blocks',
+                  i,
+                  'table',
+                  'cells',
+                  j,
+                  'checkboxes',
+                  k,
+                  'bbox',
+                ],
+              });
+            }
+          });
           if (
             cell.row + cell.rowSpan > rows ||
             cell.col + cell.colSpan > cols
@@ -120,7 +158,7 @@ export const gtSchema = z
   })
   .meta({
     title: 'Ground truth (gt.json)',
-    description: `Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ${blockRules}; continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols.`,
+    description: `Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ${blockRules}; continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols; a cell checkbox's bbox lies inside its block's page.`,
   });
 
 export type GroundTruth = z.infer<typeof gtSchema>;

@@ -280,6 +280,53 @@
                           "minItems": 4,
                           "maxItems": 4,
                           "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+                        },
+                        "checkboxes": {
+                          "description": "Checkboxes printed inside the cell, in the order they appear in it; bbox is the box of the checkbox element itself.",
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "checked": {
+                                "type": "boolean"
+                              },
+                              "text": {
+                                "type": "string",
+                                "description": "The option's label, e.g. 是 for a box printed as □是."
+                              },
+                              "bbox": {
+                                "type": "array",
+                                "prefixItems": [
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "type": "number",
+                                    "minimum": 0
+                                  }
+                                ],
+                                "items": false,
+                                "minItems": 4,
+                                "maxItems": 4,
+                                "description": "[x0, y0, x1, y1] in PDF points (1/72 inch), origin at the top-left corner of the page, x to the right, y down; x0 < x1, y0 < y1."
+                              }
+                            },
+                            "required": [
+                              "checked",
+                              "text",
+                              "bbox"
+                            ],
+                            "additionalProperties": false
+                          }
                         }
                       },
                       "required": [
@@ -474,5 +521,5 @@
   ],
   "additionalProperties": false,
   "title": "Ground truth (gt.json)",
-  "description": "Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ids are unique; the orders are a permutation of 0..n-1; page ≤ number of pages; the bbox lies inside its page (x1 ≤ width, y1 ≤ height); continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols."
+  "description": "Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ids are unique; the orders are a permutation of 0..n-1; page ≤ number of pages; the bbox lies inside its page (x1 ≤ width, y1 ≤ height); continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols; a cell checkbox's bbox lies inside its block's page."
 }
