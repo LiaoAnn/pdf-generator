@@ -1,0 +1,1869 @@
+{
+ "run-local": {
+  "timings": {
+   "loadMs": 5057,
+   "doneMs": 8893,
+   "pdfMs": 761,
+   "totalMs": 9714
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3797,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 212
+    },
+    {
+     "name": "load",
+     "ms": 3426
+    },
+    {
+     "name": "fontsReady",
+     "ms": 3657
+    },
+    {
+     "name": "beforePaged",
+     "ms": 3658
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 7498
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9390,
+    "ms": 5
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 3
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 2978,
+    "ms": 4
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 5
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 49
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 348
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 665
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1266
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 2
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 4
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 87
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 398
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 167
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 836
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1387
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "run-fixed": {
+  "timings": {
+   "loadMs": 1856,
+   "doneMs": 3995,
+   "pdfMs": 206,
+   "totalMs": 4273
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 2082,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans Symbols 2",
+     "weight": "normal",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 94
+    },
+    {
+     "name": "load",
+     "ms": 1724
+    },
+    {
+     "name": "fontsReady",
+     "ms": 1821
+    },
+    {
+     "name": "beforePaged",
+     "ms": 1823
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 3926
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [
+   {
+    "page": "2",
+    "text": "023"
+   },
+   {
+    "page": "2",
+    "text": "新北板橋3號店"
+   },
+   {
+    "page": "2",
+    "text": "1,224,834"
+   },
+   {
+    "page": "2",
+    "text": "☐ 未達標"
+   }
+  ],
+  "fetched": [
+   {
+    "url": "/doc-fixed",
+    "bytes": 9396,
+    "ms": 3
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 3
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 3
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 4
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Bold.otf",
+    "bytes": 5803876,
+    "ms": 18
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Regular.otf",
+    "bytes": 5647272,
+    "ms": 230
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Regular.otf",
+    "bytes": 7899880,
+    "ms": 427
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 708
+   },
+   {
+    "url": "/fonts/NotoSansSymbols2-Regular.ttf",
+    "bytes": 1233128,
+    "ms": 6
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 4
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 1
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Regular.otf",
+    "bytes": 5647272,
+    "ms": 7
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Bold.otf",
+    "bytes": 5803876,
+    "ms": 179
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Regular.otf",
+    "bytes": 7899880,
+    "ms": 396
+   },
+   {
+    "url": "/fonts/NotoSansSymbols2-Regular.ttf",
+    "bytes": 1233128,
+    "ms": 6
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Bold.otf",
+    "bytes": 8217080,
+    "ms": 71
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 339
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     713.46,
+     543.87,
+     738.68
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     738.68,
+     543.87,
+     763.9
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "run-badfont": {
+  "timings": {
+   "loadMs": 1546,
+   "doneMs": 5029,
+   "pdfMs": 261,
+   "totalMs": 5344
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3462,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans Symbols 2",
+     "weight": "normal",
+     "status": "loaded"
+    },
+    {
+     "family": "Broken TC",
+     "weight": "normal",
+     "status": "error"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 162
+    },
+    {
+     "name": "load",
+     "ms": 167
+    },
+    {
+     "name": "fontsReady",
+     "ms": 176
+    },
+    {
+     "name": "beforePaged",
+     "ms": 179
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 3673
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [],
+  "fetched": [
+   {
+    "url": "/doc-fixed",
+    "bytes": 9535,
+    "ms": 1
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 2
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 5
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 6
+   },
+   {
+    "url": "/fonts/missing.otf",
+    "bytes": 0,
+    "ms": 3
+   },
+   {
+    "url": "/doc-fixed.css",
+    "bytes": 1602,
+    "ms": 3
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 1
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Regular.otf",
+    "bytes": 5647272,
+    "ms": 6
+   },
+   {
+    "url": "/fonts/missing.otf",
+    "bytes": 0,
+    "ms": 2
+   },
+   {
+    "url": "/fonts/NotoSansSymbols2-Regular.ttf",
+    "bytes": 1233128,
+    "ms": 4
+   },
+   {
+    "url": "/fonts-fixed/NotoSansTC-Bold.otf",
+    "bytes": 5803876,
+    "ms": 97
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Regular.otf",
+    "bytes": 7899880,
+    "ms": 448
+   },
+   {
+    "url": "/fonts-fixed/NotoSerifTC-Bold.otf",
+    "bytes": 8217080,
+    "ms": 925
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1418
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)",
+   "warn: Failed to preload font-family: Broken TC"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     731.06,
+     543.87,
+     756.28
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     82.28,
+     543.87,
+     107.5
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 1,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "sweep-0": {
+  "timings": {
+   "loadMs": 1782,
+   "doneMs": 4148,
+   "pdfMs": 203,
+   "totalMs": 4413
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 2347,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 97
+    },
+    {
+     "name": "load",
+     "ms": 1694
+    },
+    {
+     "name": "fontsReady",
+     "ms": 1710
+    },
+    {
+     "name": "beforePaged",
+     "ms": 1712
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 4083
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [
+   {
+    "page": "2",
+    "text": "023"
+   },
+   {
+    "page": "2",
+    "text": "新北板橋3號店"
+   },
+   {
+    "page": "2",
+    "text": "1,224,834"
+   },
+   {
+    "page": "2",
+    "text": "☐ 未達標"
+   }
+  ],
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9426,
+    "ms": 4
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 1
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 3
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 5
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 21
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 221
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 412
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 675
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 1
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 2
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 12
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 207
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 418
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 820
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1191
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     713.46,
+     543.87,
+     738.68
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     738.68,
+     543.87,
+     763.9
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "sweep-10": {
+  "timings": {
+   "loadMs": 3524,
+   "doneMs": 6780,
+   "pdfMs": 202,
+   "totalMs": 7037
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3240,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 122
+    },
+    {
+     "name": "load",
+     "ms": 2615
+    },
+    {
+     "name": "fontsReady",
+     "ms": 2630
+    },
+    {
+     "name": "beforePaged",
+     "ms": 2631
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 5890
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [
+   {
+    "page": "2",
+    "text": "023"
+   },
+   {
+    "page": "2",
+    "text": "新北板橋3號店"
+   },
+   {
+    "page": "2",
+    "text": "1,224,834"
+   },
+   {
+    "page": "2",
+    "text": "☐ 未達標"
+   }
+  ],
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9427,
+    "ms": 1
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 9
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 10
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 10
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 18
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 345
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 688
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1157
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 2
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 1
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 4
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 11
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 412
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 905
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1432
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     714.96,
+     543.87,
+     740.18
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     740.18,
+     543.87,
+     765.4
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 2,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "sweep-12": {
+  "timings": {
+   "loadMs": 3582,
+   "doneMs": 6879,
+   "pdfMs": 231,
+   "totalMs": 7170
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3282,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 123
+    },
+    {
+     "name": "load",
+     "ms": 2678
+    },
+    {
+     "name": "fontsReady",
+     "ms": 2694
+    },
+    {
+     "name": "beforePaged",
+     "ms": 2695
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 5999
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [],
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9427,
+    "ms": 1
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 3
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 3
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 3
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 18
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 352
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 703
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1198
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 1
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 1
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 12
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 356
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 700
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 1187
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1706
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     716.96,
+     543.87,
+     742.18
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     742.18,
+     543.87,
+     767.4
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 3,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     82.28,
+     543.87,
+     107.5
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "sweep-16": {
+  "timings": {
+   "loadMs": 3696,
+   "doneMs": 6952,
+   "pdfMs": 212,
+   "totalMs": 7222
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3243,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 118
+    },
+    {
+     "name": "load",
+     "ms": 2863
+    },
+    {
+     "name": "fontsReady",
+     "ms": 2878
+    },
+    {
+     "name": "beforePaged",
+     "ms": 2879
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 6141
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [],
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9427,
+    "ms": 1
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 1
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 2
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 3
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 4
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 9
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 366
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 893
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 1
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 0
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 4
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 11
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 347
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 834
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1336
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     720.96,
+     543.87,
+     746.18
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     746.18,
+     543.87,
+     771.4
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": " ",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     82.28,
+     543.87,
+     107.5
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "sweep-24": {
+  "timings": {
+   "loadMs": 3470,
+   "doneMs": 7047,
+   "pdfMs": 231,
+   "totalMs": 7350
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 3551,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 112
+    },
+    {
+     "name": "load",
+     "ms": 2720
+    },
+    {
+     "name": "fontsReady",
+     "ms": 2739
+    },
+    {
+     "name": "beforePaged",
+     "ms": 2740
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 6322
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "overflow": [],
+  "fetched": [
+   {
+    "url": "/doc.html",
+    "bytes": 9427,
+    "ms": 2
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 2
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 5145,
+    "ms": 3
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 3
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 7
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 10
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 333
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 866
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 3
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 5
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 4
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 11
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 386
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 934
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1569
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     728.96,
+     543.87,
+     754.18
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     754.18,
+     543.87,
+     779.4
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": " ",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     82.28,
+     543.87,
+     107.5
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 2,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ },
+ "run-avoid": {
+  "timings": {
+   "loadMs": 2036,
+   "doneMs": 4487,
+   "pdfMs": 249,
+   "totalMs": 4815
+  },
+  "paged": {
+   "done": true,
+   "total": 4,
+   "performanceMs": 2436,
+   "faces": [
+    {
+     "family": "Noto Sans TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Sans TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "400",
+     "status": "loaded"
+    },
+    {
+     "family": "Noto Serif TC",
+     "weight": "700",
+     "status": "loaded"
+    },
+    {
+     "family": "LXGW WenKai TC",
+     "weight": "400",
+     "status": "loaded"
+    }
+   ],
+   "log": [
+    {
+     "name": "domContentLoaded",
+     "ms": 104
+    },
+    {
+     "name": "load",
+     "ms": 1958
+    },
+    {
+     "name": "fontsReady",
+     "ms": 1972
+    },
+    {
+     "name": "beforePaged",
+     "ms": 1973
+    },
+    {
+     "name": "pagedAfter",
+     "ms": 4430
+    }
+   ]
+  },
+  "doneAtLoad": false,
+  "doneAtFirstPage": false,
+  "fetched": [
+   {
+    "url": "/doc-avoid",
+    "bytes": 9433,
+    "ms": 4
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 2
+   },
+   {
+    "url": "/probe.js",
+    "bytes": 4153,
+    "ms": 7
+   },
+   {
+    "url": "/paged.polyfill.js",
+    "bytes": 921702,
+    "ms": 12
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 20
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 253
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 483
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 794
+   },
+   {
+    "url": "/doc.css",
+    "bytes": 1412,
+    "ms": 2
+   },
+   {
+    "url": "/favicon.ico",
+    "bytes": 0,
+    "ms": 1
+   },
+   {
+    "url": "/fonts/NotoSansTC-Regular.otf",
+    "bytes": 5683368,
+    "ms": 27
+   },
+   {
+    "url": "/fonts/NotoSansTC-Bold.otf",
+    "bytes": 5839972,
+    "ms": 259
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Regular.otf",
+    "bytes": 7936104,
+    "ms": 479
+   },
+   {
+    "url": "/fonts/NotoSerifTC-Bold.otf",
+    "bytes": 8253304,
+    "ms": 811
+   },
+   {
+    "url": "/fonts/LXGWWenKaiTC-Regular.ttf",
+    "bytes": 15341148,
+    "ms": 1135
+   }
+  ],
+  "console": [
+   "error: Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "rowsNear": [
+   {
+    "page": 2,
+    "text": "021 台北信義3號店 1,",
+    "rect": [
+     51.4,
+     713.46,
+     543.87,
+     738.68
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "022 台北南港3號店 1,",
+    "rect": [
+     51.4,
+     738.68,
+     543.87,
+     763.9
+    ],
+    "trRects": 1
+   },
+   {
+    "page": 2,
+    "text": "023 新北板橋3號店 1,",
+    "rect": [
+     51.4,
+     56.68,
+     1889.13,
+     779.51
+    ],
+    "trRects": 2
+   },
+   {
+    "page": 3,
+    "text": "024 桃園中壢3號店 15",
+    "rect": [
+     51.4,
+     57.06,
+     543.87,
+     82.28
+    ],
+    "trRects": 1
+   }
+  ],
+  "snapshotPageCounts": {
+   "domContentLoaded": 0,
+   "load": 0,
+   "fontsReady": 0,
+   "beforePaged": 0,
+   "pagedAfter": 4,
+   "puppeteerLoad": 0,
+   "puppeteerFirstPage": 3,
+   "afterDoneScreen": 4,
+   "afterDonePrint": 4
+  }
+ }
+}
