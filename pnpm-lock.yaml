@@ -251,6 +251,9 @@ importers:
       '@pdf-generator/contract':
         specifier: workspace:*
         version: link:../contract
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
     devDependencies:
       '@types/node':
         specifier: ^24.13.6

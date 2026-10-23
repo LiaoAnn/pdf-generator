@@ -16,6 +16,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
-    "@pdf-generator/contract": "workspace:*"
+    "@pdf-generator/contract": "workspace:*",
+    "zod": "^4.6.7"
   }
 }

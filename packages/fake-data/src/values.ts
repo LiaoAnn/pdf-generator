@@ -75,13 +75,16 @@ export function date(rng: Rng, min: string, max: string): string {
   return civilDate(rng.int(from, to));
 }
 
-/** Number in [min, max] with at most `decimals` (0-6) decimal places, uniform over those values. */
-export function decimal(
-  rng: Rng,
+/**
+ * The integers k with k / 10^decimals in [min, max]: every value `decimal`
+ * can return. Throws RangeError when there is none or they are not all safe
+ * integers.
+ */
+export function decimalRange(
   min: number,
   max: number,
   decimals: number,
-): number {
+): { low: number; high: number; scale: number } {
   if (
     !Number.isFinite(min) ||
     !Number.isFinite(max) ||
@@ -94,8 +97,6 @@ export function decimal(
       `invalid range [${min}, ${max}] to ${decimals} places`,
     );
   }
-  // Values are k / scale for integer k; dividing an integer by a power of 10
-  // gives the double nearest to the decimal, which toFixed round-trips.
   const scale = 10 ** decimals;
   let low = Math.round(min * scale);
   while (low / scale < min) low++;
@@ -108,5 +109,27 @@ export function decimal(
       `no value in [${min}, ${max}] has ${decimals} decimal places`,
     );
   }
+  if (
+    !Number.isSafeInteger(low) ||
+    !Number.isSafeInteger(high) ||
+    !Number.isSafeInteger(high - low)
+  ) {
+    throw new RangeError(
+      `[${min}, ${max}] to ${decimals} places is too wide to draw from`,
+    );
+  }
+  return { low, high, scale };
+}
+
+/** Number in [min, max] with at most `decimals` (0-6) decimal places, uniform over those values. */
+export function decimal(
+  rng: Rng,
+  min: number,
+  max: number,
+  decimals: number,
+): number {
+  // Values are k / scale for integer k; dividing an integer by a power of 10
+  // gives the double nearest to the decimal, which toFixed round-trips.
+  const { low, high, scale } = decimalRange(min, max, decimals);
   return rng.int(low, high) / scale;
 }
