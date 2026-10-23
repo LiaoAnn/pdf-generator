@@ -6,6 +6,7 @@ import type { Identity } from '../access/verify.ts';
 import type { Services } from '../services.ts';
 import {
   createBatch,
+  downloadBatch,
   getBatch,
   listBatches,
   listFixtures,
@@ -36,6 +37,7 @@ const routes: Record<string, Route> = {
   'GET /api/batches/:id/fixtures': ({ params }) =>
     listFixtures(params.id ?? ''),
   'POST /api/batches/:id/rerun': ({ params }) => rerunBatch(params.id ?? ''),
+  'GET /api/batches/:id/zip': ({ params }) => downloadBatch(params.id ?? ''),
 };
 
 export function isApiPath(pathname: string): boolean {

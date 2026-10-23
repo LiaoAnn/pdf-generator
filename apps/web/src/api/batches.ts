@@ -1,6 +1,7 @@
 // The batch API (T16): start a batch, follow its progress, list its fixtures,
 // re-run it. The work itself runs in src/batch/workflow.ts.
 import {
+  type Batch,
   type BatchRequest,
   batchRequestSchema,
   type Fixture,
@@ -14,8 +15,9 @@ import {
   readFixtureRows,
   toBatch,
 } from '../batch/store.ts';
+import { fixtureEntries, zipStream } from '../batch/zip.ts';
 import { batches } from '../db/schema.ts';
-import { BatchRunner, Database } from '../services.ts';
+import { BatchRunner, Database, Files } from '../services.ts';
 import { TemplateSource } from '../templates/source.ts';
 import { ApiFailure } from './errors.ts';
 
@@ -157,17 +159,16 @@ export const listBatches = Effect.gen(function* () {
 export const getBatch = (id: string) =>
   found(id).pipe(Effect.map(batch => Response.json(batch)));
 
-/** GET /api/batches/:id/fixtures: every index, pending until it has a row. */
-export const listFixtures = (id: string) =>
+// Every index of a batch, pending until it has a row.
+const fixtureList = (batch: Batch) =>
   Effect.gen(function* () {
-    const batch = yield* found(id);
     const db = yield* Database;
     const rows = yield* database('read the fixtures', () =>
-      readFixtureRows(db, id),
+      readFixtureRows(db, batch.id),
     );
     const byIndex = new Map(rows.map(row => [row.index, row]));
-    const body: FixtureList = {
-      batchId: id,
+    const list: FixtureList = {
+      batchId: batch.id,
       fixtures: Array.from({ length: batch.count }, (_, index): Fixture => {
         const row = byIndex.get(index);
         if (!row) return { index, status: 'pending' };
@@ -176,7 +177,46 @@ export const listFixtures = (id: string) =>
           : { index, status: 'completed' };
       }),
     };
-    return Response.json(body);
+    return list;
+  });
+
+/** GET /api/batches/:id/fixtures */
+export const listFixtures = (id: string) =>
+  found(id).pipe(
+    Effect.flatMap(fixtureList),
+    Effect.map(list => Response.json(list)),
+  );
+
+const encoder = new TextEncoder();
+
+/** GET /api/batches/:id/zip: a finished batch's files as one zip. */
+export const downloadBatch = (id: string) =>
+  Effect.gen(function* () {
+    const batch = yield* found(id);
+    if (batch.status !== 'completed' && batch.status !== 'failed') {
+      return yield* new ApiFailure({
+        status: 409,
+        code: 'batch_not_finished',
+        message: `Batch ${id} is ${batch.status}; download it once it has finished.`,
+      });
+    }
+    const list = yield* fixtureList(batch);
+    const files = yield* Files;
+    const json = (value: unknown) =>
+      encoder.encode(`${JSON.stringify(value, null, 2)}\n`);
+    const body = zipStream([
+      { name: 'batch.json', bytes: json(batch) },
+      { name: 'fixtures.json', bytes: json(list) },
+      ...list.fixtures
+        .filter(fixture => fixture.status === 'completed')
+        .flatMap(fixture => fixtureEntries(files, id, fixture.index)),
+    ]);
+    return new Response(body, {
+      headers: {
+        'content-type': 'application/zip',
+        'content-disposition': `attachment; filename="${id}.zip"`,
+      },
+    });
   });
 
 /** POST /api/batches/:id/rerun: the same request again, as a new batch. */
