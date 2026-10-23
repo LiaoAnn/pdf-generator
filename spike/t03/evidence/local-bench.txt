@@ -1,0 +1,7 @@
+# Local wrangler dev (local Browser Rendering binding), 2026-10-23T16:11:58Z
+## /launch then /close
+{"sessionId":"7786a5c2-7385-4e59-b579-72f0df0f66d1","launchMs":202,"version":"Chrome/126.0.6478.182"}{"closed":true}
+## /bench?n=3
+{"params":{"browsers":1,"tabs":1,"n":3,"mode":"intercept","path":"/doc-fixed"},"wallMs":19005,"pdfs":3,"pdfsPerMinute":9.5,"launchMs":204,"renderMs":[4625,6741,7433],"doneMs":[4352,6442,7132]}
+## /bench?n=3&src=url&origin=http://127.0.0.1:8787
+{"params":{"browsers":1,"tabs":1,"n":3,"mode":"url","path":"/doc-fixed"},"wallMs":4979,"pdfs":3,"pdfsPerMinute":36.2,"launchMs":230,"renderMs":[2569,1108,1069],"doneMs":[2306,851,813]}
