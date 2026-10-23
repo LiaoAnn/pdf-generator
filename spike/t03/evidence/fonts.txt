@@ -32,3 +32,6 @@ none of LICENSE-noto-cjk.txt, LICENSE-lxgw-wenkai-tc.txt, LICENSE-noto-symbols2.
 {"input":"public/fonts/NotoSansTC-Bold.otf","mapped":20394,"dropped":351,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺋⺍⺏","outBytes":5803876,"verify":{"glyphs":20950,"chars":20394,"一":2760,"⼀":false}}
 {"input":"public/fonts/NotoSerifTC-Regular.otf","mapped":20390,"dropped":358,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺍⺎兀","outBytes":7899880,"verify":{"glyphs":20939,"chars":20390,"一":2762,"⼀":false}}
 {"input":"public/fonts/NotoSerifTC-Bold.otf","mapped":20390,"dropped":358,"droppedSample":"〈〉⺂⺃⺅⺇⺉⺍⺎兀","outBytes":8217080,"verify":{"glyphs":20939,"chars":20390,"一":2762,"⼀":false}}
+
+## Noto CJK licence: Sans and Serif files identical?
+identical (cmp exit 0)
