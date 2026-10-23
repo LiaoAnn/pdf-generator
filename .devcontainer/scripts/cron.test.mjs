@@ -5,7 +5,6 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { loadSchedules, parseCron, Scheduler, trigger } from './cron.mjs';
-import { viteCommand, wranglerCommand } from './dev-servers.mjs';
 
 async function workspace(t) {
   const root = await mkdtemp(join(tmpdir(), 'dev-cron-test-'));
@@ -64,6 +63,7 @@ test('discovers monorepo JSONC, ignores generated directories and symlinks', asy
     '.git',
     'dist',
     'build',
+    'coverage',
   ]) {
     await write(`${directory}/wrangler.jsonc`, worker(8788));
   }
@@ -74,7 +74,7 @@ test('discovers monorepo JSONC, ignores generated directories and symlinks', asy
       'apps/jobs/wrangler.jsonc': { url: 'http://127.0.0.1:8789' },
     },
   });
-  const { jobs, diagnostics } = await loadSchedules(root, { servers: [] });
+  const { jobs, diagnostics } = await loadSchedules(root);
   assert.equal(jobs.length, 2);
   assert.deepEqual(
     jobs.map(job => job.url),
@@ -83,127 +83,89 @@ test('discovers monorepo JSONC, ignores generated directories and symlinks', asy
   assert.deepEqual(diagnostics, []);
 });
 
-test('stopped servers never fall back to Vite or Wrangler configured ports', async t => {
+test('unlisted crons get one actionable hint; silent workers stay silent', async t => {
   const { root, write } = await workspace(t);
-  await write('apps/web/package.json', { type: 'module' });
-  await write('apps/web/wrangler.jsonc', worker(8787));
-  await write('apps/web/vite.config.ts', 'export default {}');
-  const resolveVite = async () => {
-    throw new Error('Must not evaluate a stopped Vite app');
-  };
-  let result = await loadSchedules(root, { resolveVite, servers: [] });
-  assert.equal(result.jobs.length, 0);
-  assert.match(result.diagnostics[0], /waiting for a running dev server/);
-  await write('apps/api/wrangler.jsonc', worker(8787));
-  result = await loadSchedules(root, { resolveVite, servers: [] });
-  assert.equal(result.jobs.length, 0);
-  assert.equal(result.diagnostics.length, 2);
+  await write('missing/wrangler.jsonc', worker(8787));
+  await write('empty/wrangler.jsonc', worker(8788, []));
+  await write('env-only/wrangler.jsonc', {
+    env: { development: { triggers: { crons: ['* * * * *'] } } },
+  });
+  const result = await loadSchedules(root);
+  assert.deepEqual(result.jobs, []);
+  assert.equal(result.diagnostics.length, 1);
+  assert.match(result.diagnostics[0], /missing\/wrangler.jsonc/);
+  assert.match(result.diagnostics[0], /not scheduled/);
+  assert.match(result.diagnostics[0], /cron-targets\.jsonc/);
+});
+
+test('selected environment without a URL still gets the missing-target hint', async t => {
+  const { root, write } = await workspace(t);
+  await write('wrangler.jsonc', {
+    env: { development: { triggers: { crons: ['* * * * *'] } } },
+  });
   await write('.devcontainer/cron-targets.jsonc', {
-    workers: {
-      'apps/web/wrangler.jsonc': { url: 'http://localhost:3000' },
-    },
+    workers: { 'wrangler.jsonc': { environment: 'development' } },
   });
-  result = await loadSchedules(root, {
-    servers: [],
-    resolveVite: async () => {
-      throw new Error('Must not load Vite');
-    },
+  const result = await loadSchedules(root);
+  assert.deepEqual(result.jobs, []);
+  assert.equal(result.diagnostics.length, 1);
+  assert.match(
+    result.diagnostics[0],
+    /wrangler\.jsonc.*not scheduled.*cron-targets\.jsonc/,
+  );
+});
+
+for (const url of [
+  'http://localhost:8787',
+  'http://host.docker.internal:8787',
+  'http://192.0.2.1:8787',
+  'ftp://127.0.0.1:8787',
+  'http://127.0.0.1:8787/path',
+  'http://127.0.0.1:8787/?query=1',
+  'http://127.0.0.1:8787/#hash',
+  'http://user:password@127.0.0.1:8787',
+]) {
+  test(`rejects unsafe target ${url} without dropping a valid worker`, async t => {
+    const { root, write } = await workspace(t);
+    await write('bad/wrangler.jsonc', worker(8787));
+    await write('good/wrangler.jsonc', worker(8788));
+    await write('.devcontainer/cron-targets.jsonc', {
+      workers: {
+        'bad/wrangler.jsonc': { url },
+        'good/wrangler.jsonc': { url: 'http://127.0.0.1:8788' },
+      },
+    });
+    const result = await loadSchedules(root);
+    assert.deepEqual(
+      result.jobs.map(job => job.label),
+      ['good/wrangler.jsonc'],
+    );
+    assert.equal(result.diagnostics.length, 1);
+    assert.match(result.diagnostics[0], /bad\/wrangler.jsonc/);
   });
-  assert.equal(result.jobs[0].url, 'http://localhost:3000');
-});
+}
 
-test('CLI parsing handles vite dev --port 3000 --host and equals syntax', () => {
-  assert.deepEqual(
-    viteCommand(
-      [
-        'node',
-        '/app/node_modules/vite/bin/vite.js',
-        'dev',
-        '--port',
-        '3000',
-        '--host',
-      ],
-      '/app',
-    ),
-    {
-      kind: 'vite',
-      root: '/app',
-      port: '3000',
-      config: undefined,
-      base: undefined,
-    },
-  );
-  assert.equal(
-    viteCommand(['node', '/bin/vite.js', '--port=3001'], '/app').port,
-    '3001',
-  );
-  assert.equal(viteCommand(['node', '/bin/vite.js', 'preview'], '/app'), null);
-  assert.equal(viteCommand(['node', 'other.js'], '/app'), null);
-});
-
-test('Wrangler CLI parsing matches explicit config, port and environment', () => {
-  const command = wranglerCommand(
-    [
-      'node',
-      '/tools/wrangler/wrangler-dist/cli.js',
-      'dev',
-      '-c',
-      'apps/api/wrangler.jsonc',
-      '--port=8788',
-      '-e',
-      'development',
-    ],
-    '/workspace',
-  );
-  assert.equal(command.kind, 'wrangler');
-  assert.equal(command.config, '/workspace/apps/api/wrangler.jsonc');
-  assert.equal(command.port, '8788');
-  assert.equal(command.environment, 'development');
-  assert.equal(
-    wranglerCommand(
-      ['node', '/bin/wrangler.js', 'dev', '--remote=true'],
-      '/workspace',
-    ),
-    null,
-  );
-  assert.equal(
-    wranglerCommand(['node', '/bin/wrangler.js', 'deploy'], '/workspace'),
-    null,
-  );
-});
-
-test('uses the running Vite HTTP port even when CLI and config ports differ', async t => {
+test('accepts literal IPv4 loopback range and IPv6 as distinct origins', async t => {
   const { root, write } = await workspace(t);
-  await write('package.json', { type: 'module' });
-  await write('wrangler.jsonc', worker(8787));
-  await write('vite.config.ts', 'export default {}');
-  const server = createServer((request, response) => {
-    assert.equal(request.url, '/@vite/client');
-    response.end('export function createHotContext() {}');
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  t.after(() => new Promise(resolve => server.close(resolve)));
-  const servers = [
-    {
-      kind: 'vite',
-      root,
-      port: '3000',
-      pid: 'test',
-      listeners: [{ host: '127.0.0.1', port: server.address().port }],
-    },
-  ];
-  const result = await loadSchedules(root, {
-    servers,
-    resolveVite: async () => {
-      throw new Error('Runtime discovery should win');
-    },
-  });
-  assert.equal(result.jobs[0].url, `http://127.0.0.1:${server.address().port}`);
-  const ambiguous = await loadSchedules(root, {
-    servers: [...servers, ...servers],
-  });
-  assert.equal(ambiguous.jobs.length, 0);
-  assert.match(ambiguous.diagnostics[0], /Multiple dev servers/);
+  const workers = {};
+  for (const [name, url] of Object.entries({
+    ipv4: 'http://127.0.0.1:8787',
+    ipv6: 'http://[::1]:8787',
+    range: 'https://127.2.3.4:8788',
+  })) {
+    const label = `${name}/wrangler.jsonc`;
+    await write(label, worker(8787));
+    workers[label] = { url };
+  }
+  await write('.devcontainer/cron-targets.jsonc', { workers });
+  const result = await loadSchedules(root);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(
+    result.jobs.map(job => job.url).sort(),
+    Object.values(workers)
+      .map(target => target.url)
+      .sort(),
+  );
 });
 
 test('overrides select environments, disable workers, and reject URL collisions', async t => {
@@ -216,12 +178,15 @@ test('overrides select environments, disable workers, and reject URL collisions'
   await write('.devcontainer/cron-targets.jsonc', {
     workers: {
       'apps/a/wrangler.jsonc': { url: 'http://127.0.0.1:8787' },
-      'apps/b/wrangler.jsonc': { url: 'http://localhost:8787' },
+      'apps/b/wrangler.jsonc': { url: 'http://127.0.0.1:8787/' },
     },
   });
-  let result = await loadSchedules(root, { servers: [] });
+  let result = await loadSchedules(root);
   assert.equal(result.jobs.length, 0);
   assert.equal(result.diagnostics.length, 2);
+  assert.ok(
+    result.diagnostics.every(message => message.includes('shared URL')),
+  );
   await write('.devcontainer/cron-targets.jsonc', {
     workers: {
       'apps/a/wrangler.jsonc': {
@@ -231,7 +196,7 @@ test('overrides select environments, disable workers, and reject URL collisions'
       'apps/b/wrangler.jsonc': { enabled: false },
     },
   });
-  result = await loadSchedules(root, { servers: [] });
+  result = await loadSchedules(root);
   assert.equal(result.jobs.length, 1);
   assert.equal(result.jobs[0].cron, '0 * * * *');
   assert.deepEqual(result.diagnostics, []);
@@ -246,13 +211,69 @@ test('bad configs are isolated; malformed targets stop all dispatch', async t =>
       'good/wrangler.jsonc': { url: 'http://127.0.0.1:8788' },
     },
   });
-  let result = await loadSchedules(root, { servers: [] });
+  let result = await loadSchedules(root);
   assert.equal(result.jobs.length, 1);
   assert.match(result.diagnostics[0], /bad\/wrangler.jsonc/);
   await write('.devcontainer/cron-targets.jsonc', '{ broken');
-  result = await loadSchedules(root, { servers: [] });
+  result = await loadSchedules(root);
   assert.equal(result.jobs.length, 0);
   assert.match(result.diagnostics[0], /cron-targets.jsonc/);
+});
+
+test('environment without triggers inherits top-level crons', async t => {
+  const { root, write } = await workspace(t);
+  await write('wrangler.jsonc', { ...worker(8787), env: { development: {} } });
+  await write('.devcontainer/cron-targets.jsonc', {
+    workers: {
+      'wrangler.jsonc': {
+        environment: 'development',
+        url: 'http://127.0.0.1:8787',
+      },
+    },
+  });
+  const result = await loadSchedules(root);
+  assert.deepEqual(result.diagnostics, []);
+  assert.deepEqual(
+    result.jobs.map(job => job.cron),
+    ['* * * * *'],
+  );
+});
+
+test('invalid cron, unknown environment, and stale target keys preserve healthy jobs', async t => {
+  const { root, write } = await workspace(t);
+  await write('good/wrangler.jsonc', worker(8787));
+  await write('cron/wrangler.jsonc', worker(8788, ['60 * * * *']));
+  await write('env/wrangler.jsonc', worker(8789));
+  await write('.devcontainer/cron-targets.jsonc', {
+    workers: {
+      'good/wrangler.jsonc': { url: 'http://127.0.0.1:8787' },
+      'cron/wrangler.jsonc': { url: 'http://127.0.0.1:8788' },
+      'env/wrangler.jsonc': {
+        url: 'http://127.0.0.1:8789',
+        environment: 'missing',
+      },
+      'gone/wrangler.jsonc': { url: 'http://127.0.0.1:8790' },
+    },
+  });
+  const result = await loadSchedules(root);
+  assert.deepEqual(
+    result.jobs.map(job => job.label),
+    ['good/wrangler.jsonc'],
+  );
+  assert.equal(result.diagnostics.length, 3);
+  assert.ok(
+    result.diagnostics.some(message => /cron\/wrangler.jsonc/.test(message)),
+  );
+  assert.ok(
+    result.diagnostics.some(message =>
+      /env\/wrangler.jsonc.*Unknown environment/.test(message),
+    ),
+  );
+  assert.ok(
+    result.diagnostics.some(message =>
+      /gone\/wrangler.jsonc.*target config was not found/.test(message),
+    ),
+  );
 });
 
 test('one request per minute, no replay/retry, and configuration reload', async t => {

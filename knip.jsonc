@@ -12,8 +12,4 @@
       "project": ["src/**/*.ts"],
     },
   },
-  "ignoreDependencies": [
-    // Loaded from a Vite app's own dependencies only when that app has a Vite config.
-    "vite",
-  ],
 }
