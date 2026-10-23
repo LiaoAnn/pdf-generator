@@ -57,6 +57,7 @@ Existing test setup: <runner, config, example test file>
 Write tests outside-in: the first test sits at the level of Acceptance (route, CLI, end-to-end) where the test environment can reach it; add narrower tests only where they pin a behavior the outer test can't. Use the necessity rules in ~/.claude/skills/tdd/test-judgment.md: each test names the regression it catches; no tests that restate declarations.
 Run them through `T3CODE_WORKTREE_PATH=/data/worktrees/pdf-generator/<wt> wt-exec <test command>` and confirm every one fails for the expected reason (missing behavior, not a syntax, import or setup error).
 Before you report, format your test files with the repo formatter (`T3CODE_WORKTREE_PATH=… wt-exec pnpm exec biome check --write <your files>`) and make sure `pnpm lint` passes on them: the implementer may not touch your tests, so a lint-only failure costs a whole extra round.
+A `.ts` file that `node` runs directly (scripts, `node --test`) must use erasable TypeScript only: no parameter properties, enums or namespaces, which Node's type stripping rejects.
 Don't commit. Don't edit files outside the test directories and fixtures you create.
 Report: the files you wrote, each test's name and the regression it catches, the exact RED command and its relevant output.
 ```
