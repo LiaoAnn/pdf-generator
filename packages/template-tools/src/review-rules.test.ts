@@ -80,6 +80,97 @@ function accepts(files: PackFiles) {
   expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
 }
 
+describe('table cell checkbox metadata (T13 parity)', () => {
+  it('accepts multiple printed checkbox states and labels in one cell', () => {
+    accepts(
+      pack(
+        '<table data-gt="table"><tr><td><span data-gt-checked="true">☑</span> 是 <span data-gt-checked="false">☐</span> 否</td></tr></table>',
+      ),
+    );
+  });
+  it.each(['td', 'th'] as const)(
+    'accepts a mustache checkbox state below nested elements in a %s',
+    cell => {
+      const files = pack(
+        `<table data-gt="table"><tr><${cell}><div><span data-gt-checked="{{approved}}">☑</span> 同意</div></${cell}></tr></table>`,
+      );
+      files['rules.json'] = JSON.stringify({
+        schemaVersion: 1,
+        fields: { approved: { type: 'checkbox' } },
+      });
+      files['sample.json'] = JSON.stringify({ approved: true });
+      accepts(files);
+    },
+  );
+  it.each(['', 'TRUE', '1', 'yes'] as const)(
+    'rejects invalid cell checkbox state %j at its attribute',
+    value =>
+      rejects(
+        pack(
+          `<table data-gt="table"><tr><td>\n <span data-gt-checked="${value}">☑</span></td></tr></table>`,
+        ),
+        'gt-attribute',
+        'data-gt-checked',
+      ),
+  );
+  describe.each(['', 'data-gt-checked="true" '] as const)(
+    'cell descendant with attributes %j',
+    checked => {
+      it.each(['id', 'latex', 'text', 'custom'] as const)(
+        'rejects data-gt-%s at that attribute',
+        name => {
+          rejects(
+            pack(
+              `<table data-gt="table"><tr><td>\n <span ${checked}data-gt-${name}="x">☑</span></td></tr></table>`,
+            ),
+            'gt-attribute',
+            `data-gt-${name}`,
+          );
+        },
+      );
+    },
+  );
+  it('rejects a nested block even when it is a checkbox inside a cell', () => {
+    rejects(
+      pack(
+        '<table data-gt="table"><tr><td>\n <span data-gt="checkbox" data-gt-checked="true">☑</span></td></tr></table>',
+      ),
+      'gt-nested',
+      'data-gt="checkbox"',
+    );
+  });
+  it.each([
+    [
+      'paragraph',
+      '<p data-gt="paragraph">\n <span data-gt-checked="true">☑</span></p>',
+    ],
+    [
+      'caption',
+      '<table data-gt="table"><caption>\n <span data-gt-checked="true">☑</span></caption><tr><td>x</td></tr></table>',
+    ],
+    [
+      'unmarked table',
+      '<div data-gt="paragraph"><table><tr><td>\n <span data-gt-checked="true">☑</span></td></tr></table></div>',
+    ],
+  ] as const)('rejects orphan checkbox metadata in a %s', (_name, template) => {
+    rejects(pack(template), 'gt-attribute', 'data-gt-checked');
+  });
+  describe.each(['td', 'th'] as const)('metadata on the %s itself', cell => {
+    it.each(['checked', 'id', 'latex', 'text', 'custom'] as const)(
+      'rejects data-gt-%s rather than treating the cell as a checkbox',
+      name => {
+        rejects(
+          pack(
+            `<table data-gt="table"><tr>\n <${cell} data-gt-${name}="true">☑</${cell}></tr></table>`,
+          ),
+          'gt-table',
+          `data-gt-${name}`,
+        );
+      },
+    );
+  });
+});
+
 describe('review regressions: ground truth metadata', () => {
   it.each(['bad.id', '臺灣', 'x'.repeat(61), 'row.{{@index}}'])(
     'rejects id literal %s that cannot survive gt id suffixing',

@@ -51,6 +51,10 @@ const maxIdLength = 60;
 /** Whitespace in source text, including the no-break space as an entity. */
 const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 
+/** A data-gt-checked value: a state, or one the data decides. */
+const checkedValue = (value: string) =>
+  value === 'true' || value === 'false' || value.includes('{{');
+
 const isGtAttribute = (name: string) =>
   name === 'data-gt' || name.startsWith('data-gt-');
 
@@ -92,11 +96,7 @@ export function markIssues(
     }
     const inside = [...descendants(element)];
     if (type === 'checkbox') {
-      if (
-        checked !== undefined &&
-        !['true', 'false'].includes(checked.value) &&
-        !checked.value.includes('{{')
-      ) {
+      if (checked !== undefined && !checkedValue(checked.value)) {
         report(
           'gt-attribute',
           at('data-gt-checked'),
@@ -162,7 +162,16 @@ export function markIssues(
     }
   };
 
-  const visit = (node: Html.ParentNode, marked: boolean, table: boolean) => {
+  /**
+   * `table`: inside a table block; `cell`: inside one of its cells, where an
+   * element may mark a printed checkbox with data-gt-checked alone (T13).
+   */
+  const visit = (
+    node: Html.ParentNode,
+    marked: boolean,
+    table: boolean,
+    cell = false,
+  ) => {
     for (const child of node.childNodes) {
       if (child.nodeName === '#text') {
         const start = marked ? undefined : textStart(child as Html.TextNode);
@@ -185,7 +194,8 @@ export function markIssues(
         location?.attrs?.[name]?.startOffset ?? location?.startOffset ?? 0;
 
       const gtAttrs = element.attrs.filter(attr => isGtAttribute(attr.name));
-      if (table && ['td', 'th'].includes(element.tagName) && gtAttrs.length) {
+      const isCell = table && ['td', 'th'].includes(element.tagName);
+      if (isCell && gtAttrs.length) {
         for (const attr of gtAttrs) {
           report(
             'gt-table',
@@ -193,7 +203,7 @@ export function markIssues(
             `table cells carry no ${attr.name}: the table block describes them`,
           );
         }
-        visit(element, marked, table);
+        visit(element, marked, table, true);
         continue;
       }
 
@@ -215,11 +225,23 @@ export function markIssues(
             at(attr.name),
             `${attr.name} is not a ground-truth attribute; use data-gt, data-gt-id, data-gt-checked, data-gt-latex or data-gt-text`,
           );
+        } else if (
+          mark === undefined &&
+          cell &&
+          attr.name === 'data-gt-checked'
+        ) {
+          if (!checkedValue(attr.value)) {
+            report(
+              'gt-attribute',
+              at(attr.name),
+              'data-gt-checked must be true, false or a {{field}}',
+            );
+          }
         } else if (mark === undefined) {
           report(
             'gt-attribute',
             at(attr.name),
-            `${attr.name} needs data-gt on the same element`,
+            `${attr.name} needs data-gt on the same element${attr.name === 'data-gt-checked' ? ' (or must be inside a table cell)' : ''}`,
           );
         }
       }
@@ -232,7 +254,7 @@ export function markIssues(
           );
           continue;
         }
-        visit(element, marked, table);
+        visit(element, marked, table, cell || isCell);
         continue;
       }
 
