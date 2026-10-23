@@ -336,3 +336,12 @@
 - **不做**：門牌號碼真實性
 - **來源**：PR #5 的 open risks
 
+### T09-1 線上環境設定
+- **目標**：把 T09 的網站接上真的 Cloudflare 帳號：wrangler 登入加 `d1:write`（使用者操作）；建立 D1 `pdf-generator`、R2 `pdf-generator-files`；線上跑 migration；部署 `pdf-generator-web`；在後台為 workers.dev 網址開 Cloudflare Access（允許使用者 email 與一組 service token，使用者操作）；帶 Access 設定重新部署
+- **Blocked by**：T09
+- **Blocks**：—（建議跟 T15、T16 第一次部署一起做，使用者只需登入與進後台各一次）
+- **撞車風險**：`apps/web/wrangler.jsonc`（database id、Access vars）
+- **驗收測試**：線上能建表；沒帶憑證被 Access 擋下；帶 service token 呼叫 `/api/me` 回 200；`/api/templates` 讀到線上的表
+- **不做**：自訂網域
+- **來源**：T09 的 ASK（步驟 0～7 與各步的還原方式見 T09 的 thread）；每一步都是外部服務呼叫，執行前要使用者同意
+

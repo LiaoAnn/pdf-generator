@@ -36,7 +36,7 @@ The user needs only two states: running and merged. Report those, plus what is w
 
 Whether the user wrote, a worker sent a message, or the heartbeat fired:
 
-1. **Read the world**: `df -h /data` and `docker ps -a` (see "Cleanup"), `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`).
+1. **Read the world**: `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`).
 2. **Handle messages** (below).
 3. **Dispatch** ready tickets up to the cap.
 4. **Report to the user**, in Traditional Chinese: questions waiting for them first, then what is running and what merged since the last report.
@@ -150,7 +150,7 @@ Merged tickets don't keep a stack or a worktree; `/data` is shared by every work
 2. `wt-down <path>` (deletes that stack's containers and volumes; shared volumes stay).
 3. `git -C /data/code/pdf-generator worktree remove <path>`, then `git -C /data/code/pdf-generator branch -D <branch>` (the squash commit on `main` and the PR keep the history).
 
-On every wake-up, also check space: `df -h /data` and `docker ps -a`. Clean up any merged ticket whose stack or worktree is still there. If `/data` is above 80% with nothing merged left to clean, tell the user what uses the space (`du -sh /data/worktrees/pdf-generator/*`, `docker system df`); don't prune Docker images, volumes or build cache yourself.
+Before starting a worker (a new thread and worktree), check space: `df -h /data` and `docker ps -a`. Clean up any merged ticket whose stack or worktree is still there first. If `/data` is above 80% with nothing merged left to clean, tell the user what uses the space (`du -sh /data/worktrees/pdf-generator/*`, `docker system df`); don't prune Docker images, volumes or build cache yourself.
 
 ## Heartbeat
 
