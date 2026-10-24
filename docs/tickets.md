@@ -760,3 +760,12 @@
 - **驗收測試**：拿掉路由裡的說明元件時，該測試失敗
 - **不做**：改頁面行為
 - **來源**：PR #46（T09-3）
+
+### T10-2 規格書：補上 `css-page-box` 與自我檢查的 `ink`
+- **目標**：T14-4 新增的 checkPack 檢查 `css-page-box`（拒絕作用在 `.pagedjs_*` 或 html／body 盒模型上的 CSS）沒寫進 `packages/pack-spec` 的 SPEC §9、§5 與 `skill/references/check-codes.md`；自我檢查的 `ink`（沒有文字的區塊與 PDF 實際畫出的位置不符）也沒寫進規格書。補上說明、常見原因與改法
+- **Blocked by**：T14-4
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`
+- **驗收測試**：文件與 `packages/template-tools`、`packages/self-check` 的實際行為一致；skill 的範例片段仍通過 `skill.test.ts`
+- **不做**：改平台程式
+- **來源**：PR #48（T10-1）
