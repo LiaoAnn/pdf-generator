@@ -21,7 +21,7 @@ No script runs at print time, so KaTeX's output is pre-rendered. `src/formulas.t
 
 - `pack/templates/paper.hbs`: the source with each marker replaced by one `{{#if (eq @root.eqN k)}}` branch per option. Each branch is a `data-gt="formula"` block whose `data-gt-latex` holds the LaTeX (braces as `&#123;`/`&#125;`, so Handlebars leaves them alone), with KaTeX's display-mode HTML inside (no MathML).
 - `pack/styles/katex.css`: KaTeX 0.16's stylesheet as it ships, with `@font-face` only for the faces the pool prints. The platform handles KaTeX's paint order and its `.vlist-s` U+200B itself (T14-3), so the pack needs no fixes of its own.
-- `pack/fonts/KaTeX_*.ttf`: TTF, not woff2, because the batch didn't recognise `KaTeX_Main-Regular.woff2` as a pack font.
+- `pack/fonts/KaTeX_*.woff2`: the `katex` package's woff2 files, unchanged.
 
 After changing `formulas.ts`, `paper.hbs` or the KaTeX version, rebuild. `build.test.ts` fails while the committed files are stale:
 
