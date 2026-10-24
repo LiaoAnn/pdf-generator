@@ -392,13 +392,13 @@
 - **來源**：PR #12
 
 ### T06-1 樣板工具強化
-- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致
+- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致；T16 的 `inlineStyles` 只認字面上的 `</head>`，`</head >` 或沒有 `</head>` 的樣板包會過 `checkPack` 卻在批次失敗：兩邊對齊（接受這兩種寫法，或 `checkPack` 要求 `</head>`）
 - **Blocked by**：T06
 - **Blocks**：—（建議在 T15 之後、樣板票之前）
 - **撞車風險**：`packages/template-tools`
 - **驗收測試**：每一項各有一份樣板包 fixture，結果符合預期
 - **不做**：放寬白名單
-- **來源**：PR #12 的 Hardening
+- **來源**：PR #12 的 Hardening；`</head>` 一項來自 PR #14
 
 ### T06-2 樣板輔助函式：民國年
 - **目標**：`fill` 內建日期格式輔助函式（民國年、中文月份等台灣表單常見格式）；樣板包不能帶 JavaScript，所以只能內建
@@ -436,3 +436,29 @@
 - **不做**：改擷取邏輯
 - **來源**：PR #13
 
+### T15-1 樣板上傳強化
+- **目標**：拒絕只產生空 deflate 區塊的項目（區塊數或壓縮比檢查；目前 10 MiB、約 90 萬個空區塊的項目會被接受，解壓約花 2.4 秒 CPU）；zip 目錄裡重複的檔名也算進 1,000 個項目的上限；補 20 MiB 邊界測試，以及用上傳版本跑 `consumeFixtures` 的測試
+- **Blocked by**：T15
+- **Blocks**：—
+- **撞車風險**：`apps/web` 的樣板上傳程式；T16-1 改的是批次，可同時進行
+- **驗收測試**：每一項各有一份會被擋下（或通過邊界）的 zip fixture
+- **不做**：改 `checkPack`
+- **來源**：PR #14 的 Security Hardening
+
+### T16-2 批次：`batch-zip.test.ts` 偶發失敗
+- **目標**：T16 的 `batch-zip.test.ts`「reports batch_not_found for an unknown ZIP」在完整 `pnpm verify` 中 5 次失敗 1 次（單獨跑 3/3 通過），沒留下錯誤訊息；先抓到錯誤，再修正成穩定（推測是記憶體吃緊時 `getPlatformProxy` 啟動，未證實）
+- **Blocked by**：T16
+- **Blocks**：—（CI 偶發紅燈會擋 merge）
+- **撞車風險**：`apps/web` 批次測試；不要跟 T16-1 同時派
+- **驗收測試**：記錄下失敗原因；修正後完整 `pnpm verify` 連跑 10 次都通過
+- **不做**：改批次功能
+- **來源**：PR #14
+
+### T02-3 契約：錯誤細節加 `code`（需使用者同意）
+- **目標**：`ApiError` 的 `details[]` 加選用欄位 `code`，讓問題代碼不必塞在 message 開頭；網頁與本地工具改讀這個欄位
+- **Blocked by**：T02、T15
+- **Blocks**：—
+- **撞車風險**：契約變更；同時進行的票若用到 `ApiError`，rebase 後重跑測試
+- **驗收測試**：上傳不合格樣板包時，每個錯誤細節都帶 `code`；重新匯出的 JSON Schema 含此欄位
+- **不做**：其他契約欄位
+- **來源**：PR #14
