@@ -295,6 +295,7 @@ describe('ROC dates for Taiwanese template packs', () => {
     ['2010-01-02', 'slash', '99/01/02'],
     ['2010-01-02', 'dot', '99.01.02'],
     ['2024-02-29', 'text', '民國113年2月29日'],
+    ['2024-04-30', 'text', '民國113年4月30日'],
     ['2024-12-31', 'text', '民國113年12月31日'],
     ['2025-01-01', 'text', '民國114年1月1日'],
     ['2000-02-29', 'slash', '89/02/29'],
@@ -373,6 +374,11 @@ describe('ROC dates for Taiwanese template packs', () => {
     ['dynamic format', '{{rocDate date format=style}}'],
     ['numeric format', '{{rocDate date format=1}}'],
     ['unexpected hash', '{{rocDate date padding="yes"}}'],
+    ['rocDate toString hash', '{{rocDate date toString="x"}}'],
+    ['rocDate constructor hash', '{{rocDate date constructor="x"}}'],
+    ['rocDate hasOwnProperty hash', '{{rocDate date hasOwnProperty="x"}}'],
+    ['rocDate __proto__ hash', '{{rocDate date __proto__="x"}}'],
+    ['number valueOf hash', '{{number x valueOf=1}}'],
     ['missing argument', '{{rocDate}}'],
     ['extra argument', '{{rocDate date date}}'],
     [
@@ -383,11 +389,15 @@ describe('ROC dates for Taiwanese template packs', () => {
     'rejects %s statically in an unreachable branch through fill and checkPack',
     (_name, statement) => {
       const template = `{{#if false}}\n  ${statement}\n{{/if}}`;
-      renderIssue(
-        template,
-        { date: '2024-05-07', style: 'text' },
-        'template-unsupported',
-      );
+      expect
+        .soft(() =>
+          renderIssue(
+            template,
+            { date: '2024-05-07', style: 'text', x: 1 },
+            'template-unsupported',
+          ),
+        )
+        .not.toThrow();
       const result = checkPack(pack(`<p data-gt="field">${template}</p>`));
       expect(result.ok).toBe(false);
       expect(result.issues).toEqual([

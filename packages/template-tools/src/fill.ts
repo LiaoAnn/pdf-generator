@@ -165,7 +165,9 @@ function unsupported(program: AST, file: string): PackIssue[] {
       if (!helper.hash.includes(pair.key)) {
         report(statement, `${name} does not accept ${pair.key}=`);
       }
-      const choices = helper.choices?.[pair.key];
+      const choices = Object.hasOwn(helper.choices ?? {}, pair.key)
+        ? helper.choices?.[pair.key]
+        : undefined;
       if (
         choices &&
         !(
