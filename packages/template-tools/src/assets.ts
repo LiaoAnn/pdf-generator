@@ -11,6 +11,7 @@ import {
   type TemplateHtml,
 } from './html.ts';
 import type { PackIssue } from './issues.ts';
+import { pageBoxProblems } from './page-box.ts';
 import { isRefused } from './policy.ts';
 import { decode, position } from './text.ts';
 
@@ -192,6 +193,9 @@ export function assetIssues(
       );
     }
     if (rules) {
+      for (const problem of pageBoxProblems(css)) {
+        issue('css-page-box', source, at(problem.offset), problem.message);
+      }
       for (const face of fontFaces(css)) {
         faces.push({ ...source, ...face, offset: at(face.offset) });
       }
