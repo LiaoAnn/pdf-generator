@@ -2,7 +2,7 @@
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect` before the PDF is printed (T03 Must 3).
 import type { Browser } from '@cloudflare/puppeteer';
-import { missingText } from './pdf-text.ts';
+import { missingText } from '@pdf-generator/self-check';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
 

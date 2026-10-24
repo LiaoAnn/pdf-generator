@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PDF reader geometry oracle</title>
+    <style>
+      @font-face {
+        font-family: FixtureSymbols;
+        src: url('../../../apps/print/public/fonts/NotoSansSymbols2-Regular.ttf');
+      }
+      @page { size: A4; margin: 0; }
+      body { margin: 0; }
+      section { position: relative; height: 100mm; break-after: page; }
+      section:last-child { break-after: auto; }
+      p { position: absolute; margin: 0; font: 32px / 48px sans-serif; white-space: pre; }
+      .baseline { display: inline-block; width: 0; height: 0; }
+      #first { left: 96px; top: 240px; }
+      #second { left: 144px; top: 80px; font-size: 24px; }
+      #symbols { left: 192px; top: 160px; font-family: FixtureSymbols, sans-serif; }
+      #last { left: 72px; top: 128px; font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <section>
+      <!-- DOM / content-stream order deliberately differs from visual y order. -->
+      <p id="first"><span>STREAM-FIRST</span><i class="baseline"></i></p>
+      <p id="second"><span>STREAM-SECOND</span><i class="baseline"></i></p>
+      <p id="symbols"><span>☀☁★</span><i class="baseline"></i></p>
+      <p style="left: 48px; top: 320px"><span>   </span></p>
+    </section>
+    <section>
+      <p id="last"><span>PAGE-TWO</span><i class="baseline"></i></p>
+      <!-- Different sizes keep the runs separate; their gap yields a whitespace-only PDF item. -->
+      <p style="left: 72px; top: 240px"><span id="gap-left">LEFT</span><span id="gap-right" style="margin-left: 16px; font-size: 24px">RIGHT</span><i class="baseline"></i></p>
+    </section>
+  </body>
+</html>

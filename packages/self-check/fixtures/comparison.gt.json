@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "comparison",
+    "templateVersion": 1,
+    "seed": "T14",
+    "index": 0
+  },
+  "pages": [
+    { "width": 595.28, "height": 841.89 },
+    { "width": 595.28, "height": 841.89 }
+  ],
+  "blocks": [
+    {
+      "id": "alpha",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [54, 54, 354, 78],
+      "order": 0,
+      "text": "Alpha ONE"
+    },
+    {
+      "id": "multi",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [54, 102, 354, 150],
+      "order": 1,
+      "text": "LEFT\nRIGHT"
+    },
+    {
+      "id": "blank",
+      "type": "field",
+      "page": 1,
+      "bbox": [54, 174, 354, 198],
+      "order": 2,
+      "text": ""
+    },
+    {
+      "id": "beta",
+      "type": "paragraph",
+      "page": 2,
+      "bbox": [54, 54, 354, 78],
+      "order": 3,
+      "text": "Beta TWO"
+    }
+  ]
+}

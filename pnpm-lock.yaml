@@ -214,6 +214,9 @@ importers:
       '@pdf-generator/ground-truth':
         specifier: workspace:*
         version: link:../../packages/ground-truth
+      '@pdf-generator/self-check':
+        specifier: workspace:*
+        version: link:../../packages/self-check
       unpdf:
         specifier: ^1.9.1
         version: 1.9.1
@@ -369,6 +372,34 @@ importers:
       vitest:
         specifier: 'catalog:'
         version: 4.1.12(@types/node@24.13.6)(vite@8.3.5(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/self-check:
+    dependencies:
+      '@pdf-generator/contract':
+        specifier: workspace:*
+        version: link:../contract
+      unpdf:
+        specifier: ^1.9.1
+        version: 1.9.1
+    devDependencies:
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+      pagedjs:
+        specifier: 0.4.3
+        version: 0.4.3
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.12(@types/node@24.13.6)(vite@8.3.5(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+      wrangler:
+        specifier: 'catalog:'
+        version: 4.152.0(@types/node@24.13.6)
 
   packages/template-tools:
     dependencies:

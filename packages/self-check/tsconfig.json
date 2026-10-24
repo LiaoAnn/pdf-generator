@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The checker itself uses no Node or DOM API (it must run in a Worker);
+    // the tests print PDFs with Playwright from Node.
+    "types": ["node"]
+  },
+  "include": ["src", "acceptance"]
+}
