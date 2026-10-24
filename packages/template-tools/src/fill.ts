@@ -36,11 +36,35 @@ export class TemplateError extends Error {
 
 /** Block helpers a template may use. */
 const blockHelpers = new Set(['if', 'unless', 'each', 'with']);
-/** Inline helpers a template may use, with the hash keys each accepts. */
-const inlineHelpers: Record<string, { params: number; hash: string[] }> = {
+/** `rocDate` formats, by the name a template passes as format=. */
+const rocFormats: Record<string, (y: number, m: number, d: number) => string> =
+  {
+    text: (y, m, d) => `民國${y}年${m}月${d}日`,
+    full: (y, m, d) => `中華民國${y}年${m}月${d}日`,
+    slash: (y, m, d) => `${y}/${pad(m)}/${pad(d)}`,
+    dot: (y, m, d) => `${y}.${pad(m)}.${pad(d)}`,
+    year: y => String(y),
+    month: (_y, m) => String(m),
+    day: (_y, _m, d) => String(d),
+  };
+const pad = (value: number) => String(value).padStart(2, '0');
+
+/**
+ * Inline helpers a template may use, with the hash keys each accepts and, for
+ * a key in `choices`, the quoted names it may take.
+ */
+const inlineHelpers: Record<
+  string,
+  { params: number; hash: string[]; choices?: Record<string, string[]> }
+> = {
   eq: { params: 2, hash: [] },
   lookup: { params: 2, hash: [] },
   number: { params: 1, hash: ['decimals'] },
+  rocDate: {
+    params: 1,
+    hash: ['format'],
+    choices: { format: Object.keys(rocFormats) },
+  },
 };
 const dataVariables = new Set(['root', 'index', 'key', 'first', 'last']);
 /** Most statements one fill may evaluate, and most characters it may print. */
@@ -129,6 +153,19 @@ function unsupported(program: AST, file: string): PackIssue[] {
       if (!helper.hash.includes(pair.key)) {
         report(statement, `${name} does not accept ${pair.key}=`);
       }
+      const choices = helper.choices?.[pair.key];
+      if (
+        choices &&
+        !(
+          pair.value.type === 'StringLiteral' &&
+          choices.includes((pair.value as hbs.AST.StringLiteral).value)
+        )
+      ) {
+        report(
+          statement,
+          `${name} ${pair.key}= must be one of ${choices.map(choice => `"${choice}"`).join(', ')}`,
+        );
+      }
       expression(pair.value, statement);
     }
     for (const param of node.params) expression(param, statement);
@@ -195,6 +232,25 @@ function groupThousands(value: number, decimals: number | undefined): string {
     integer.replace(/\B(?=(\d{3})+(?!\d))/g, ',') +
     (fraction === undefined ? '' : `.${fraction}`)
   );
+}
+
+/**
+ * The ROC (民國) year, month and day of a `YYYY-MM-DD` calendar date, read from
+ * its digits alone: no Date, so neither the timezone nor the locale can shift
+ * it. Undefined for anything else, and for dates before 民國元年 (1912).
+ */
+function rocParts(value: string): [number, number, number] | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return undefined;
+  const [year, month, day] = match.slice(1).map(Number) as [
+    number,
+    number,
+    number,
+  ];
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (year < 1912 || day < 1 || day > (days[month - 1] ?? 0)) return undefined;
+  return [year - 1911, month, day];
 }
 
 function render(ast: AST, root: unknown, file: string): string {
@@ -318,6 +374,22 @@ function render(ast: AST, root: unknown, file: string): string {
           );
         }
         return groupThousands(value as number, decimals as number | undefined);
+      }
+      case 'rocDate': {
+        const [value] = params;
+        if (value === null || value === undefined) return '';
+        const parts = typeof value === 'string' ? rocParts(value) : undefined;
+        if (parts === undefined) {
+          fail(
+            statement,
+            'template-render',
+            typeof value === 'string'
+              ? `rocDate needs a YYYY-MM-DD date from 1912-01-01 on, got "${value}"`
+              : `rocDate needs a YYYY-MM-DD string, got ${kind(value)}`,
+          );
+        }
+        const format = rocFormats[String(hash.format ?? 'text')];
+        return format?.(...(parts as [number, number, number])) ?? '';
       }
     }
     return fail(

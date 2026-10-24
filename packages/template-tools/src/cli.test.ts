@@ -12,7 +12,14 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { afterEach, describe, expect, it } from 'vitest';
-import { type CheckResult, checkPack, type PackIssue } from './index.ts';
+import {
+  type CheckResult,
+  checkPack,
+  fill,
+  type PackFiles,
+  type PackIssue,
+  TemplateError,
+} from './index.ts';
 
 const packageDir = fileURLToPath(new URL('../', import.meta.url));
 const fixtures = join(packageDir, 'fixtures');
@@ -170,4 +177,207 @@ describe('Node check-pack CLI for local pack authors', () => {
     expect(result.stderr.trim().length).toBeGreaterThan(0);
     expect(result.stderr).not.toContain('not implemented');
   });
+});
+
+const templateFile = 'templates/report.hbs';
+
+function pack(template: string): PackFiles {
+  const manifest = JSON.parse(
+    readFileSync(join(join(fixtures, 'valid'), 'manifest.json'), 'utf8'),
+  );
+  const files: PackFiles = {};
+  for (const file of [
+    'manifest.json',
+    templateFile,
+    ...manifest.files.styles,
+    manifest.files.rules,
+    manifest.files.sample,
+    ...manifest.files.assets,
+  ]) {
+    files[file] = readFileSync(join(join(fixtures, 'valid'), file));
+  }
+  files[templateFile] = template;
+  const rules = JSON.parse(
+    readFileSync(join(join(fixtures, 'valid'), 'data/rules.json'), 'utf8'),
+  );
+  rules.fields.date = { type: 'date', min: '2024-01-01', max: '2024-12-31' };
+  files['data/rules.json'] = JSON.stringify(rules);
+  const sample = JSON.parse(
+    readFileSync(join(join(fixtures, 'valid'), 'data/sample.json'), 'utf8'),
+  );
+  sample.date = '2024-05-07';
+  files['data/sample.json'] = JSON.stringify(sample);
+  return files;
+}
+
+function renderIssue(template: string, data: unknown, code: string) {
+  let caught: unknown;
+  try {
+    fill(template, data, { file: templateFile });
+  } catch (error) {
+    caught = error;
+  }
+  expect(caught).toBeInstanceOf(TemplateError);
+  expect((caught as TemplateError).issues).toEqual([
+    expect.objectContaining({
+      code,
+      file: templateFile,
+      line: 2,
+      column: 3,
+      message: expect.any(String),
+    }),
+  ]);
+}
+
+describe('ROC dates for Taiwanese template packs', () => {
+  it('lets the CLI validate a pack using every format and fills its printed dates', () => {
+    const template =
+      '<p data-gt="field">' +
+      [
+        '{{rocDate date}}',
+        '{{rocDate date format="text"}}',
+        '{{rocDate date format="full"}}',
+        '{{rocDate date format="slash"}}',
+        '{{rocDate date format="dot"}}',
+        '{{rocDate date format="year"}}',
+        '{{rocDate date format="month"}}',
+        '{{rocDate date format="day"}}',
+      ].join('|') +
+      '</p>';
+    const files = pack(template);
+    const directory = mkdtempSync(join(tmpdir(), 'roc-date-pack-'));
+    temporary.push(directory);
+    cpSync(join(fixtures, 'valid'), directory, { recursive: true });
+    for (const [file, contents] of Object.entries(files)) {
+      writeFileSync(join(directory, file), contents);
+    }
+    const result = spawnSync(
+      process.execPath,
+      ['src/cli.ts', directory, '--json'],
+      {
+        cwd: packageDir,
+        encoding: 'utf8',
+        timeout: 15_000,
+      },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toBe('');
+    expect(result.stdout).toBe('{"ok":true,"issues":[]}\n');
+    expect(result.status).toBe(0);
+    expect(checkPack(files).ok).toBe(true);
+    expect(fill(template, { date: '2024-05-07' })).toBe(
+      '<p data-gt="field">民國113年5月7日|民國113年5月7日|中華民國113年5月7日|113/05/07|113.05.07|113|5|7</p>',
+    );
+  });
+
+  it.each([
+    ['1912-01-01', 'text', '民國1年1月1日'],
+    ['2010-01-02', 'slash', '99/01/02'],
+    ['2010-01-02', 'dot', '99.01.02'],
+    ['2024-02-29', 'text', '民國113年2月29日'],
+    ['2024-12-31', 'text', '民國113年12月31日'],
+    ['2025-01-01', 'text', '民國114年1月1日'],
+    ['2000-02-29', 'slash', '89/02/29'],
+  ])(
+    'preserves calendar components for %s in %s format',
+    (date, format, expected) => {
+      const previous = process.env.TZ;
+      try {
+        for (const timezone of ['Pacific/Honolulu', 'Pacific/Kiritimati']) {
+          process.env.TZ = timezone;
+          expect(fill(`{{rocDate date format="${format}"}}`, { date })).toBe(
+            expected,
+          );
+        }
+      } finally {
+        if (previous === undefined) delete process.env.TZ;
+        else process.env.TZ = previous;
+      }
+    },
+  );
+
+  it('prints null literals and null date fields as empty text', () => {
+    expect(
+      fill('A{{rocDate null}}B{{rocDate date format="slash"}}C', {
+        date: null,
+      }),
+    ).toBe('ABC');
+  });
+
+  it('returns a string from nested subexpressions even with a same-named data field', () => {
+    expect(
+      fill(
+        '{{rocDate date}}|{{#if (eq (rocDate date format="year") "113")}}match{{else}}wrong type{{/if}}',
+        {
+          date: '2024-05-07',
+          rocDate: 'shadow',
+        },
+      ),
+    ).toBe('民國113年5月7日|match');
+  });
+
+  it.each([
+    { kind: 'number', value: 20240507 },
+    { kind: 'boolean', value: true },
+    { kind: 'array', value: ['2024-05-07'] },
+    { kind: 'object', value: { date: '2024-05-07' } },
+    ...[
+      '2024-5-7',
+      '2024-05-07T00:00:00Z',
+      ' 2024-05-07',
+      '2024-05-07 ',
+      '2024-05-07\n',
+      '20240507',
+      '2023-02-29',
+      '2024-13-01',
+      '2024-04-31',
+      '2024-00-10',
+      '2024-01-00',
+      '1900-02-29',
+      '2100-02-29',
+      '1911-12-31',
+    ].map(value => ({ kind: value, value })),
+  ])(
+    'reports invalid date $kind as a render error at the calling statement',
+    ({ value }) => {
+      renderIssue(
+        '<p data-gt="field">\n  {{rocDate date}}</p>',
+        { date: value },
+        'template-render',
+      );
+    },
+  );
+
+  it.each([
+    ['unknown format', '{{rocDate date format="iso"}}'],
+    ['dynamic format', '{{rocDate date format=style}}'],
+    ['numeric format', '{{rocDate date format=1}}'],
+    ['unexpected hash', '{{rocDate date padding="yes"}}'],
+    ['missing argument', '{{rocDate}}'],
+    ['extra argument', '{{rocDate date date}}'],
+    [
+      'invalid nested format',
+      '{{#if (eq (rocDate date format="iso") "113")}}bad{{/if}}',
+    ],
+  ])(
+    'rejects %s statically in an unreachable branch through fill and checkPack',
+    (_name, statement) => {
+      const template = `{{#if false}}\n  ${statement}\n{{/if}}`;
+      renderIssue(
+        template,
+        { date: '2024-05-07', style: 'text' },
+        'template-unsupported',
+      );
+      const result = checkPack(pack(`<p data-gt="field">${template}</p>`));
+      expect(result.ok).toBe(false);
+      expect(result.issues).toEqual([
+        expect.objectContaining({
+          code: 'template-unsupported',
+          file: templateFile,
+          line: 2,
+          column: 3,
+        }),
+      ]);
+    },
+  );
 });
