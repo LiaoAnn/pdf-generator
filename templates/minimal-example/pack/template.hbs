@@ -25,11 +25,11 @@
 </table>
 <h2 data-gt="heading">二、討論事項</h2>
 <p data-gt="paragraph">{{summary}}</p>
-<ol>
+<ul class="items">
 {{#each items}}
-<li data-gt="list_item">{{this}}</li>
+<li data-gt="list_item">・{{this}}</li>
 {{/each}}
-</ol>
+</ul>
 <h2 data-gt="heading">三、確認</h2>
 <p data-gt="checkbox" data-gt-checked="{{confirmed}}"><span class="box">{{#if confirmed}}☑{{else}}☐{{/if}}</span>本紀錄已經主席確認無誤。</p>
 </body>

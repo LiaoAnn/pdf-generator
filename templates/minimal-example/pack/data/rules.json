@@ -5,7 +5,7 @@
     "meetingDate": { "type": "date", "min": "2025-01-01", "max": "2026-09-30" },
     "place": { "type": "address" },
     "chair": { "type": "name" },
-    "recorder": { "type": "name" },
+    "recorder": { "type": "name", "blankProbability": 0.3 },
     "attendees": {
       "type": "array",
       "minItems": 3,

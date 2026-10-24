@@ -14,3 +14,19 @@ col.role {
 .box {
   font-family: "Noto Sans Symbols 2", "Noto Serif TC", serif;
 }
+
+/* A field that can be blank keeps a box: an empty inline element has no
+   width, an empty inline-block no height, and the print would fail. */
+.pair [data-gt="field"] {
+  display: inline-block;
+  min-width: 6em;
+  min-height: 1lh;
+  vertical-align: top;
+}
+
+/* List markers are generated content, which no data-gt block holds: the
+   marker is written into each item's text instead. */
+ul.items {
+  list-style: none;
+  padding-left: 0;
+}

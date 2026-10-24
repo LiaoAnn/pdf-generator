@@ -247,8 +247,8 @@ An `image` block's text is `data-gt-text` if present, else the text rendered ins
 - **No pack JavaScript** runs, and the browser loads only the pack's own files and the platform fonts.
 - **Headers and footers** are running elements: an element with `position: running(<name>)` that `@page { @top-center { content: element(<name>) } }` (or another margin box) shows on every page from the one where it appears. Put it first in `<body>` and mark it `page_header` or `page_footer`. `word.css` provides `.word-header` and `.word-footer`.
 - **Only marked text may print.** CSS generated content prints text that is in no element, so the self-check reports it as unmarked text: no `content: "…"`, `counter()` or `counter(page)` in `::before`/`::after` or in margin boxes. Page numbers must be DOM text inside a `page_number` mark; a number that depends on how many pages the record fills can't be known at fill time, so number pages only where the page count is fixed by the layout.
-- **List markers** are generated content too. Use `list-style: none` and write the marker into the item's text (`1. ` or `（一）`), or leave lists unnumbered.
-- **Blank fields**: a field that can be `null` (`blankProbability`) prints an empty element. Give it a size (`display: inline-block; min-width: 6em`, or a table cell), so its box isn't zero width.
+- **List markers** are generated content too, outside the box (`list-style-position: outside`) or inside it: either way the self-check reports them. Use `list-style: none` and write the marker into the item's text (`・{{this}}`, or `（一）` in a fixed list). A list from an array can't number itself: there is no helper that adds 1 to `@index`.
+- **Blank fields**: a field that can be `null` (`blankProbability`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
 
@@ -284,7 +284,7 @@ Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't decla
 | --- | --- |
 | A4, margins 2.54 cm top and bottom, 3.17 cm left and right | `@page { size: A4; margin: 25.4mm 31.7mm }` |
 | Header 1.5 cm from the top, footer 1.75 cm from the bottom | `.word-header` / `.word-footer` in `@top-center` / `@bottom-center` |
-| 內文: 新細明體 12 pt, single spacing, no paragraph spacing, justified | `html { font-family: "Noto Serif TC", …; font-size: 12pt }`, `p { margin: 0; text-align: justify }` |
+| 內文: 新細明體 12 pt, single spacing, no paragraph spacing, justified | `html { font-family: "Noto Serif TC", …; font-size: 12pt; line-height: normal }` (Word's single spacing is the font's own line height), `p { margin: 0; text-align: justify }` |
 | 標題 1-3 | `h1` 24 pt, `h2` 18 pt, `h3` 14 pt, bold; `.word-title` 16 pt bold centered |
 | 表格格線 (Table Grid) | 0.5 pt black borders, 0.19 cm cell padding, full width, fixed layout |
 
@@ -300,7 +300,10 @@ Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't decla
 }
 ```
 
-The minimal example was printed next to a Word-equivalent reference (the same content in a `.docx` with these settings, converted by LibreOffice); see its README.
+**How close it is.** The minimal example was printed next to a Word-equivalent reference: the same record as a `.docx` with exactly these settings (`templates/minimal-example/src/word-reference.ts`), converted to PDF by LibreOffice 25.2 with the same fonts. Every word that both PDFs print as one word sits within 0.4 pt horizontally and 1.6 pt vertically of its place in the other. Known differences:
+
+- Word and LibreOffice add a small gap between Chinese and Latin characters or digits (`100 臺北市`); Chrome doesn't. Don't add spaces to imitate it: they would be in the text.
+- Word's heading sizes and spacings in `word.css` follow the zh-TW Normal template as documented, not as measured in Word: there is no Word here.
 
 ## 8. Limits
 

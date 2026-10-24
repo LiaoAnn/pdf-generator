@@ -29,11 +29,13 @@
 }
 
 /* 內文 (Normal): 新細明體 12 pt, single spacing, no space between
-   paragraphs, justified. */
+   paragraphs, justified. Word's single spacing is the font's own line
+   height, as line-height: normal is (17.25 pt for Noto Serif TC 12 pt;
+   a line holding ☑ ☐ is taller in both). */
 html {
   font-family: "Noto Serif TC", "Noto Sans Symbols 2", serif;
   font-size: 12pt;
-  line-height: 1.3;
+  line-height: normal;
   color: #000;
 }
 
