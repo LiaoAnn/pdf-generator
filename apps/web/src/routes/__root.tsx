@@ -32,6 +32,7 @@ function RootLayout() {
               key={item.to}
               to={item.to}
               className="text-muted-foreground text-sm hover:text-foreground"
+              activeOptions={{ exact: item.to === '/' }}
               activeProps={{ className: 'text-foreground font-medium' }}>
               {item.label}
             </Link>
