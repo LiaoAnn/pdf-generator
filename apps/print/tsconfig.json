@@ -1,8 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // @pdf-generator/ground-truth (T08) is TypeScript source whose collector
-    // runs in the browser, so this program needs the DOM types too.
+    // Not for @pdf-generator/ground-truth, which needs no DOM lib (T08-1):
+    // the Node tests and vitest.config pass Node's URL where the Workers types
+    // expect theirs, and template-tools' TextDecoder options miss ignoreBOM,
+    // which DOM's types hide.
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
   "include": ["worker-configuration.d.ts", "src"]
