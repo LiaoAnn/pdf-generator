@@ -807,3 +807,71 @@ test.each([
   },
   15_000,
 );
+
+test('running balances share 100000 empty rows arrays across 4000 balances promptly', () => {
+  guardedGeneration(
+    `
+    const fieldsFor = balance => ({
+      o: constant(0),
+      a: array(1_000, object({
+        b: array(100, object({
+          empty: array(0, object(Object.fromEntries(
+            Array.from({ length: 4_000 }, (_, i) => ['b' + i, balance()])
+          ))),
+        })),
+      })),
+    });
+    // Seven levels, one generated leaf and zero derived steps: no balance exists.
+    const rules = rulesFor(fieldsFor(() => ({
+      type: 'runningBalance', opening: 'o', add: [], subtract: [],
+    })));
+    const constantRules = rulesFor(fieldsFor(() => constant(0)));
+    const expected = generate(constantRules, 'shared-empty-rows');
+    assert.equal(expected.a.length, 1_000);
+    for (const outer of expected.a) {
+      assert.equal(outer.b.length, 100);
+      for (const inner of outer.b) assert.deepEqual(inner.empty, []);
+    }
+    const start = performance.now();
+    const record = generate(rules, 'shared-empty-rows');
+    const elapsed = performance.now() - start;
+    assert.deepEqual(record, expected);
+    assert.ok(elapsed < 1_500, 'shared empty rows arrays took ' + elapsed.toFixed(1) + ' ms');
+  `,
+    10_000,
+  );
+}, 15_000);
+
+test('running balances sharing populated rows arrays keep every prefix independent across groups', () => {
+  guardedGeneration(
+    `
+    // 90 × 5 × 201 + the opening = 90,451 values, below the 100,000 cap.
+    const rules = rulesFor({
+      o: constant(0),
+      a: array(90, object({
+        rows: array(5, object({
+          d: constant(1),
+          ...Object.fromEntries(Array.from({ length: 200 }, (_, i) => [
+            'b' + i,
+            { type: 'runningBalance', opening: 'o', add: ['a[].rows[].d'], subtract: [] },
+          ])),
+        })),
+      })),
+    });
+    const record = generate(rules, 'shared-populated-rows');
+    assert.equal(record.o, 0);
+    assert.equal(record.a.length, 90);
+    for (const [groupIndex, group] of record.a.entries()) {
+      assert.equal(group.rows.length, 5);
+      for (const [rowIndex, row] of group.rows.entries()) {
+        assert.equal(row.d, 1);
+        for (let b = 0; b < 200; b++) {
+          assert.equal(row['b' + b], rowIndex + 1,
+            'group ' + groupIndex + ', row ' + rowIndex + ', balance ' + b);
+        }
+      }
+    }
+  `,
+    10_000,
+  );
+}, 15_000);

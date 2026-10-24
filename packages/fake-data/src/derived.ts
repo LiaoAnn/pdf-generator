@@ -431,7 +431,21 @@ export function fillDerived(
   // kept per rule reached and binding, so paths sharing a prefix walk it
   // once (the record's shape doesn't change while derived fields fill).
   const prefixes = new Map<Prefix, Map<string, Node[]>>();
+  // Unbound slots are kept per path too: every running balance over the
+  // same rows (or field over the same targets) scans them once.
+  const unboundSlots = new Map<Compiled, Slot[]>();
   const slots = (path: Compiled, bound: Bound = new Map()): Slot[] => {
+    if (bound.size === 0) {
+      let known = unboundSlots.get(path);
+      if (known === undefined) {
+        known = walk(path, bound);
+        unboundSlots.set(path, known);
+      }
+      return known;
+    }
+    return walk(path, bound);
+  };
+  const walk = (path: Compiled, bound: Bound): Slot[] => {
     let nodes: Node[] = [{ value: record, bound: new Map() }];
     const { steps } = path;
     for (const step of steps.slice(0, -1)) {
