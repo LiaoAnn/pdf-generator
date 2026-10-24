@@ -40,7 +40,7 @@ const fieldPath = z
     /^[A-Za-z_][A-Za-z0-9_]*(?:\[\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\])?)*$/,
   )
   .describe(
-    "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`.",
+    "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`.",
   );
 
 // Keys every field rule accepts.
@@ -254,7 +254,7 @@ const ruleFieldSchema: z.ZodType<RuleField> = z
         of: z.array(fieldPath).min(1),
       })
       .describe(
-        'Sum of the referenced values (number); a path through an array adds every item; null counts as 0.',
+        'Sum of the referenced values (number); a path through an array adds every item, or only the current row for an array the field is inside; null counts as 0.',
       ),
     z
       .strictObject({
@@ -275,7 +275,9 @@ const ruleFieldSchema: z.ZodType<RuleField> = z
         whole: fieldPath,
         decimals: decimals(6),
       })
-      .describe('part / whole × 100, rounded to `decimals` (number).'),
+      .describe(
+        'part / whole × 100, rounded to `decimals` (number); a path through an array the field is inside reads the current row.',
+      ),
   ])
   .meta({ id: 'RuleField' });
 
@@ -361,7 +363,7 @@ export const rulesSchema = z
   .meta({
     title: 'Fake-data rule file',
     description:
-      'rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields.',
+      'rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row.',
   });
 
 export type Rules = z.infer<typeof rulesSchema>;
