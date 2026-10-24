@@ -8,13 +8,17 @@ import {
   tableBytes,
   withTables,
 } from './test-fixtures/read-ttf.ts';
+import { withSharedCmap } from './test-fixtures/shared-cmap.ts';
 
-const lxgw = () =>
-  readFile(
-    new URL('../public/fonts/LXGWWenKaiTC-Regular.ttf', import.meta.url),
+const lxgw = async () =>
+  withSharedCmap(
+    await readFile(
+      new URL('../public/fonts/LXGWWenKaiTC-Regular.ttf', import.meta.url),
+    ),
+    true,
   );
 
-// The T03 drop policy, independently applied to the committed upstream cmap.
+// The T03 drop policy, independently applied to the collision fixture cmap.
 const alias = (cp: number) =>
   (cp >= 0x2e80 && cp <= 0x2fdf) ||
   (cp >= 0xf900 && cp <= 0xfaff) ||
@@ -30,14 +34,14 @@ function expectedMapping(source: Uint8Array) {
     .filter(([cp, gid]) => alias(cp) && nonAliasGlyphs.has(gid))
     .map(([cp]) => cp);
   const kept = original.filter(([cp]) => !dropped.includes(cp));
-  const first = new Set<number>();
+  const keepers = new Map<number, number>();
+  for (const [cp, gid] of kept) {
+    if (!keepers.has(gid) || cp === 0x2013) keepers.set(gid, cp);
+  }
   const copied: number[] = [];
   const count = tableBytes(source, 'maxp').readUInt16BE(4);
   const mapping = kept.map(([cp, gid]) => {
-    if (!first.has(gid)) {
-      first.add(gid);
-      return [cp, gid];
-    }
+    if (keepers.get(gid) === cp) return [cp, gid];
     copied.push(cp);
     return [cp, count + copied.length - 1];
   });
@@ -60,7 +64,11 @@ test('LXGW copies every surviving shared glyph in code-point order without chang
   expect(result.dropped).toEqual(expected.dropped);
   expect(result.copied).toEqual(expected.copied);
   const mapping = readCmap(result.font);
-  expect([...mapping]).toEqual(expected.mapping);
+  expect(mapping.size).toBe(expected.mapping.length);
+  expect(
+    expected.mapping.every(([cp, gid]) => mapping.get(cp as number) === gid),
+    'all code-point mappings',
+  ).toBe(true);
   expect(mapping.has(0x3008)).toBe(true);
   expect(mapping.has(0xff5e)).toBe(true);
   expect(new Set(mapping.values()).size).toBe(mapping.size);
@@ -94,13 +102,21 @@ test('LXGW copies every surviving shared glyph in code-point order without chang
       tableBytes(result.font, header),
       count,
     );
-    expect(after, `${tag} resolved advances and side bearings`).toEqual(
-      sourceIds.map(gid => before[gid]),
-    );
+    expect(after.length).toBe(sourceIds.length);
+    expect(
+      after.every((metric, gid) => {
+        const expected = before[sourceIds[gid] as number];
+        return metric[0] === expected?.[0] && metric[1] === expected?.[1];
+      }),
+      `${tag} resolved advances and side bearings`,
+    ).toBe(true);
   }
   const names = postNames(tableBytes(result.font, 'post'));
   expect(names).toHaveLength(count);
-  expect(names.slice(0, oldNames.length)).toEqual(oldNames);
+  expect(
+    oldNames.every((name, gid) => names[gid] === name),
+    'original post names unchanged',
+  ).toBe(true);
 });
 
 test('LXGW rebuilding preserves unrelated tables and valid checksums without mutation, nondeterminism or second-pass copies', async () => {

@@ -8,6 +8,7 @@ import {
   readCff,
   sum32,
 } from './test-fixtures/read-cff.ts';
+import { withSharedCmap } from './test-fixtures/shared-cmap.ts';
 
 type CopyResult = { font: Uint8Array; dropped: number[]; copied: number[] };
 // The API is extended in this slice. Keep the tests typecheckable while RED.
@@ -23,8 +24,8 @@ const faces = [
 test.each(faces)(
   '%s appends independent CFF glyphs in code-point order with identical outlines, FDs and resolved metrics',
   async name => {
-    const source = await readFile(
-      new URL(`../public/fonts/${name}`, import.meta.url),
+    const source = withSharedCmap(
+      await readFile(new URL(`../public/fonts/${name}`, import.meta.url)),
     );
     const original = Buffer.from(source);
     const tables = fontTables(source);
@@ -41,18 +42,18 @@ test.each(faces)(
     expect(before.fds).toHaveLength(oldCount);
     expect(new Set(before.cids).size).toBe(oldCount);
     const oldMap = [...readCmap(source)].sort((a, b) => a[0] - b[0]);
-    const seen = new Set<number>();
+    const keepers = new Map<number, number>();
+    for (const [cp, gid] of oldMap) {
+      if (!keepers.has(gid) || cp === 0x2013) keepers.set(gid, cp);
+    }
     const copies: number[] = [];
     const expectedMap = oldMap.map(([cp, gid]) => {
-      if (!seen.has(gid)) {
-        seen.add(gid);
-        return [cp, gid];
-      }
+      if (keepers.get(gid) === cp) return [cp, gid];
       copies.push(cp);
       return [cp, oldCount + copies.length - 1];
     });
-    // These committed fonts already have T03 aliases removed; remaining sharing
-    // includes punctuation, which must be copied rather than deleted.
+    // T03 aliases stay removed; the fixture restores punctuation sharing,
+    // which must be copied rather than deleted.
     expect(copies.length).toBeGreaterThan(0);
     expect(copies).toContain(0xff0f);
     if (name.includes('Serif')) {
@@ -64,7 +65,11 @@ test.each(faces)(
     expect(result.copied).toEqual(copies);
     expect(result.dropped).toEqual([]);
     const afterMap = readCmap(result.font);
-    expect([...afterMap]).toEqual(expectedMap);
+    expect(afterMap.size).toBe(expectedMap.length);
+    expect(
+      expectedMap.every(([cp, gid]) => afterMap.get(cp as number) === gid),
+      'all code-point mappings',
+    ).toBe(true);
     expect(new Set(afterMap.values()).size).toBe(oldMap.length);
     expect(source.equals(original), 'source font unchanged').toBe(true);
     expect(
@@ -91,8 +96,14 @@ test.each(faces)(
     expect(after.cids).toHaveLength(count);
     expect(after.fds).toHaveLength(count);
     expect(new Set(after.cids).size).toBe(count);
-    expect(after.cids.slice(0, oldCount)).toEqual(before.cids);
-    expect(after.fds.slice(0, oldCount)).toEqual(before.fds);
+    expect(
+      before.cids.every((cid, gid) => after.cids[gid] === cid),
+      'original CIDs unchanged',
+    ).toBe(true);
+    expect(
+      before.fds.every((fd, gid) => after.fds[gid] === fd),
+      'original FDSelect unchanged',
+    ).toBe(true);
     expect(
       after.charstrings
         .slice(0, oldCount)
@@ -120,16 +131,31 @@ test.each(faces)(
         nextTable(headerTag),
         count,
       );
-      expect(newMetrics).toEqual([
+      const expected = [
         ...oldMetrics,
         ...copies.map(cp => oldMetrics[inputMap.get(cp) as number]),
-      ]);
+      ];
+      expect(newMetrics.length).toBe(expected.length);
+      expect(
+        newMetrics.every(
+          (metric, gid) =>
+            metric[0] === expected[gid]?.[0] &&
+            metric[1] === expected[gid]?.[1],
+        ),
+        `${metricTag} advances and bearings`,
+      ).toBe(true);
     }
     const oldOrigins = origins(table('VORG'), oldCount);
-    expect(origins(nextTable('VORG'), count)).toEqual([
+    const expectedOrigins = [
       ...oldOrigins,
       ...copies.map(cp => oldOrigins[inputMap.get(cp) as number]),
-    ]);
+    ];
+    const newOrigins = origins(nextTable('VORG'), count);
+    expect(newOrigins.length).toBe(expectedOrigins.length);
+    expect(
+      newOrigins.every((origin, gid) => origin === expectedOrigins[gid]),
+      'vertical origins',
+    ).toBe(true);
     // Glyph changes must not silently strip layout features or identity tables.
     const changed = new Set([
       'cmap',
@@ -158,5 +184,44 @@ test.each(faces)(
     expect(cmap.subarray(0, 14)).toEqual(
       Buffer.from([0, 0, 0, 1, 0, 3, 0, 10, 0, 0, 0, 12, 0, 12]),
     );
+  },
+);
+
+test.each([...faces, 'LXGWWenKaiTC-Regular.ttf'])(
+  '%s keeps the original en-dash glyph for layout coverage and copies the figure dash',
+  async name => {
+    const original = await readFile(
+      new URL(`../public/fonts/${name}`, import.meta.url),
+    );
+    const originalDash = readCmap(original).get(0x2013);
+    expect(originalDash).toBeGreaterThan(0);
+    const source = withSharedCmap(original, name.endsWith('.ttf'));
+    const before = readCmap(source);
+    expect(before.get(0x2012)).toBe(originalDash);
+    expect(before.get(0x2013)).toBe(originalDash);
+    const oldCount = fontTables(source).get('maxp')?.bytes.readUInt16BE(4);
+    if (oldCount === undefined) throw new Error('fixture lacks maxp');
+
+    const result = patch(source);
+    const after = readCmap(result.font);
+    // GSUB/GPOS still reference the original glyph; appended copies lack those
+    // references. Keep the common en dash on that glyph to retain kerning.
+    expect
+      .soft(after.get(0x2013), 'en dash retains layout glyph')
+      .toBe(originalDash);
+    expect
+      .soft(after.get(0x2012), 'figure dash gets an appended copy')
+      .toBeGreaterThanOrEqual(oldCount);
+    expect.soft(result.copied).toContain(0x2012);
+    expect.soft(result.copied).not.toContain(0x2013);
+    expect
+      .soft(result.copied)
+      .toEqual([...result.copied].sort((a, b) => a - b));
+    // The exception is specific to the en dash: hyphen-minus still wins over
+    // the rarer nonbreaking hyphen, and every copy is appended.
+    expect.soft(after.get(0x2d)).toBe(before.get(0x2d));
+    expect.soft(after.get(0x2011)).toBeGreaterThanOrEqual(oldCount);
+    expect.soft(result.copied).toContain(0x2011);
+    expect.soft(result.copied).not.toContain(0x2d);
   },
 );

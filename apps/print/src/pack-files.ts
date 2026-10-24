@@ -15,7 +15,7 @@ const mib = 1024 * 1024;
  * twice the body in memory, which keeps a print well inside a Worker's 128 MB.
  */
 export const packLimits = {
-  /** One file; the largest platform font (LXGW WenKai TC) is 15.3 MB. */
+  /** One file; the largest platform font (LXGW WenKai TC) is 15.5 MB. */
   fileBytes: 16 * mib,
   totalBytes: 24 * mib,
   bodyBytes: 40 * mib,

@@ -94,6 +94,11 @@ const isAlias = (cp: number) =>
   cp === 0x232a || // 〉 (deprecated)
   cp === 0x301c; // 〜 wave dash (Taiwan uses ～)
 
+// Which code point of a shared glyph keeps it: the lowest, except the en
+// dash. Copies are outside GSUB and GPOS, and Noto Serif TC kerns the en dash
+// (shared with U+2012 figure dash) against Latin letters (T07-13).
+const keeps = (cp: number) => (cp === 0x2013 ? 1 : 0);
+
 function format12(mapping: [number, number][]): Uint8Array {
   const groups: [number, number, number][] = [];
   for (const [cp, glyph] of mapping) {
@@ -159,13 +164,13 @@ export function patchCmap(font: Uint8Array): {
     const shared = cps.length > 1 && cps.some(cp => !isAlias(cp));
     const [first, ...rest] = cps
       .filter(cp => !(shared && isAlias(cp)))
-      .sort((a, b) => a - b);
+      .sort((a, b) => keeps(b) - keeps(a) || a - b);
     dropped.push(...cps.filter(cp => shared && isAlias(cp)));
     if (first !== undefined) kept.push([first, glyph]);
     for (const cp of rest) sharing.push([cp, glyph]);
   }
-  // The lowest code point keeps a shared glyph; each other one gets a copy
-  // of it (T07-13), numbered in code point order after the font's glyphs.
+  // One code point keeps a shared glyph; each other one gets a copy of it
+  // (T07-13), numbered in code point order after the font's glyphs.
   sharing.sort((a, b) => a[0] - b[0]);
   let tables = readTables(font);
   if (sharing.length > 0) {
