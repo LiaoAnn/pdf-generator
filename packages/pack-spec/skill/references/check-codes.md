@@ -12,7 +12,7 @@
 | `manifest-invalid` | A missing, misspelled or unknown key; an `id` not kebab-case | Copy the minimal example's manifest and edit values only (§1) |
 | `json-syntax` | Trailing comma, comment, unquoted key | Strict JSON |
 | `file-missing` | The manifest lists a file that isn't there | Fix the path or add the file |
-| `file-unlisted` | A file in the pack the manifest doesn't list | List it in `files.assets` (or `styles`), or delete it (no stray notes or `.DS_Store`) |
+| `file-unlisted` | A file in the pack the manifest doesn't list | List it in `files.assets` (or `styles`), or delete it (stray notes, drafts; `.DS_Store` and `__MACOSX/` are ignored) |
 | `text-encoding` | A text file that isn't UTF-8 | Save as UTF-8 |
 | `rules-invalid` | Unknown `type`, missing `min`/`max`/`lang`, `min > max`, a path in `of`/`part`/`whole` that names no numeric field | Compare with §2's table; paths go from the root with `[]` after arrays |
 | `sample-invalid` | `sample.json` doesn't match the rules (length, range, check digit, `null` without `blankProbability`, missing or extra key) | Regenerate it with the engine (SKILL.md, step 4) after every rules change |

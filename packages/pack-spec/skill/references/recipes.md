@@ -159,7 +159,7 @@ A field with `blankProbability` that drops a whole section: put the heading and 
 
 ## Try more records
 
-`check-pack` fills only `sample.json`. Run the same check with 30 generated records to catch blanks, longest texts and shortest arrays (from the pack folder):
+`check-pack` fills only `sample.json`. Run the same check with 30 generated records to catch fill errors on blanks and short arrays (from the pack folder). The marks, HTML and CSS are checked once whatever the record, so this doesn't catch the print traps at the end of this file:
 
 ```sh
 node --input-type=module -e "

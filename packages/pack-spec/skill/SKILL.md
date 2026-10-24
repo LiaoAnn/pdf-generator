@@ -17,7 +17,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
 : "${PDF_GENERATOR_REPO:=$(git -C "$(dirname "$(realpath SKILL.md)")" rev-parse --show-toplevel)}"
 ```
 
-(Run that from this skill's folder, or substitute the folder's path.) The repo needs `pnpm install` once; the checker and the data engine are TypeScript that Node 24 runs directly.
+(Run that from this skill's folder, or substitute the folder's path. If your shell doesn't keep variables between commands, start each command with that line, or with `PDF_GENERATOR_REPO=<path>`.) The repo needs `pnpm install` once; the checker and the data engine are TypeScript that Node 24 runs directly.
 
 **Installing** (for the caller, e.g. `pdf2tpl`): symlink `$PDF_GENERATOR_REPO/packages/pack-spec/skill/` into the project's `.claude/skills/write-template-pack`, or copy it there and set `PDF_GENERATOR_REPO`.
 
@@ -60,7 +60,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
    node "$PDF_GENERATOR_REPO/packages/template-tools/src/cli.ts" <pack>
    ```
    Exit 0 passes; exit 1 prints one `file:line:column: code: message` per issue (look each code up in [references/check-codes.md](references/check-codes.md)); exit 2 is a usage error. Fix causes, not symptoms: never delete a mark or a field just to silence an issue if it drops something the description asked for.
-7. **Fill a few more records** to catch what one sample hides (blank fields, longest texts, empty arrays): see "Try more records" in [references/recipes.md](references/recipes.md).
+7. **Fill a few more records** to catch fill errors one sample hides (a `{{#each}}` or lookup that breaks on a blank or short value): see "Try more records" in [references/recipes.md](references/recipes.md). It does not catch a blank field without a box or text that overflows; those are print traps, avoided by the rules below.
 8. **Report**: the pack path, the `check-pack` output, the block list you planned, and anything in the description you could not express (and why). Printing is not your step: the caller uploads the pack and runs the platform's preview and batch self-check (spec §9), which is why the traps in [references/recipes.md](references/recipes.md) matter.
 
 ## Rules you must not break
