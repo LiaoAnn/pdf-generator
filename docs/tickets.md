@@ -724,3 +724,12 @@
 - **驗收測試**：批次結果頁對 `page_count_mismatch` 顯示中文說明；該測試在 CI 連跑 3 次不逾時，或說明原因與修法
 - **不做**：改錯誤代碼
 - **來源**：PR #39（T08-1）
+
+### T07-18 印 PDF：Paged.js 的頁面框被樣板改動時拒絕列印
+- **目標**：Paged.js 完成後，在 print runtime 檢查 `.pagedjs_page`、`.pagedjs_sheet`、`.pagedjs_area` 等頁面框的 margin、padding、position、transform 仍是 Paged.js 自己設的值，html／body 也沒有被移動；被改動就拒絕列印（422，類似 `page_count_mismatch`）。樣板可以用不點名 pagedjs 的選擇器（例如 `body > div > div { margin-top: -20mm !important }`）移動頁面框，再用絕對定位的 `::after` 在 gt 框裡畫一份假圖騙過 T14-4 的墨跡檢查（T14-4 Security review 重現：實際圖在 `[57, 0, 87, 30]`）；checkPack 擋不了這類選擇器，PDF 幾何也分不出是誰畫的，只能在來源處擋
+- **Blocked by**：T07-16、T14-4
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與 T07-15、T07-5、T07-8、T07-9、T07-10 不要同時派
+- **驗收測試**：上述 decoy 與 T08-1／T14-4 的位移 fixture 都得 422；5 個既有樣板各一批 10 份不受影響（無誤擋）
+- **不做**：改區塊讀取規則、加「無主墨跡」檢查
+- **來源**：T14-4 的 Security review
