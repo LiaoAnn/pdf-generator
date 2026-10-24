@@ -1,11 +1,12 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { rulesSchema } from '@pdf-generator/contract';
+import { manifestSchema, rulesSchema } from '@pdf-generator/contract';
 import { generate, recordSchema } from '@pdf-generator/fake-data';
 import { checkPack, fill } from '@pdf-generator/template-tools';
 import { type DefaultTreeAdapterMap, parse } from 'parse5';
 import { describe, expect, it } from 'vitest';
+import { katexFonts } from './build.ts';
 import { type FormulaSlot, formulas } from './formulas.ts';
 
 type Node = DefaultTreeAdapterMap['node'];
@@ -116,10 +117,23 @@ function footnotes(record: Paper): string[] {
 }
 
 describe('paper pack, slice 2', () => {
-  it('accepts the shipped pack and a preview sample reproducible from its rules', () => {
+  it('accepts the shipped WOFF2 pack with matching manifest assets and a reproducible preview sample', () => {
     // Regression: missing assets/marks, invalid CSS, or a hand-edited sample
-    // that is no longer a record the seeded engine can produce.
-    const result = checkPack(readPack());
+    // that is no longer a record the seeded engine can produce; a stale
+    // manifest or leftover TTF files ships the obsolete font payload.
+    const files = readPack();
+    const manifest = manifestSchema.parse(JSON.parse(read('manifest.json')));
+    const expectedFonts = katexFonts.map(face => `fonts/${face}.woff2`).sort();
+    expect(manifest.files.assets?.slice().sort()).toEqual(expectedFonts);
+    expect(
+      Object.keys(files).filter(path => /\.(?:ttf|woff)$/iu.test(path)),
+    ).toEqual([]);
+    expect(
+      Object.keys(files)
+        .filter(path => path.startsWith('fonts/'))
+        .sort(),
+    ).toEqual(expectedFonts);
+    const result = checkPack(files);
     expect(result.issues).toEqual([]);
     expect(result.ok).toBe(true);
     const sample: unknown = JSON.parse(read('data/sample.json'));

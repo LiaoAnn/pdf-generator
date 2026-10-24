@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import {
   cpSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -195,10 +196,10 @@ function neededFaces(html: string): Set<string> {
     rules(upstreamCss)
       .filter(r => r.selector === '@font-face')
       .map(r => {
-        const name = /fonts\/(KaTeX_[\w-]+)\.ttf/.exec(
+        const name = /fonts\/(KaTeX_[\w-]+)\.woff2/.exec(
           r.declarations.src ?? '',
         )?.[1];
-        if (!name) throw new Error('Upstream KaTeX face has no TTF source');
+        if (!name) throw new Error('Upstream KaTeX face has no WOFF2 source');
         return [faceKey(r.declarations), name];
       }),
   );
@@ -229,21 +230,16 @@ function neededFaces(html: string): Set<string> {
 }
 
 describe('paper formula build', () => {
-  it('reproduces every committed generated file and the build-pack CLI writes the same bytes', () => {
+  it('build-pack ships only byte-identical upstream WOFF2 fonts and reproduces every committed generated file', () => {
     // Regression: source changes without rebuilding the shipped pack, or the
-    // direct-node CLI imports successfully but never writes the files.
+    // direct-node CLI never writes the files, or a renamed TTF masquerades as
+    // WOFF2 while obsolete fonts remain in the deliverable.
     const generated = buildPack();
     expect(generated).toHaveProperty('templates/paper.hbs');
     expect(generated['templates/paper.hbs']).toBe(
       expandTemplate(readFileSync(join(root, 'src/paper.hbs'), 'utf8')),
     );
     expect(generated).toHaveProperty('styles/katex.css', katexStylesheet());
-    for (const face of katexFonts) {
-      expect(generated).toHaveProperty(`fonts/${face}.ttf`);
-      expect(Buffer.from(generated[`fonts/${face}.ttf`] ?? '')).toEqual(
-        readFileSync(join(katexRoot, `dist/fonts/${face}.ttf`)),
-      );
-    }
     const temporary = mkdtempSync(join(tmpdir(), 'paper-build-'));
     try {
       cpSync(join(root, 'src'), join(temporary, 'src'), { recursive: true });
@@ -254,6 +250,29 @@ describe('paper formula build', () => {
         'dir',
       );
       execFileSync('pnpm', ['build-pack'], { cwd: temporary, stdio: 'pipe' });
+      const expectedFonts = katexFonts.map(face => `${face}.woff2`).sort();
+      expect(
+        readdirSync(join(temporary, 'pack/fonts')).sort(),
+        'CLI font files: no TTF or WOFF fallbacks',
+      ).toEqual(expectedFonts);
+      expect(
+        readdirSync(join(root, 'pack/fonts')).sort(),
+        'committed font files: remove obsolete fonts when regenerating',
+      ).toEqual(expectedFonts);
+      expect(
+        Object.keys(generated)
+          .filter(path => path.startsWith('fonts/'))
+          .sort(),
+      ).toEqual(expectedFonts.map(name => `fonts/${name}`));
+      for (const name of expectedFonts) {
+        const upstream = readFileSync(join(katexRoot, 'dist/fonts', name));
+        expect(Buffer.from(generated[`fonts/${name}`] ?? ''), name).toEqual(
+          upstream,
+        );
+        expect(readFileSync(join(temporary, 'pack/fonts', name)), name).toEqual(
+          upstream,
+        );
+      }
       for (const [path, contents] of Object.entries(generated)) {
         const expected = Buffer.from(contents);
         expect(
@@ -349,9 +368,10 @@ describe('paper formula build', () => {
     ).toThrow();
   });
 
-  it('ships every face required by the actual formula text and only local TTF font-face URLs', () => {
+  it('ships every face required by the actual formula text with exactly one local WOFF2 source per face', () => {
     // Regression: selecting fonts from class names alone misses inherited
-    // bold/italic faces, scalable delimiters, or large operators.
+    // bold/italic faces, scalable delimiters, or large operators; fallback
+    // sources or a wrong format descriptor bypass the shipped WOFF2 assets.
     const needed = new Set(
       cases.flatMap(({ latex }) => [...neededFaces(render(latex))]),
     );
@@ -365,16 +385,19 @@ describe('paper formula build', () => {
         ),
       ].map(m => m[1]);
       expect(urls).toHaveLength(1);
-      expect(urls[0]).toMatch(/^\.\.\/fonts\/KaTeX_[\w-]+\.ttf$/);
+      expect(urls[0]).toMatch(/^\.\.\/fonts\/KaTeX_[\w-]+\.woff2$/);
       const name =
         urls[0]
           ?.split('/')
           .at(-1)
-          ?.replace(/\.ttf$/, '') ?? '';
+          ?.replace(/\.woff2$/, '') ?? '';
+      expect(rule.declarations.src, name).toBe(
+        `url(../fonts/${name}.woff2) format("woff2")`,
+      );
       const upstream = rules(upstreamCss).find(
         r =>
           r.selector === '@font-face' &&
-          (r.declarations.src ?? '').includes(`/${name}.ttf`),
+          (r.declarations.src ?? '').includes(`/${name}.woff2`),
       );
       expect(upstream, name).toBeDefined();
       expect(faceKey(rule.declarations), name).toBe(
@@ -387,7 +410,9 @@ describe('paper formula build', () => {
     for (const name of needed)
       expect(declared, `required face ${name}`).toContain(name);
     for (const match of css.matchAll(/url\(\s*["']?([^"')\s]+)["']?\s*\)/g)) {
-      expect(declared.map(name => `../fonts/${name}.ttf`)).toContain(match[1]);
+      expect(declared.map(name => `../fonts/${name}.woff2`)).toContain(
+        match[1],
+      );
     }
     // The retained layout/font rules must still select the same faces.
     for (const { latex } of cases) {

@@ -14,10 +14,8 @@ const katexDist = join(
 );
 
 /**
- * KaTeX font faces the pack ships, as `fonts/<name>.ttf`: the faces the
+ * KaTeX font faces the pack ships, as `fonts/<name>.woff2`: the faces the
  * formula pool prints (`build.test.ts` derives them from KaTeX's output).
- * TTF, not woff2: the platform didn't read the PostScript name of
- * KaTeX_Main-Regular.woff2 in a batch, so its text failed the font check.
  */
 export const katexFonts: readonly string[] = [
   'KaTeX_Caligraphic-Regular',
@@ -83,11 +81,11 @@ export function expandTemplate(source: string): string {
 export function katexStylesheet(): string {
   const upstream = readFileSync(join(katexDist, 'katex.min.css'), 'utf8');
   const trimmed = upstream.replace(/@font-face\{[^}]*\}/g, face => {
-    const name = /url\(fonts\/([\w-]+)\.ttf\)/.exec(face)?.[1];
+    const name = /url\(fonts\/([\w-]+)\.woff2\)/.exec(face)?.[1];
     if (name === undefined || !katexFonts.includes(name)) return '';
     return face.replace(
       /src:[^;}]*/,
-      `src:url(../fonts/${name}.ttf) format("truetype")`,
+      `src:url(../fonts/${name}.woff2) format("woff2")`,
     );
   });
   return `/* biome-ignore-all lint: KaTeX's own stylesheet, written by src/build.ts */
@@ -103,8 +101,8 @@ export function buildPack(): Record<string, string | Uint8Array> {
     'styles/katex.css': katexStylesheet(),
     ...Object.fromEntries(
       katexFonts.map(name => [
-        `fonts/${name}.ttf`,
-        new Uint8Array(readFileSync(join(katexDist, 'fonts', `${name}.ttf`))),
+        `fonts/${name}.woff2`,
+        new Uint8Array(readFileSync(join(katexDist, 'fonts', `${name}.woff2`))),
       ]),
     ),
   };
