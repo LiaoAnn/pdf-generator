@@ -356,7 +356,7 @@
 - **來源**：T09 的 ASK（步驟 0～7 與各步的還原方式見 T09 的 thread）；每一步都是外部服務呼叫，執行前要使用者同意
 
 ### T07-1 印 PDF：雲端 Chrome 152 驗收
-- **目標**：在真的 Browser Rendering（Chrome 152）上跑 T07 的 3 份驗收文件：部署 `pdf-generator-print`、設 `PRINT_TOKEN`、最多 12 份（含 session 重用），記錄啟動與渲染時間，跑完刪除 Worker；排版有問題就另開修正票
+- **目標**：在真的 Browser Rendering（Chrome 152）上跑 T07 的 3 份驗收文件：部署 `pdf-generator-print`、設 `PRINT_TOKEN`、最多 12 份（含 session 重用），記錄啟動與渲染時間，跑完刪除 Worker；排版有問題就另開修正票；並確認 T07-8 的做法在真的平台可用：每次列印建立的 browser context 帶 `proxyServer`（指向不通的本機埠、只放行列印 Worker 自己的網址）能建立、能載入列印 Worker 的檔案，外部 `@import` 仍得 422
 - **Blocked by**：T07
 - **Blocks**：—（建議在 T16 部署前完成）
 - **撞車風險**：無
