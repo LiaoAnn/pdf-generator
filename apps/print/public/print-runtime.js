@@ -182,8 +182,10 @@
     class Tables extends Paged.Handler {
       // Called for every node Paged.js lays out. When it rebuilds a table on a
       // new page, the first node it adds sits in a table shell marked
-      // data-split-from: put a copy of the source <thead> there first, so its
-      // height counts when the rows below are laid out.
+      // data-split-from, a shallow clone without the source's <colgroup>s or
+      // <thead>. Put copies of both there first: the <col> widths, or a fixed
+      // layout spreads the columns evenly, and the header, so its height
+      // counts when the rows below are laid out.
       /**
        * @param {Node} clone the node as laid out on the page
        * @param {Node} node the node in the source document
@@ -191,19 +193,34 @@
       renderNode(clone, node) {
         if (!(clone instanceof Element)) return;
         const table = clone.closest('table[data-split-from]');
-        if (!table || table.querySelector(':scope > thead')) return;
+        if (!table) return;
         const source = node instanceof Element ? node.closest('table') : null;
-        const thead = source?.querySelector(':scope > thead');
-        if (!thead) return;
-        const copy = /** @type {Element} */ (thead.cloneNode(true));
-        copy.setAttribute('data-repeated-header', '');
-        for (const element of [copy, ...copy.querySelectorAll('[data-ref]')]) {
-          element.removeAttribute('data-ref');
+        if (!source) return;
+        /** @param {Element} element */
+        const copyOf = element => {
+          const copy = /** @type {Element} */ (element.cloneNode(true));
+          for (const part of [copy, ...copy.querySelectorAll('[data-ref]')]) {
+            part.removeAttribute('data-ref');
+          }
+          return copy;
+        };
+        const first = () =>
+          [...table.children].find(
+            child =>
+              child.tagName !== 'CAPTION' && child.tagName !== 'COLGROUP',
+          ) ?? null;
+        if (!table.querySelector(':scope > colgroup')) {
+          const before = first();
+          for (const colgroup of source.querySelectorAll(':scope > colgroup')) {
+            table.insertBefore(copyOf(colgroup), before);
+          }
         }
-        const first = [...table.children].find(
-          child => child.tagName !== 'CAPTION' && child.tagName !== 'COLGROUP',
-        );
-        table.insertBefore(copy, first ?? null);
+        const thead = source.querySelector(':scope > thead');
+        if (thead && !table.querySelector(':scope > thead')) {
+          const copy = copyOf(thead);
+          copy.setAttribute('data-repeated-header', '');
+          table.insertBefore(copy, first());
+        }
       }
 
       // Called with the range Paged.js is about to move to the next page. If
