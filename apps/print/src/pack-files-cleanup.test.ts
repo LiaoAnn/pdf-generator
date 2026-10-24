@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
 import { RenderError, renderPdf } from './lib.ts';
@@ -71,7 +72,11 @@ test.each([
       }),
       pdf: vi.fn(async () => {
         if (stage === 'pdf') throw failure;
-        return new Uint8Array([37, 80, 68, 70]);
+        return new Uint8Array(
+          readFileSync(
+            new URL('./test-fixtures/blank-1-pages.pdf', import.meta.url),
+          ),
+        );
       }),
       close: vi.fn(async () => {}),
     };

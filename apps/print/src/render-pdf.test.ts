@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
 import { RenderError, renderPdf } from './lib.ts';
@@ -10,7 +11,9 @@ const assetOrigin = 'https://print-assets.example.test';
 
 function fakeBrowser() {
   const calls: string[] = [];
-  const bytes = new Uint8Array([37, 80, 68, 70]);
+  const bytes = new Uint8Array(
+    readFileSync(new URL('./test-fixtures/blank-3-pages.pdf', import.meta.url)),
+  );
   const page = {
     setRequestInterception: vi.fn(async () => {}),
     on: vi.fn(),
@@ -139,9 +142,13 @@ test('a pending pagination promise prevents inspection and printing until it res
   expect(inspect).not.toHaveBeenCalled();
   expect(fake.page.pdf).not.toHaveBeenCalled();
   expect(fake.page.close).not.toHaveBeenCalled();
+  const sevenPages = new Uint8Array(
+    readFileSync(new URL('./test-fixtures/blank-7-pages.pdf', import.meta.url)),
+  );
+  fake.page.pdf.mockResolvedValueOnce(sevenPages);
   finishPagination({ pageCount: 7, unloadedFaces: [], fragmentedRows: [] });
   await expect(rendering).resolves.toEqual({
-    pdf: fake.bytes,
+    pdf: sevenPages,
     pageCount: 7,
     inspected: 'boxes',
   });

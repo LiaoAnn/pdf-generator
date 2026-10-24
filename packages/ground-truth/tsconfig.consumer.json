@@ -1,0 +1,6 @@
+{
+  // A consumer's view: the public entry must typecheck without the DOM lib,
+  // whose types only the in-browser collector needs.
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/index.ts"]
+}

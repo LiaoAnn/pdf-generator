@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "pagedjs-lookalike",
+    "templateVersion": 1,
+    "seed": "T08-1-fixture",
+    "index": 0
+  },
+  "pages": [{ "width": 600, "height": 800 }, { "width": 600, "height": 800 }],
+  "blocks": [
+    {
+      "id": "first",
+      "type": "paragraph",
+      "page": 1,
+      "bbox": [60, 72, 240, 96],
+      "order": 0,
+      "text": "First real page"
+    },
+    {
+      "id": "second",
+      "type": "paragraph",
+      "page": 2,
+      "bbox": [78, 90, 258, 114],
+      "order": 1,
+      "text": "Second real page"
+    }
+  ]
+}

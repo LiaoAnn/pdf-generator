@@ -26,7 +26,7 @@ export interface MeasuredElement {
   ref: string | null;
   /** Paged.js's `data-split-from`: the `data-ref` of the element this fragment continues. */
   splitFrom: string | null;
-  /** Index of its `.pagedjs_page` in document order, from 0. */
+  /** Index of the generated page that contains it, from 0; -1 when none does. */
   page: number;
   region: Region;
   /** Its border box. */
