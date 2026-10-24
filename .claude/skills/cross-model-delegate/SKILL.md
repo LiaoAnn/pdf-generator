@@ -31,6 +31,8 @@ Fall back to the Sonnet target, with the same brief and a new `clientRequestId` 
 - fails with a quota, credit, usage-limit, rate-limit (after one retry 2 minutes later), authentication or "provider unavailable" error; or
 - fails twice in a row for any other reason.
 
+A transport error `read-process-exit-status` means T3's one shared Codex process has died (on 2026-10-24 the kernel's OOM killer killed it), and it stays down until the user restarts Codex in T3: every Codex call fails until then. Fall back at once without retrying, for the rest of the ticket, and tell the coordinator in your next message so it can ask the user to restart Codex.
+
 Once the primary has hit a credit or quota limit, use the fallback for the rest of the ticket; don't probe the primary again. Record every fallback (which call, the error text) in your slice report. If both fail, stop and report to the coordinator.
 
 The Sonnet fallback runs on the same Claude account as you: when you yourself hit the Claude usage limit, it is unavailable too. A fallback that failed for that reason is not a Codex failure; retry on Codex first once the limit resets.
