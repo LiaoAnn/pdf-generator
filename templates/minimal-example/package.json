@@ -1,0 +1,27 @@
+{
+  "name": "@pdf-generator/minimal-example",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-pack": "INIT_CWD=\"$PWD\" node ../../packages/template-tools/src/cli.ts pack",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@pdf-generator/contract": "workspace:*",
+    "@pdf-generator/pack-spec": "workspace:*",
+    "@types/node": "^24.13.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:",
+    "xmlbuilder2": "4.0.3"
+  },
+  "dependencies": {
+    "@pdf-generator/template-tools": "workspace:*",
+    "fflate": "^0.8.3",
+    "parse5": "^8.0.1"
+  }
+}

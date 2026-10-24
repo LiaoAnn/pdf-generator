@@ -1,0 +1,15 @@
+{
+  "company": "青禾測試股份有限公司",
+  "meetingDate": "2026-03-16",
+  "place": "100臺北市中正區重慶南路一段122號",
+  "chair": "王小明",
+  "recorder": "林美玲",
+  "attendees": [
+    { "name": "陳志豪", "title": "經理", "present": true },
+    { "name": "張雅婷", "title": "主任", "present": false },
+    { "name": "李建宏", "title": "專員", "present": true }
+  ],
+  "summary": "本季業務量較上季成長，惟北區客戶回款時間延長，請財務部門協助追蹤，並於下次會議提出改善方案。",
+  "items": ["北區客戶應收帳款追蹤方式。", "下季新產品推廣時程與分工。"],
+  "confirmed": true
+}

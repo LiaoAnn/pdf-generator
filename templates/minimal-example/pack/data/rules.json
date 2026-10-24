@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "company": { "type": "company" },
+    "meetingDate": { "type": "date", "min": "2025-01-01", "max": "2026-09-30" },
+    "place": { "type": "address" },
+    "chair": { "type": "name" },
+    "recorder": { "type": "name", "blankProbability": 0.3 },
+    "attendees": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "fields": {
+          "name": { "type": "name" },
+          "title": {
+            "type": "choice",
+            "options": ["經理", "副理", "主任", "專員", "助理"]
+          },
+          "present": { "type": "checkbox", "probability": 0.8 }
+        }
+      }
+    },
+    "summary": {
+      "type": "text",
+      "lang": "zh",
+      "minLength": 30,
+      "maxLength": 120
+    },
+    "items": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 8,
+        "maxLength": 40
+      }
+    },
+    "confirmed": { "type": "checkbox", "probability": 0.5 }
+  }
+}
