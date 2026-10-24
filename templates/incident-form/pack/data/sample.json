@@ -1,0 +1,70 @@
+{
+  "reportNo": 452089,
+  "reportDate": "2026-07-10",
+  "company": "華新紡織股份有限公司",
+  "businessId": "12399861",
+  "reporter": {
+    "name": "趙承傑",
+    "nationalId": "U172501465",
+    "department": "設備維修部",
+    "jobTitle": "工程師",
+    "phone": "0996-854-834",
+    "extension": null
+  },
+  "incident": {
+    "date": "2026-07-09",
+    "time": "22:35",
+    "address": "116臺北市文山區忠孝路23巷29弄327號",
+    "place": "原料倉庫",
+    "category": "墜落",
+    "severity": "輕傷",
+    "description": "夜班人員於原料倉庫以移動梯取下層架上方紗捲時，梯腳於地面滑動，作業人員自約一點五公尺高處跌落，同組兩名人員上前攙扶時遭掉落紗捲擦撞。"
+  },
+  "hazards": {
+    "machinery": false,
+    "electrical": false,
+    "chemical": false,
+    "height": true,
+    "fire": false
+  },
+  "injured": [
+    {
+      "name": "王秀蓁",
+      "gender": "女",
+      "age": 37,
+      "injury": "頭部挫傷",
+      "hospitalized": true,
+      "note": "已縫合三針"
+    },
+    {
+      "name": "何維國",
+      "gender": "男",
+      "age": 19,
+      "injury": "擦傷",
+      "hospitalized": false,
+      "note": null
+    },
+    {
+      "name": "王強偉",
+      "gender": "男",
+      "age": 39,
+      "injury": "背部拉傷",
+      "hospitalized": false,
+      "note": null
+    }
+  ],
+  "actions": {
+    "stopWork": true,
+    "laborInspection": true,
+    "police": false,
+    "family": true
+  },
+  "witness": {
+    "name": "林美玲",
+    "phone": null
+  },
+  "remarks": null,
+  "approval": {
+    "date": null
+  }
+}

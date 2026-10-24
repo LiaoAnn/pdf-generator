@@ -1,6 +1,7 @@
 packages:
   - apps/*
   - packages/*
+  - templates/*
 
 # One version of each shared tool across the workspace: reference it as
 # "catalog:" in a package.json.

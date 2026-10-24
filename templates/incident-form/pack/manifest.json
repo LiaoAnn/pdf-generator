@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "incident-form",
+  "name": "職業災害事故通報單",
+  "description": "通報單：一張大表格（合併儲存格、空白欄、勾選框）加上列數不定的傷者名單。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "templates/incident-form.hbs",
+    "styles": ["styles/incident-form.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json"
+  }
+}

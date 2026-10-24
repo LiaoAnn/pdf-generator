@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <title>職業災害事故通報單</title>
+</head>
+<body>
+  <h1 data-gt="title">{{company}}　職業災害事故通報單</h1>
+  <p class="meta" data-gt="field">通報編號：IR{{reportNo}}</p>
+  <p class="meta" data-gt="field">通報日期：{{reportDate}}</p>
+
+  <table class="form" data-gt="table">
+    <colgroup>
+      <col class="c-label">
+      <col class="c-sub">
+      <col class="c-value">
+      <col class="c-label2">
+      <col class="c-value2">
+    </colgroup>
+    <tbody>
+      <tr><td class="section" colspan="5">一、事業單位及通報人資料</td></tr>
+      <tr>
+        <td class="label">事業單位</td>
+        <td colspan="2">{{company}}</td>
+        <td class="label">統一編號</td>
+        <td>{{businessId}}</td>
+      </tr>
+      <tr>
+        <td class="label">通報人</td>
+        <td colspan="2">{{reporter.name}}</td>
+        <td class="label">身分證字號</td>
+        <td>{{reporter.nationalId}}</td>
+      </tr>
+      <tr>
+        <td class="label">部門</td>
+        <td colspan="2">{{reporter.department}}</td>
+        <td class="label">職稱</td>
+        <td>{{reporter.jobTitle}}</td>
+      </tr>
+      <tr>
+        <td class="label">聯絡電話</td>
+        <td colspan="2">{{reporter.phone}}</td>
+        <td class="label">分機</td>
+        <td>{{reporter.extension}}</td>
+      </tr>
+
+      <tr><td class="section" colspan="5">二、事故概況</td></tr>
+      <tr>
+        <td class="label">發生日期</td>
+        <td colspan="2">{{incident.date}}</td>
+        <td class="label">發生時間</td>
+        <td>{{incident.time}}</td>
+      </tr>
+      <tr>
+        <td class="label" rowspan="2">事故地點</td>
+        <td class="label">地址</td>
+        <td colspan="3">{{incident.address}}</td>
+      </tr>
+      <tr>
+        <td class="label">場所</td>
+        <td colspan="3">{{incident.place}}</td>
+      </tr>
+      <tr>
+        <td class="label">事故類型</td>
+        <td class="options" colspan="4">
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '跌倒'}}">{{#if (eq incident.category '跌倒')}}☑{{else}}☐{{/if}}</span>跌倒</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '墜落'}}">{{#if (eq incident.category '墜落')}}☑{{else}}☐{{/if}}</span>墜落</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '被夾被捲'}}">{{#if (eq incident.category '被夾被捲')}}☑{{else}}☐{{/if}}</span>被夾被捲</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '切割擦傷'}}">{{#if (eq incident.category '切割擦傷')}}☑{{else}}☐{{/if}}</span>切割擦傷</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '感電'}}">{{#if (eq incident.category '感電')}}☑{{else}}☐{{/if}}</span>感電</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '化學品接觸'}}">{{#if (eq incident.category '化學品接觸')}}☑{{else}}☐{{/if}}</span>化學品接觸</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.category '其他'}}">{{#if (eq incident.category '其他')}}☑{{else}}☐{{/if}}</span>其他</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">危害因素<br>（可複選）</td>
+        <td class="options" colspan="4">
+          <span class="opt"><span class="box" data-gt-checked="{{hazards.machinery}}">{{#if hazards.machinery}}☑{{else}}☐{{/if}}</span>機械設備</span>
+          <span class="opt"><span class="box" data-gt-checked="{{hazards.electrical}}">{{#if hazards.electrical}}☑{{else}}☐{{/if}}</span>電氣</span>
+          <span class="opt"><span class="box" data-gt-checked="{{hazards.chemical}}">{{#if hazards.chemical}}☑{{else}}☐{{/if}}</span>化學物質</span>
+          <span class="opt"><span class="box" data-gt-checked="{{hazards.height}}">{{#if hazards.height}}☑{{else}}☐{{/if}}</span>高處作業</span>
+          <span class="opt"><span class="box" data-gt-checked="{{hazards.fire}}">{{#if hazards.fire}}☑{{else}}☐{{/if}}</span>火災爆炸</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">傷害程度</td>
+        <td class="options" colspan="4">
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.severity '輕傷'}}">{{#if (eq incident.severity '輕傷')}}☑{{else}}☐{{/if}}</span>輕傷</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.severity '重傷'}}">{{#if (eq incident.severity '重傷')}}☑{{else}}☐{{/if}}</span>重傷</span>
+          <span class="opt"><span class="box" data-gt-checked="{{eq incident.severity '死亡'}}">{{#if (eq incident.severity '死亡')}}☑{{else}}☐{{/if}}</span>死亡</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">事故經過</td>
+        <td class="story" colspan="4">{{incident.description}}</td>
+      </tr>
+
+      <tr><td class="section" colspan="5">三、處置情形</td></tr>
+      <tr>
+        <td class="label">已採取措施<br>（可複選）</td>
+        <td class="options" colspan="4">
+          <span class="opt"><span class="box" data-gt-checked="{{actions.stopWork}}">{{#if actions.stopWork}}☑{{else}}☐{{/if}}</span>停工</span>
+          <span class="opt"><span class="box" data-gt-checked="{{actions.laborInspection}}">{{#if actions.laborInspection}}☑{{else}}☐{{/if}}</span>通報勞動檢查機構</span>
+          <span class="opt"><span class="box" data-gt-checked="{{actions.police}}">{{#if actions.police}}☑{{else}}☐{{/if}}</span>報警</span>
+          <span class="opt"><span class="box" data-gt-checked="{{actions.family}}">{{#if actions.family}}☑{{else}}☐{{/if}}</span>通知家屬</span>
+        </td>
+      </tr>
+      <tr>
+        <td class="label">目擊者</td>
+        <td colspan="2">{{witness.name}}</td>
+        <td class="label">目擊者電話</td>
+        <td>{{witness.phone}}</td>
+      </tr>
+      <tr>
+        <td class="label">備註</td>
+        <td class="story" colspan="4">{{remarks}}</td>
+      </tr>
+      <tr class="sign">
+        <td class="label">主管簽章</td>
+        <td colspan="2"></td>
+        <td class="label">簽核日期</td>
+        <td>{{approval.date}}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2 data-gt="heading">四、傷者名單</h2>
+  <table class="list" data-gt="table">
+    <thead>
+      <tr>
+        <th>姓名</th>
+        <th>性別</th>
+        <th>年齡</th>
+        <th>傷勢</th>
+        <th>是否送醫</th>
+        <th>備註</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{#each injured}}
+      <tr>
+        <td>{{name}}</td>
+        <td>{{gender}}</td>
+        <td>{{age}}</td>
+        <td>{{injury}}</td>
+        <td class="options"><span class="opt"><span class="box" data-gt-checked="{{hospitalized}}">{{#if hospitalized}}☑{{else}}☐{{/if}}</span>是</span> <span class="opt"><span class="box" data-gt-checked="{{eq hospitalized false}}">{{#if hospitalized}}☐{{else}}☑{{/if}}</span>否</span></td>
+        <td>{{note}}</td>
+      </tr>
+      {{/each}}
+    </tbody>
+  </table>
+
+  <p class="notice" data-gt="paragraph">※ 依職業安全衛生法第三十七條，發生死亡或重傷等職業災害時，事業單位應於八小時內通報勞動檢查機構。本表資料均為測試用合成資料。</p>
+</body>
+</html>
