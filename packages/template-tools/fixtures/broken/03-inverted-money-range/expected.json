@@ -1,0 +1,16 @@
+{
+  "description": "Revenue rule minimum exceeds its maximum.",
+  "issues": [
+    {
+      "code": "rules-invalid",
+      "file": "data/rules.json",
+      "line": 11,
+      "column": 42,
+      "path": [
+        "fields",
+        "revenue",
+        "min"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "description": "Page orientation uses the unsupported value horizontal.",
+  "issues": [
+    {
+      "code": "manifest-invalid",
+      "file": "manifest.json",
+      "line": 5,
+      "column": 42,
+      "path": [
+        "page",
+        "orientation"
+      ]
+    }
+  ]
+}

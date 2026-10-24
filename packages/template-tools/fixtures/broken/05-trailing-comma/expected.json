@@ -1,0 +1,11 @@
+{
+  "description": "Sample JSON has a trailing comma after the last property.",
+  "issues": [
+    {
+      "code": "json-syntax",
+      "file": "data/sample.json",
+      "line": 15,
+      "column": 1
+    }
+  ]
+}

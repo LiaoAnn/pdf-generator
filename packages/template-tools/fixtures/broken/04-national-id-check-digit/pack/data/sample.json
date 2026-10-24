@@ -1,0 +1,15 @@
+{
+  "company": "青禾有限公司",
+  "businessId": "24536806",
+  "contact": "王小明",
+  "nationalId": "A123456788",
+  "address": "100臺北市中正區中山路10號3樓",
+  "phone": "02-2345-6789",
+  "date": "2026-10-01",
+  "revenue": 125000,
+  "approved": true,
+  "rows": [
+    { "item": "文具", "amount": 2500 },
+    { "item": "設備", "amount": 12000 }
+  ]
+}

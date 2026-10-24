@@ -1,0 +1,11 @@
+{
+  "description": "Stylesheet points to a font filename absent from the pack.",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "styles/report.css",
+      "line": 3,
+      "column": 13
+    }
+  ]
+}

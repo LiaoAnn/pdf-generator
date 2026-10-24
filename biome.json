@@ -13,7 +13,8 @@
       "!**/routeTree.gen.ts",
       "!**/drizzle/meta",
       "!packages/contract/schemas",
-      "!apps/print/public/paged.polyfill.js"
+      "!apps/print/public/paged.polyfill.js",
+      "!packages/template-tools/fixtures"
     ]
   },
   "formatter": {

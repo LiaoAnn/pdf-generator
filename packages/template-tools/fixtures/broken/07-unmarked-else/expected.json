@@ -1,0 +1,11 @@
+{
+  "description": "Unselected approval branch has visible text without data-gt.",
+  "issues": [
+    {
+      "code": "gt-unmarked",
+      "file": "templates/report.hbs",
+      "line": 19,
+      "column": 6
+    }
+  ]
+}

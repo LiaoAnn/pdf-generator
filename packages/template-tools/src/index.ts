@@ -1,4 +1,10 @@
-// Handlebars rendering and template-pack validation, shared by the platform and local tools. Filled by T06.
-// Placeholder until then: the package exists so the workspace layout, tooling
-// and imports are in place.
-export const packageName = '@pdf-generator/template-tools';
+// Handlebars filling and template-pack checks, shared by the platform (Worker)
+// and the local tools (Node).
+export {
+  type CheckResult,
+  checkPack,
+  type Pack,
+  type PackFiles,
+} from './check.ts';
+export { fill, TemplateError } from './fill.ts';
+export type { PackIssue } from './issues.ts';

@@ -1,0 +1,11 @@
+{
+  "description": "Note span has a data-gt mark inside an already marked paragraph.",
+  "issues": [
+    {
+      "code": "gt-nested",
+      "file": "templates/report.hbs",
+      "line": 29,
+      "column": 35
+    }
+  ]
+}
