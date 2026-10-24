@@ -15,6 +15,10 @@ export interface TemplatePack {
   rules: Rules;
   /** The sample record (manifest.files.sample), which the preview prints. */
   sample: FakeRecord;
+  /** Every file of the pack, by pack path, as base64 (what /print takes). */
+  files: Record<string, string>;
+  /** PostScript names of the pack's own fonts, sorted. */
+  fonts: string[];
 }
 
 export interface TemplateSourceApi {

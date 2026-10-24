@@ -106,7 +106,23 @@ function pack(heading: string, approved = true) {
     'styles/a-last.css': strToU8(styles[1] ?? ''),
   };
   delete (files as Files)['styles/report.css'];
-  return { files, decoded: { manifest, template, styles, rules, sample } };
+  return {
+    files,
+    decoded: {
+      manifest,
+      template,
+      styles,
+      rules,
+      sample,
+      files: Object.fromEntries(
+        Object.entries(files).map(([path, bytes]) => [
+          path,
+          Buffer.from(bytes).toString('base64'),
+        ]),
+      ),
+      fonts: [],
+    },
+  };
 }
 
 function request(path: string, body?: string | Uint8Array) {

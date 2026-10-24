@@ -1,6 +1,8 @@
 // Uploaded template versions: the zip in R2 under its SHA-256, a row per
 // version in D1. Versions never change once written, so a batch that names one
 // always gets the same pack.
+
+import { Buffer } from 'node:buffer';
 import {
   type Manifest,
   manifestSchema,
@@ -12,6 +14,7 @@ import { and, asc, eq, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
 import { strFromU8 } from 'fflate';
 import * as schema from '../db/schema.ts';
+import { postScriptName } from './font-names.ts';
 import { maxPackBytes } from './limits.ts';
 import type { TemplatePack, TemplateSourceApi } from './source.ts';
 import { unzipBounded } from './unzip.ts';
@@ -122,13 +125,36 @@ function unpack(zip: Uint8Array): TemplatePack {
     styles: manifest.files.styles.map(text),
     rules,
     sample: recordSchema(rules).parse(JSON.parse(text(manifest.files.sample))),
+    files: Object.fromEntries(
+      Object.entries(files).map(([path, bytes]) => [
+        path,
+        Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString(
+          'base64',
+        ),
+      ]),
+    ),
+    fonts: [
+      ...new Set(
+        Object.entries(files).flatMap(([path, bytes]) => {
+          const name = fontFile.test(path) ? postScriptName(bytes) : undefined;
+          return name === undefined ? [] : [name];
+        }),
+      ),
+    ].sort(),
   };
 }
 
+const fontFile = /\.(?:woff2?|ttf|otf)$/i;
+
+const packBytes = (pack: TemplatePack) =>
+  Object.values(pack.files).reduce((sum, file) => sum + file.length, 0);
+
 // Unpacked versions, newest use last. A version never changes, so an entry
-// stays valid; the bound keeps an isolate's memory small.
+// stays valid; the bounds keep an isolate's memory small (a pack's files can
+// be 27 MiB as base64). The newest entry is kept whatever its size.
 const unpacked = new Map<string, TemplatePack>();
 const maxUnpacked = 8;
+const maxUnpackedBytes = 32 * 1024 * 1024;
 
 /** Template versions as batches read them: uploaded packs in R2 + D1. */
 export function templateStore(db: Db, files: R2Bucket): TemplateSourceApi {
@@ -148,9 +174,15 @@ export function templateStore(db: Db, files: R2Bucket): TemplateSourceApi {
         pack = unpack(new Uint8Array(await object.arrayBuffer()));
       }
       unpacked.set(key, pack);
-      for (const old of unpacked.keys()) {
-        if (unpacked.size <= maxUnpacked) break;
+      let bytes = [...unpacked.values()].reduce(
+        (sum, kept) => sum + packBytes(kept),
+        0,
+      );
+      for (const [old, kept] of unpacked) {
+        if (old === key) break;
+        if (unpacked.size <= maxUnpacked && bytes <= maxUnpackedBytes) break;
         unpacked.delete(old);
+        bytes -= packBytes(kept);
       }
       return pack;
     },

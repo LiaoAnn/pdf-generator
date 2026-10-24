@@ -1,5 +1,8 @@
 // A small, fixed template pack (one A4 page of Taiwanese customer data) for
 // batch tests: as a template source, or stored as an uploaded version.
+import { Buffer } from 'node:buffer';
+import type { Manifest, Rules } from '@pdf-generator/contract';
+import type { FakeRecord } from '@pdf-generator/fake-data';
 import { drizzle } from 'drizzle-orm/d1';
 import { strToU8, zipSync } from 'fflate';
 import * as schema from '../db/schema.ts';
@@ -37,52 +40,78 @@ p { margin: 0 0 3mm; }
 .row [data-gt="label"] { width: 40mm; font-weight: 700; }
 `;
 
-export const fixtureReport: TemplatePack = {
-  manifest: {
-    schemaVersion: 1,
-    id: 'fixture-report',
-    name: '客戶基本資料表（測試樣板）',
-    description: 'T16 的固定樣板，批次測試用。',
-    page: { size: 'A4', orientation: 'portrait' },
-    files: {
-      template: 'template.hbs',
-      styles: ['styles.css'],
-      rules: 'rules.json',
-      sample: 'sample.json',
-    },
+const manifest: Manifest = {
+  schemaVersion: 1,
+  id: 'fixture-report',
+  name: '客戶基本資料表（測試樣板）',
+  description: 'T16 的固定樣板，批次測試用。',
+  page: { size: 'A4', orientation: 'portrait' },
+  files: {
+    template: 'template.hbs',
+    styles: ['styles.css'],
+    rules: 'rules.json',
+    sample: 'sample.json',
   },
+};
+
+const rules: Rules = {
+  schemaVersion: 1,
+  fields: {
+    company: { type: 'company' },
+    businessId: { type: 'businessId' },
+    contact: {
+      type: 'object',
+      fields: {
+        name: { type: 'name', gender: 'any' },
+        nationalId: { type: 'nationalId', gender: 'any' },
+        mobile: { type: 'phone', kind: 'mobile' },
+        address: { type: 'address' },
+      },
+    },
+    openedOn: { type: 'date', min: '2020-01-01', max: '2026-09-30' },
+    creditLimit: { type: 'money', min: 100000, max: 5000000 },
+  },
+};
+
+const sample: FakeRecord = {
+  company: '青禾測試股份有限公司',
+  businessId: '04595257',
+  contact: {
+    name: '王小明',
+    nationalId: 'A123456789',
+    mobile: '0912-345-678',
+    address: '100臺北市中正區重慶南路一段122號',
+  },
+  openedOn: '2024-03-15',
+  creditLimit: 1200000,
+};
+
+const json = (value: unknown) => strToU8(JSON.stringify(value));
+
+// The pack's files, as its zip holds them.
+const packFiles: Record<string, Uint8Array> = {
+  'manifest.json': json(manifest),
+  [manifest.files.template]: strToU8(template),
+  ...Object.fromEntries(
+    manifest.files.styles.map(path => [path, strToU8(styles)]),
+  ),
+  [manifest.files.rules]: json(rules),
+  [manifest.files.sample]: json(sample),
+};
+
+export const fixtureReport: TemplatePack = {
+  manifest,
   template,
   styles: [styles],
-  rules: {
-    schemaVersion: 1,
-    fields: {
-      company: { type: 'company' },
-      businessId: { type: 'businessId' },
-      contact: {
-        type: 'object',
-        fields: {
-          name: { type: 'name', gender: 'any' },
-          nationalId: { type: 'nationalId', gender: 'any' },
-          mobile: { type: 'phone', kind: 'mobile' },
-          address: { type: 'address' },
-        },
-      },
-      openedOn: { type: 'date', min: '2020-01-01', max: '2026-09-30' },
-      creditLimit: { type: 'money', min: 100000, max: 5000000 },
-    },
-  },
-  sample: {
-    company: '青禾測試股份有限公司',
-    businessId: '04595257',
-    contact: {
-      name: '王小明',
-      nationalId: 'A123456789',
-      mobile: '0912-345-678',
-      address: '100臺北市中正區重慶南路一段122號',
-    },
-    openedOn: '2024-03-15',
-    creditLimit: 1200000,
-  },
+  rules,
+  sample,
+  files: Object.fromEntries(
+    Object.entries(packFiles).map(([path, bytes]) => [
+      path,
+      Buffer.from(bytes).toString('base64'),
+    ]),
+  ),
+  fonts: [],
 };
 
 /** Knows only `fixture-report` version 1. */
@@ -95,16 +124,6 @@ export const fixtureTemplates: TemplateSourceApi = {
 
 /** Stores the pack as version 1 of `fixture-report`, as an upload would. */
 export async function storeFixturePack(env: Env): Promise<void> {
-  const { manifest, template, styles, rules, sample } = fixtureReport;
-  const json = (value: unknown) => strToU8(JSON.stringify(value));
-  const zip = zipSync({
-    'manifest.json': json(manifest),
-    [manifest.files.template]: strToU8(template),
-    ...Object.fromEntries(
-      manifest.files.styles.map((path, i) => [path, strToU8(styles[i] ?? '')]),
-    ),
-    [manifest.files.rules]: json(rules),
-    [manifest.files.sample]: json(sample),
-  });
+  const zip = zipSync(packFiles);
   await saveVersion(drizzle(env.DB, { schema }), env.FILES, manifest, zip);
 }
