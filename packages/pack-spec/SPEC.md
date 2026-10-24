@@ -1,6 +1,6 @@
 # Template pack spec
 
-How to write a **template pack** (樣板包): the files the platform turns into PDF fixtures with an exact ground truth (`gt.json`). Read it whole before writing a pack; the [minimal example](../../templates/minimal-example/README.md) follows every rule here and is the place to start.
+How to write a **template pack** (樣板包): the files the platform turns into PDF fixtures with an exact ground truth (`gt.json`). Read it whole before writing a pack; the [minimal example](../../templates/minimal-example/README.md) follows every rule here and is the place to start. For a large form (a big table, merged cells, blank cells, checkboxes in cells), see the [incident form](../../templates/incident-form/README.md) (T23).
 
 What decides is code, not this text: the shared contract (`packages/contract`: manifest, rules, `gt.json`, block types, exported as JSON Schema in `packages/contract/schemas`) and the pack checker (`checkPack` in `packages/template-tools`). This spec describes what they accept. Its `pack-ok` and `pack-error` examples are run through `checkPack` by `src/spec.test.ts`, so they can't drift from the checker; where the spec and the code still disagree, the code wins and the spec has a bug.
 
