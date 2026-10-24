@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>學術論文</title>
+</head>
+<body>
+<div class="running-header" data-gt="page_header">{{journal.name}}　第 {{journal.volume}} 卷第 {{journal.issue}} 期（{{journal.year}}）</div>
+<div class="footnotes">
+<p data-gt="footnote">收稿日期：{{received}}；接受日期：{{accepted}}。</p>
+{{#each authors}}
+{{#if @first}}
+<p data-gt="footnote">* 通訊作者：{{name}}，{{affiliation}}。</p>
+{{/if}}
+{{/each}}
+<p data-gt="footnote">† 本研究由國科會計畫 NSTC 113-2221-E-{{grant.school}}-{{grant.serial}} 補助。</p>
+<p data-gt="footnote">1 本文實驗程式碼與資料集將於論文接受後公開。</p>
+</div>
+<header class="front">
+<h1 data-gt="title">{{title}}<sup>†</sup></h1>
+<div class="authors">
+{{#each authors}}
+<div class="author">
+{{#if @first}}
+<p class="author-name" data-gt="paragraph">{{name}}<sup>*</sup></p>
+{{else}}
+<p class="author-name" data-gt="paragraph">{{name}}</p>
+{{/if}}
+<p class="affiliation" data-gt="paragraph">{{affiliation}}</p>
+</div>
+{{/each}}
+</div>
+<section class="abstract">
+<h2 class="abstract-title" data-gt="heading">摘要</h2>
+<p data-gt="paragraph">{{abstract}}</p>
+<p class="keywords"><span class="key" data-gt="label">關鍵詞：</span><span data-gt="field">{{keywords}}</span></p>
+<h2 class="abstract-title" lang="en" data-gt="heading">Abstract</h2>
+<p lang="en" data-gt="paragraph">{{abstractEn}}</p>
+</section>
+</header>
+<main class="columns">
+<h2 data-gt="heading">1　緒論</h2>
+{{#each intro}}
+{{#if @first}}
+<p data-gt="paragraph">{{this}}<sup>1</sup></p>
+{{else}}
+<p data-gt="paragraph">{{this}}</p>
+{{/if}}
+{{/each}}
+<h2 data-gt="heading">2　相關研究</h2>
+{{#each related}}
+<p data-gt="paragraph">{{cite}}指出，{{text}}</p>
+{{/each}}
+<h2 data-gt="heading">3　研究方法</h2>
+<h3 data-gt="heading">3.1　模型架構</h3>
+{{#each method}}
+<p data-gt="paragraph">{{this}}</p>
+{{#if @first}}
+<!-- formula eq1 -->
+{{/if}}
+{{/each}}
+<!-- formula eq2 -->
+<h3 data-gt="heading">3.2　模型訓練</h3>
+{{#each training}}
+<p data-gt="paragraph">{{this}}</p>
+{{/each}}
+<!-- formula eq3 -->
+<h2 data-gt="heading">4　實驗結果</h2>
+{{#each experiments}}
+<p data-gt="paragraph">{{this}}</p>
+{{#if @first}}
+<!-- formula eq4 -->
+{{/if}}
+{{/each}}
+<h2 data-gt="heading">5　結論</h2>
+{{#each conclusion}}
+<p data-gt="paragraph">{{this}}</p>
+{{/each}}
+<h2 data-gt="heading">參考文獻</h2>
+{{#each references}}
+{{#if (eq kind "en")}}
+<p class="reference" lang="en" data-gt="reference">[{{#if (eq @index 0)}}1{{/if}}{{#if (eq @index 1)}}2{{/if}}{{#if (eq @index 2)}}3{{/if}}{{#if (eq @index 3)}}4{{/if}}{{#if (eq @index 4)}}5{{/if}}{{#if (eq @index 5)}}6{{/if}}{{#if (eq @index 6)}}7{{/if}}{{#if (eq @index 7)}}8{{/if}}] {{authorsEn}} ({{year}}). {{titleEn}} {{venueEn}}, {{volume}}({{issue}}), {{pages}}.</p>
+{{else}}
+<p class="reference" data-gt="reference">[{{#if (eq @index 0)}}1{{/if}}{{#if (eq @index 1)}}2{{/if}}{{#if (eq @index 2)}}3{{/if}}{{#if (eq @index 3)}}4{{/if}}{{#if (eq @index 4)}}5{{/if}}{{#if (eq @index 5)}}6{{/if}}{{#if (eq @index 6)}}7{{/if}}{{#if (eq @index 7)}}8{{/if}}] {{authorZh}}{{#if coauthorZh}}、{{coauthorZh}}{{/if}}（{{year}}）。{{titleZh}}{{venueZh}}，{{volume}}({{issue}})，{{pages}}。</p>
+{{/if}}
+{{/each}}
+</main>
+</body>
+</html>

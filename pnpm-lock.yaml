@@ -615,6 +615,12 @@ importers:
 
   templates/paper:
     devDependencies:
+      '@pdf-generator/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@pdf-generator/fake-data':
+        specifier: workspace:*
+        version: link:../../packages/fake-data
       '@pdf-generator/template-tools':
         specifier: workspace:*
         version: link:../../packages/template-tools

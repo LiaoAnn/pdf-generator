@@ -233,6 +233,10 @@ describe('paper formula build', () => {
     // Regression: source changes without rebuilding the shipped pack, or the
     // direct-node CLI imports successfully but never writes the files.
     const generated = buildPack();
+    expect(generated).toHaveProperty('templates/paper.hbs');
+    expect(generated['templates/paper.hbs']).toBe(
+      expandTemplate(readFileSync(join(root, 'src/paper.hbs'), 'utf8')),
+    );
     expect(generated).toHaveProperty('styles/katex.css', katexStylesheet());
     for (const face of katexFonts) {
       expect(generated).toHaveProperty(`fonts/${face}.ttf`);

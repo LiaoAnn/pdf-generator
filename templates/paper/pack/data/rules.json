@@ -1,0 +1,318 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "journal": {
+      "type": "object",
+      "fields": {
+        "name": {
+          "type": "choice",
+          "options": [
+            "資訊科學學報",
+            "電腦視覺與圖形識別期刊",
+            "中華民國人工智慧學刊",
+            "數位內容與文件工程學報",
+            "臺灣計算語言學期刊"
+          ]
+        },
+        "volume": {
+          "type": "integer",
+          "min": 8,
+          "max": 36
+        },
+        "issue": {
+          "type": "integer",
+          "min": 1,
+          "max": 4
+        },
+        "year": {
+          "type": "integer",
+          "min": 2019,
+          "max": 2025
+        }
+      }
+    },
+    "title": {
+      "type": "choice",
+      "options": [
+        "以多尺度注意力機制改善中文文件版面分析",
+        "結合視覺與語意特徵之掃描表單欄位擷取方法",
+        "低資源情境下的繁體中文光學字元辨識模型",
+        "基於圖神經網路的表格結構辨識",
+        "應用自監督預訓練於歷史文獻影像之文字偵測",
+        "合成文件資料對版面分析模型泛化能力之影響",
+        "跨領域財務報表之關鍵資訊擷取研究",
+        "數學公式影像轉 LaTeX 之序列模型比較"
+      ]
+    },
+    "authors": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "fields": {
+          "name": {
+            "type": "name"
+          },
+          "affiliation": {
+            "type": "choice",
+            "options": [
+              "國立臺灣大學資訊工程學系",
+              "國立清華大學資訊工程學系",
+              "國立陽明交通大學資訊科學與工程研究所",
+              "國立成功大學電機工程學系",
+              "國立政治大學資訊科學系",
+              "中央研究院資訊科學研究所"
+            ]
+          }
+        }
+      }
+    },
+    "received": {
+      "type": "date",
+      "min": "2024-01-02",
+      "max": "2024-05-31"
+    },
+    "accepted": {
+      "type": "date",
+      "min": "2024-07-01",
+      "max": "2024-11-29"
+    },
+    "grant": {
+      "type": "object",
+      "fields": {
+        "school": {
+          "type": "integer",
+          "min": 101,
+          "max": 999
+        },
+        "serial": {
+          "type": "integer",
+          "min": 101,
+          "max": 999
+        }
+      }
+    },
+    "abstract": {
+      "type": "text",
+      "lang": "zh",
+      "minLength": 160,
+      "maxLength": 240
+    },
+    "keywords": {
+      "type": "choice",
+      "options": [
+        "文件版面分析、注意力機制、深度學習",
+        "光學字元辨識、繁體中文、資料擴增",
+        "表格結構辨識、圖神經網路、文件理解",
+        "資訊擷取、多模態學習、掃描文件",
+        "合成資料、模型泛化、評估基準"
+      ]
+    },
+    "abstractEn": {
+      "type": "text",
+      "lang": "en",
+      "minLength": 260,
+      "maxLength": 400
+    },
+    "intro": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 120,
+        "maxLength": 200
+      }
+    },
+    "related": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "fields": {
+          "cite": {
+            "type": "choice",
+            "options": [
+              "文獻 [1]",
+              "文獻 [2]",
+              "文獻 [3]",
+              "文獻 [4]",
+              "文獻 [5]"
+            ]
+          },
+          "text": {
+            "type": "text",
+            "lang": "zh",
+            "minLength": 100,
+            "maxLength": 180
+          }
+        }
+      }
+    },
+    "method": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 120,
+        "maxLength": 200
+      }
+    },
+    "training": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 100,
+        "maxLength": 180
+      }
+    },
+    "experiments": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 3,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 120,
+        "maxLength": 200
+      }
+    },
+    "conclusion": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 2,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 100,
+        "maxLength": 160
+      }
+    },
+    "eq1": {
+      "type": "choice",
+      "options": [0, 1, 2]
+    },
+    "eq2": {
+      "type": "choice",
+      "options": [0, 1, 2]
+    },
+    "eq3": {
+      "type": "choice",
+      "options": [0, 1, 2]
+    },
+    "eq4": {
+      "type": "choice",
+      "options": [0, 1, 2]
+    },
+    "references": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "fields": {
+          "kind": {
+            "type": "choice",
+            "options": ["zh", "en"]
+          },
+          "year": {
+            "type": "integer",
+            "min": 2010,
+            "max": 2024
+          },
+          "volume": {
+            "type": "integer",
+            "min": 1,
+            "max": 40
+          },
+          "issue": {
+            "type": "integer",
+            "min": 1,
+            "max": 12
+          },
+          "pages": {
+            "type": "choice",
+            "options": [
+              "1-14",
+              "23-41",
+              "57-72",
+              "101-118",
+              "233-250",
+              "415-430",
+              "1023-1040"
+            ]
+          },
+          "authorZh": {
+            "type": "name"
+          },
+          "coauthorZh": {
+            "type": "name",
+            "blankProbability": 0.4
+          },
+          "titleZh": {
+            "type": "choice",
+            "options": [
+              "中文手寫字辨識之卷積網路架構研究",
+              "以條件隨機場進行文件區塊分類",
+              "掃描文件影像之傾斜校正與二值化",
+              "繁體中文斷詞系統之效能評估",
+              "多語文件之閱讀順序預測",
+              "表格影像之儲存格切割演算法",
+              "基於深度學習的印章偵測方法",
+              "古籍影像文字行切割之研究"
+            ]
+          },
+          "venueZh": {
+            "type": "choice",
+            "options": [
+              "資訊科學學報",
+              "中華民國人工智慧學刊",
+              "電腦視覺與圖形識別期刊",
+              "臺灣計算語言學期刊"
+            ]
+          },
+          "authorsEn": {
+            "type": "choice",
+            "options": [
+              "Chen, Y., & Lin, H.",
+              "Wang, C.-H.",
+              "Huang, P., Liu, T., & Tsai, M.",
+              "Lee, J., & Chang, S.",
+              "Wu, K.-L., & Hsu, Y."
+            ]
+          },
+          "titleEn": {
+            "type": "choice",
+            "options": [
+              "Deep residual learning for image recognition.",
+              "Attention is all you need.",
+              "LayoutLM: Pre-training of text and layout for document image understanding.",
+              "Table structure recognition with graph neural networks.",
+              "A survey of handwritten Chinese character recognition.",
+              "Robust reading order detection for multi-column documents.",
+              "Synthetic data generation for document layout analysis.",
+              "End-to-end mathematical expression recognition."
+            ]
+          },
+          "venueEn": {
+            "type": "choice",
+            "options": [
+              "Pattern Recognition",
+              "IEEE Transactions on Image Processing",
+              "International Journal on Document Analysis and Recognition",
+              "Computational Linguistics"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

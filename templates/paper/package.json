@@ -11,6 +11,8 @@
     "typecheck": "tsc"
   },
   "devDependencies": {
+    "@pdf-generator/contract": "workspace:*",
+    "@pdf-generator/fake-data": "workspace:*",
     "@pdf-generator/template-tools": "workspace:*",
     "@types/node": "^24.13.6",
     "katex": "~0.16.47",

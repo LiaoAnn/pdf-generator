@@ -1,0 +1,168 @@
+/* 學術論文 (T25): a LaTeX-style journal paper. The title block spans the
+   page; the body flows in two columns, left column first, so document order
+   is reading order. Paragraphs, formulas and references never break: a
+   block split across two columns would get one gt box spanning both. The
+   page header and the first page's footnotes are Paged.js running elements
+   (the footnotes only in @page :first's bottom margin). No page numbers:
+   the page count depends on the record. */
+
+@page {
+  size: A4 portrait;
+  margin: 22mm 18mm 20mm;
+  @top-center {
+    content: element(pageHeader);
+    vertical-align: bottom;
+    padding-bottom: 4mm;
+  }
+}
+
+@page :first {
+  margin-bottom: 38mm;
+  @bottom-left {
+    content: element(footnotes);
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+}
+
+html {
+  font-family: "Noto Serif TC", serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #000;
+}
+
+body {
+  margin: 0;
+}
+
+p,
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+sup {
+  font-size: 0.7em;
+  line-height: 0;
+}
+
+.running-header {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageHeader);
+  font-size: 8.5pt;
+  text-align: center;
+  border-bottom: 0.5pt solid #000;
+  padding-bottom: 1mm;
+}
+
+.footnotes {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(footnotes);
+  width: 120mm;
+  font-size: 8pt;
+  line-height: 1.4;
+  border-top: 0.5pt solid #000;
+  padding-top: 1mm;
+}
+
+.front {
+  margin-bottom: 6mm;
+}
+
+h1 {
+  font-size: 17pt;
+  font-weight: 700;
+  line-height: 1.3;
+  text-align: center;
+  margin-bottom: 4mm;
+}
+
+.authors {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2mm 10mm;
+  margin-bottom: 5mm;
+}
+
+.author {
+  text-align: center;
+}
+
+.author-name {
+  font-size: 11pt;
+}
+
+.affiliation {
+  font-size: 8.5pt;
+}
+
+.abstract {
+  margin: 0 12mm;
+  font-size: 9pt;
+}
+
+.abstract p {
+  text-align: justify;
+}
+
+.abstract-title {
+  font-size: 10pt;
+  font-weight: 700;
+  text-align: center;
+  margin: 2mm 0 1mm;
+}
+
+.keywords {
+  margin-top: 1mm;
+}
+
+.key {
+  font-weight: 700;
+  margin-right: 0.5em;
+}
+
+.columns {
+  column-count: 2;
+  column-gap: 7mm;
+  column-fill: auto;
+}
+
+.columns h2 {
+  font-size: 11pt;
+  font-weight: 700;
+  margin: 3mm 0 1mm;
+  break-after: avoid;
+}
+
+.columns h3 {
+  font-size: 10pt;
+  font-weight: 700;
+  margin: 2mm 0 1mm;
+  break-after: avoid;
+}
+
+.columns p {
+  text-align: justify;
+  text-indent: 2em;
+  break-inside: avoid;
+}
+
+.equation {
+  margin: 2mm 0;
+  break-inside: avoid;
+}
+
+.equation .katex-display {
+  margin: 0;
+}
+
+.columns p.reference {
+  font-size: 8.5pt;
+  text-align: left;
+  text-indent: -2em;
+  padding-left: 2em;
+  margin-bottom: 1mm;
+}

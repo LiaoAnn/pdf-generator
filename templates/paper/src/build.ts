@@ -44,7 +44,7 @@ const escapeBraces = (html: string) =>
 
 /**
  * The Handlebars for one equation slot: one `{{#if (eq <slot> <index>)}}`
- * branch per option, each a `data-gt="formula"` block with its LaTeX in
+ * branch per option (on `@root`, so it works inside `{{#each}}`), each a `data-gt="formula"` block with its LaTeX in
  * `data-gt-latex` and KaTeX's pre-rendered HTML inside.
  */
 export function formulaBranches(slot: FormulaSlot): string {
@@ -55,7 +55,7 @@ export function formulaBranches(slot: FormulaSlot): string {
         output: 'html',
         throwOnError: true,
       });
-      return `{{#if (eq ${slot} ${index})}}
+      return `{{#if (eq @root.${slot} ${index})}}
 <div class="equation" data-gt="formula" data-gt-latex="${escapeHtml(latex)}">${escapeBraces(html)}</div>
 {{/if}}`;
     })
@@ -113,7 +113,9 @@ ${trimmed}${fixes}`;
 
 /** Every generated pack file, by its path inside `pack/`. */
 export function buildPack(): Record<string, string | Uint8Array> {
+  const source = readFileSync(new URL('paper.hbs', import.meta.url), 'utf8');
   return {
+    'templates/paper.hbs': expandTemplate(source),
     'styles/katex.css': katexStylesheet(),
     ...Object.fromEntries(
       katexFonts.map(name => [
