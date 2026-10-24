@@ -17,6 +17,7 @@ import {
   fixtureKey,
   fixtureSeed,
   makeFixture,
+  render,
 } from './fixture.ts';
 import type { Printer } from './printer.ts';
 
@@ -127,8 +128,8 @@ describe('makeFixture with local R2', () => {
     }
     const head =
       /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(request.html)?.[1] ?? '';
-    for (const css of fixtureReport.styles) expect(head).toContain(css);
-    expect(head).toMatch(/<style\b[^>]*>[\s\S]*<\/style>/i);
+    expect(head).toMatch(/<link rel="stylesheet" href="styles\.css">\s*$/);
+    expect(head).not.toMatch(/<style\b/i);
 
     const dataBytes = await stored(job.batchId, job.index, 'data.json');
     const gtBytes = await stored(job.batchId, job.index, 'gt.json');
@@ -256,11 +257,22 @@ describe('makeFixture with local R2', () => {
       ]);
   });
 
-  test('uses the selected pack rules and inlines every stylesheet in order while escaping generated text', async () => {
+  test('uses the selected pack rules and links every stylesheet in order while escaping generated text', async () => {
     const pack: TemplatePack = {
       ...fixtureReport,
       template: '<html><head></head><body>{{ contact.name }}</body></html>',
-      styles: ['body { color: red; }', 'body { color: blue; }'],
+      manifest: {
+        ...fixtureReport.manifest,
+        files: {
+          ...fixtureReport.manifest.files,
+          styles: ['z-first.css', 'a-last.css'],
+        },
+      },
+      files: {
+        ...fixtureReport.files,
+        'z-first.css': btoa('body { color: red; }'),
+        'a-last.css': btoa('body { color: blue; }'),
+      },
       rules: {
         schemaVersion: 1,
         fields: {
@@ -291,14 +303,10 @@ describe('makeFixture with local R2', () => {
       /<body>&lt;b&gt;&amp;&quot;(?:&#39;|&#x27;|&apos;)<\/body>/,
     );
     const head = /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(html)?.[1] ?? '';
-    const inlined = [...head.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)]
-      .map(match => match[1])
-      .join('\n');
-    expect(inlined).toContain(pack.styles[0]);
-    expect(inlined).toContain(pack.styles[1]);
-    expect(inlined.indexOf(pack.styles[0] ?? '')).toBeLessThan(
-      inlined.indexOf(pack.styles[1] ?? ''),
+    expect(head).toMatch(
+      /<link rel="stylesheet" href="z-first\.css">\s*<link rel="stylesheet" href="a-last\.css">\s*$/,
     );
+    expect(head).not.toMatch(/<style\b/i);
   });
 
   test('rejects an unknown template without printing or storing a partial fixture', async () => {
@@ -376,3 +384,37 @@ test('fixtureKey pads short indexes without truncating larger indexes or mixing 
     'batches/b2/10000/fixture.pdf',
   );
 });
+
+// The route covers sibling folders and root templates. These cases catch path
+// algorithms that always prepend ../, use pack-root URLs, or encode slashes.
+test.each([
+  { template: 'a/b/t.hbs', styles: ['a/b/c/s.css'], links: ['c/s.css'] },
+  {
+    template: 'a/b/t.hbs',
+    styles: ['a/styles/報表 1.css', 'a/b/樣式 #1%.css'],
+    links: [
+      '../styles/%E5%A0%B1%E8%A1%A8%201.css',
+      '%E6%A8%A3%E5%BC%8F%20%231%25.css',
+    ],
+  },
+])(
+  'render resolves and segment-encodes stylesheet paths relative to $template: $styles',
+  ({ template, styles, links }) => {
+    const pack: TemplatePack = {
+      ...fixtureReport,
+      template:
+        '<html><head><title>keep</title></head><body>{{company}}</body></html>',
+      manifest: {
+        ...fixtureReport.manifest,
+        files: { ...fixtureReport.manifest.files, template, styles },
+      },
+      files: Object.fromEntries(
+        styles.map(path => [path, btoa('body { color: red; }')]),
+      ),
+    };
+    const html = render(pack, { company: '測試' });
+    expect(html.replace(/>\s+</g, '><')).toBe(
+      `<html><head><title>keep</title>${links.map(href => `<link rel="stylesheet" href="${href}">`).join('')}</head><body>測試</body></html>`,
+    );
+  },
+);

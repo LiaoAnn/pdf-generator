@@ -111,7 +111,6 @@ function pack(heading: string, approved = true) {
     decoded: {
       manifest,
       template,
-      styles,
       rules,
       sample,
       files: Object.fromEntries(
@@ -341,11 +340,10 @@ test.each([true, false])(
     expect(first?.html).not.toContain('{{');
     const head =
       /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(first?.html ?? '')?.[1] ?? '';
-    expect(
-      [...head.matchAll(/<style\b[^>]*>\s*([\s\S]*?)<\/style>/gi)].map(match =>
-        match[1]?.trim(),
-      ),
-    ).toEqual(value.styles.map(css => css.trim()));
+    expect(head).toMatch(
+      /<link rel="stylesheet" href="\.\.\/styles\/z-first\.css">\s*<link rel="stylesheet" href="\.\.\/styles\/a-last\.css">\s*$/,
+    );
+    expect(head).not.toMatch(/<style\b/i);
     expect(first?.page).toEqual(value.manifest.page);
     const bytes = await stored(job);
     const record = JSON.parse(strFromU8(bytes));

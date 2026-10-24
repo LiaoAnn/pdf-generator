@@ -102,7 +102,6 @@ const packFiles: Record<string, Uint8Array> = {
 export const fixtureReport: TemplatePack = {
   manifest,
   template,
-  styles: [styles],
   rules,
   sample,
   files: Object.fromEntries(

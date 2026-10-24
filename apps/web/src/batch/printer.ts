@@ -10,7 +10,10 @@ interface PrintJob {
 }
 
 /** A document to print without reading its ground truth (the preview). */
-export type PdfJob = Omit<PrintJob, 'source'>;
+export type PdfJob = Omit<PrintJob, 'source'> & {
+  /** The pack's files the page loads by relative URL (/print's `pack`). */
+  pack: { template: string; files: Record<string, string> };
+};
 
 interface Printed {
   pageCount: number;

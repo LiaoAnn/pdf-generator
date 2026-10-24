@@ -273,7 +273,12 @@ export const previewPdf = (id: string, version: string) =>
     });
     const print = yield* Print;
     const pdf = yield* Effect.tryPromise({
-      try: () => print.pdf({ html, page: pack.manifest.page }),
+      try: () =>
+        print.pdf({
+          html,
+          page: pack.manifest.page,
+          pack: { template: pack.manifest.files.template, files: pack.files },
+        }),
       catch: previewFailure,
     });
     return new Response(pdf, {

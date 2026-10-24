@@ -9,8 +9,6 @@ export interface TemplatePack {
   manifest: Manifest;
   /** The Handlebars template (manifest.files.template). */
   template: string;
-  /** The stylesheets' contents, in manifest.files.styles order. */
-  styles: string[];
   /** The fake-data rule file (manifest.files.rules). */
   rules: Rules;
   /** The sample record (manifest.files.sample), which the preview prints. */

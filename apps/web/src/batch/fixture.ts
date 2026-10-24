@@ -59,24 +59,42 @@ export function batchPrefix(batchId: string): string {
   return `batches/${batchId}/`;
 }
 
-// The pack's stylesheets go into the document head: the print Worker takes
-// one self-contained HTML document.
-function inlineStyles(html: string, styles: string[]): string {
+// The URL of pack file `path` relative to the folder of pack file `from`.
+function relativeUrl(from: string, path: string): string {
+  const base = from.split('/').slice(0, -1);
+  const target = path.split('/');
+  let shared = 0;
+  while (
+    shared < base.length &&
+    shared < target.length - 1 &&
+    base[shared] === target[shared]
+  ) {
+    shared++;
+  }
+  return [
+    ...base.slice(shared).map(() => '..'),
+    ...target.slice(shared).map(encodeURIComponent),
+  ].join('/');
+}
+
+// The pack's stylesheets are linked from the document head: the print Worker
+// serves the pack's files, so their url()s resolve as in the pack.
+function linkStyles(html: string, template: string, styles: string[]): string {
   const head = html.search(/<\/head>/i);
   if (head < 0) throw new Error('the template has no </head>');
-  if (styles.some(css => /<\/style/i.test(css))) {
-    throw new Error('a stylesheet contains </style');
-  }
-  const tags = styles.map(css => `<style>\n${css}</style>\n`).join('');
+  const tags = styles
+    .map(
+      path => `<link rel="stylesheet" href="${relativeUrl(template, path)}">\n`,
+    )
+    .join('');
   return html.slice(0, head) + tags + html.slice(head);
 }
 
-/** The document a pack prints for a record: filled, stylesheets inlined. */
+/** The document a pack prints for a record: filled, stylesheets linked. */
 export function render(pack: TemplatePack, record: FakeRecord): string {
-  const html = fill(pack.template, record, {
-    file: pack.manifest.files.template,
-  });
-  return inlineStyles(html, pack.styles);
+  const { template, styles } = pack.manifest.files;
+  const html = fill(pack.template, record, { file: template });
+  return linkStyles(html, template, styles);
 }
 
 export async function makeFixture(

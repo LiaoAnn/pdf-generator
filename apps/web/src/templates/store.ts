@@ -122,7 +122,6 @@ function unpack(zip: Uint8Array): TemplatePack {
   return {
     manifest,
     template: text(manifest.files.template),
-    styles: manifest.files.styles.map(text),
     rules,
     sample: recordSchema(rules).parse(JSON.parse(text(manifest.files.sample))),
     files: Object.fromEntries(
