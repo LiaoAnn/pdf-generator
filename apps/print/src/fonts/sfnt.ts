@@ -196,3 +196,44 @@ export function patchCmap(font: Uint8Array): {
   }
   return { font: out, dropped };
 }
+
+/**
+ * Empties every GSUB `locl` feature (zero lookups). In the Noto CJK TC fonts
+ * it swaps digits, …, ASCII quotes and other punctuation for glyphs with no
+ * cmap entry, which Chrome writes to the PDF's ToUnicode as U+0000 (T07-11).
+ * Edits in place: only those lookup counts, the GSUB checksum and
+ * head.checkSumAdjustment change.
+ */
+export function disableLocl(font: Uint8Array): {
+  font: Uint8Array;
+  features: number;
+} {
+  const out = font.slice();
+  const v = view(out);
+  const entries = Array.from({ length: v.getUint16(4) }, (_, i) => 12 + 16 * i);
+  const tagAt = (at: number) =>
+    String.fromCharCode(...out.subarray(at, at + 4));
+  const gsub = entries.find(entry => tagAt(entry) === 'GSUB');
+  if (gsub === undefined) return { font: out, features: 0 };
+  const start = v.getUint32(gsub + 8);
+  const featureList = start + v.getUint16(start + 6);
+  let features = 0;
+  for (let i = 0; i < v.getUint16(featureList); i++) {
+    const record = featureList + 2 + 6 * i;
+    if (tagAt(record) !== 'locl') continue;
+    v.setUint16(featureList + v.getUint16(record + 4) + 2, 0);
+    features++;
+  }
+  if (features === 0) return { font: out, features };
+  v.setUint32(
+    gsub + 4,
+    checksum(out.subarray(start, start + v.getUint32(gsub + 12))),
+  );
+  const head = entries.find(entry => tagAt(entry) === 'head');
+  if (head !== undefined) {
+    const at = v.getUint32(head + 8) + 8;
+    v.setUint32(at, 0);
+    v.setUint32(at, (0xb1b0afba - checksum(out)) >>> 0);
+  }
+  return { font: out, features };
+}

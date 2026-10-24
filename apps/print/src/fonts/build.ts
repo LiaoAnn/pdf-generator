@@ -1,10 +1,11 @@
 // Rebuilds public/fonts from the upstream files T03 tested (sha256-checked),
-// with the Noto CJK cmaps patched (T03 §2.5). Run with
+// with the Noto CJK cmaps patched (T03 §2.5) and their `locl` feature
+// emptied (T07-11). Run with
 // `pnpm --filter @pdf-generator/print fonts`; commit the result.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { patchCmap } from './sfnt.ts';
+import { disableLocl, patchCmap } from './sfnt.ts';
 
 const noto = 'https://github.com/notofonts/noto-cjk/raw/main';
 const sources = [
@@ -89,10 +90,13 @@ for (const { file, url, sha256: expected, patch } of sources) {
   if (actual !== expected) {
     throw new Error(`${file}: sha256 ${actual}, expected ${expected}`);
   }
-  const result = patch ? patchCmap(bytes) : { font: bytes, dropped: [] };
+  const cmap = patch ? patchCmap(bytes) : { font: bytes, dropped: [] };
+  const result = patch ? disableLocl(cmap.font) : { ...cmap, features: 0 };
   await writeFile(join(out, file), result.font);
   console.log(
     `public/fonts/${file} sha256 ${sha256(result.font)}` +
-      (patch ? ` (${result.dropped.length} code points dropped)` : ''),
+      (patch
+        ? ` (${cmap.dropped.length} code points dropped, ${result.features} locl features emptied)`
+        : ''),
   );
 }
