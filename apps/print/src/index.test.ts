@@ -1,15 +1,12 @@
 import { readFile } from 'node:fs/promises';
-import { fileURLToPath, URL } from 'node:url';
+import { URL } from 'node:url';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
-let worker: Awaited<ReturnType<typeof unstable_startWorker>>;
+let worker: PrintWorker;
 
 beforeAll(async () => {
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker();
   await worker.url;
 }, 30_000);
 

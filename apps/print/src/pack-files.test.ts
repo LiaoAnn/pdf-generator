@@ -3,12 +3,12 @@ import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractText, getDocumentProxy, getResolvedPDFJS } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
 import {
   apiErrorSchema,
   manifestSchema,
 } from '../../../packages/contract/src/index.ts';
 import { fill } from '../../../packages/template-tools/src/index.ts';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'pack-files-local-test';
 const page = { size: 'A4', orientation: 'portrait' } as const;
@@ -21,8 +21,7 @@ const minimal = (files: Record<string, string> = {}) => ({
   page,
   pack: { template: 'templates/report.hbs', files },
 });
-type Worker = Awaited<ReturnType<typeof unstable_startWorker>>;
-let worker: Worker;
+let worker: PrintWorker;
 let valid: Omit<ReturnType<typeof minimal>, 'page'> & {
   page: { size: 'A4'; orientation: 'portrait' | 'landscape' };
 };
@@ -56,11 +55,7 @@ beforeAll(async () => {
     page: manifest.page,
     pack: { template: manifest.files.template, files },
   };
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
   await worker.url;
 });
 

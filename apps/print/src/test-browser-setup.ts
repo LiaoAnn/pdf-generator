@@ -2,9 +2,8 @@
 // its first launch. Test files start Workers in parallel, and on a fresh
 // machine (CI) their launches raced on that download (spawn ETXTBSY). One
 // render here installs Chrome before any test file runs.
-import { fileURLToPath } from 'node:url';
-import { unstable_startWorker } from 'wrangler';
 import { browserEnv } from '../vitest.config.ts';
+import { startPrintWorker } from './test-worker.ts';
 
 export default async function setup() {
   // The global setup runs in vitest's main process, which test.env doesn't
@@ -14,11 +13,7 @@ export default async function setup() {
   );
   Object.assign(process.env, browserEnv);
   const token = 'browser-setup';
-  const worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  const worker = await startPrintWorker(token);
   try {
     const response = await fetch(new URL('/print', (await worker.url).href), {
       method: 'POST',

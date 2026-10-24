@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
 import { apiErrorSchema } from '../../../packages/contract/src/index.ts';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'request-blocking-local-test';
 const page = { size: 'A4', orientation: 'portrait' } as const;
@@ -15,8 +15,7 @@ const png = Buffer.from(
   'base64',
 );
 
-type Worker = Awaited<ReturnType<typeof unstable_startWorker>>;
-let worker: Worker;
+let worker: PrintWorker;
 let server: Server;
 let outside: string;
 let logo: Buffer;
@@ -52,11 +51,7 @@ beforeAll(async () => {
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   outside = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  worker = await unstable_startWorker({
-    config: new URL('../wrangler.jsonc', import.meta.url).pathname,
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
   await worker.url;
 });
 

@@ -1,25 +1,16 @@
-import { fileURLToPath, URL } from 'node:url';
+import { URL } from 'node:url';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
 import { apiErrorSchema } from '../../../packages/contract/src/index.ts';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'slice-two-local-test-token';
-type Worker = Awaited<ReturnType<typeof unstable_startWorker>>;
-let worker: Worker;
-let unconfigured: Worker;
+let worker: PrintWorker;
+let unconfigured: PrintWorker;
 
 beforeAll(async () => {
-  const config = fileURLToPath(new URL('../wrangler.jsonc', import.meta.url));
-  worker = await unstable_startWorker({
-    config,
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
-  unconfigured = await unstable_startWorker({
-    config,
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
+  unconfigured = await startPrintWorker();
   await Promise.all([worker.url, unconfigured.url]);
 });
 
@@ -49,7 +40,7 @@ async function post(
 }
 
 async function expectApiError(
-  response: Awaited<ReturnType<Worker['fetch']>>,
+  response: Awaited<ReturnType<PrintWorker['fetch']>>,
   status: number,
   code: string,
 ) {
