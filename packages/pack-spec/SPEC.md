@@ -34,7 +34,7 @@ styles/word.css        (a copy of word.css, first)
 styles/<pack>.css      (the pack's own rules)
 data/rules.json
 data/sample.json
-assets/…               (images and fonts, once pack files print: §3)
+assets/…               (images, fonts)
 ```
 
 ### manifest.json
@@ -88,7 +88,7 @@ The engine draws only characters the platform fonts cover. Text you write yourse
 
 ## 3. The template
 
-One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>`, then `<body>`. The platform puts the pack's stylesheets into the head as `<style>` elements, in `files.styles` order, right before `</head>`, so don't `<link>` them yourself.
+One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>`, then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
 
 ### Handlebars
 
@@ -132,7 +132,7 @@ A pack may use only what a printed document needs, so it prints the same way eve
 
 The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`).
 
-**Pack files don't print yet.** A pack's own images, fonts and `<link>`ed files pass the check, but the web app doesn't send them to the print service until ticket T15-2: until then a preview or batch that loads one fails (`request_blocked`). Until T15-2 merges, inline a small image as a `data:` URL (it counts toward the 64 KiB text-file limit, §8), or draw it with inline SVG.
+**Pack files.** The preview and every batch send the pack's files to the print service, and the template is loaded at its own pack path, so a relative URL (`assets/logo.png` from `template.hbs`, `../assets/font.woff2` from `styles/report.css`) loads the file as in the pack. Nothing outside the pack loads, apart from the platform fonts.
 
 ```html pack-error asset-external
 <img data-gt="image" src="https://example.com/logo.png" alt="logo">
@@ -265,11 +265,11 @@ Use the platform fonts by family name; they are always available and embedded in
 | `"LXGW WenKai TC"` | 標楷體 (kai) | regular only |
 | `"Noto Sans Symbols 2"` | Symbols: ☑ ☐ | regular only |
 
-Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't declare `@font-face` for them. Bold of WenKai and Symbols 2 is synthesized.
+Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't declare `@font-face` for them. Name a platform font on the elements that print (or inherit it), not only inside `@page { … }` or `@media print { … }`: the print runtime finds the platform fonts a document uses from the elements' styles and from `<style>` elements only, not from linked stylesheets' at-rules, and a font it doesn't find is not loaded. Bold of WenKai and Symbols 2 is synthesized.
 
 **Missing glyphs are errors.** A character no listed font has (for example 㵾, or 𩸽 outside WenKai) falls back to a system font, and the self-check fails on any font but the pack's: keep fixed text and `choice` options within these fonts.
 
-**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) pass the check today, but print only once the web app sends pack files to the print service (ticket T15-2, §3). Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
+**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) print like the platform fonts; the batch self-check also accepts each pack font under its PostScript name (read from the font file), so text in it is not a font error. Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
 
 ```css pack-error font-unused
 @font-face {
@@ -315,6 +315,7 @@ An upload is refused before the check when it breaks one of these (`apps/web/src
 | --- | --- |
 | Zip as uploaded | 10 MiB |
 | Pack unzipped, all files | 20 MiB |
+| One file (the print service's limit) | 16 MiB |
 | Number of files | 200 |
 | One text file (anything but `.png .jpg .jpeg .gif .webp .woff .woff2 .ttf .otf`) | 64 KiB |
 | All text files together | 256 KiB |
