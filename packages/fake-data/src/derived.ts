@@ -251,33 +251,55 @@ type Container = { [key: string]: FakeValue } | FakeValue[];
 const isContainer = (value: FakeValue | undefined): value is Container =>
   typeof value === 'object' && value !== null;
 
-/** Array field path (e.g. `rows[]`) → the index of the item it stands for. */
-type Bound = ReadonlyMap<string, number>;
+/** An array field of the rules → the index of the item it stands for. */
+type Bound = ReadonlyMap<RuleField, number>;
 type Slot = { holder: Container; key: string | number; bound: Bound };
+
+/**
+ * A field path compiled once against the rules: one step per key and per
+ * `[]` (a derived field's own path may hold several, for an array of
+ * arrays). An item step names its array by the array's rule, so binding
+ * and lookups never depend on how long the names are.
+ */
+type Step = { key: string } | { items: RuleField };
+type Compiled = { steps: Step[]; arrays: RuleField[] };
+
+function compiler(rules: Rules) {
+  const compiled = new Map<string, Compiled>();
+  return (path: string): Compiled => {
+    const known = compiled.get(path);
+    if (known) return known;
+    const steps: Step[] = [];
+    const arrays: RuleField[] = [];
+    let fields: Rules['fields'] | undefined = rules.fields;
+    for (const segment of path.split('.')) {
+      const name = segment.replace(/(\[\])+$/, '');
+      let field: RuleField | undefined = fields?.[name];
+      steps.push({ key: name });
+      for (let i = name.length; i < segment.length; i += 2) {
+        if (field?.type !== 'array') throw new Error(`no array at ${path}`);
+        steps.push({ items: field });
+        arrays.push(field);
+        field = field.items;
+      }
+      fields = field?.type === 'object' ? field.fields : undefined;
+    }
+    const result = { steps, arrays };
+    compiled.set(path, result);
+    return result;
+  };
+}
 
 /**
  * Where a field's values sit in the record. An array on the path gives
  * every item, or only the item `bound` names for it; each slot records the
- * items it went through. A segment may end in several `[]` (an array of
- * arrays, as a derived field's own path can).
+ * items it went through.
  */
-function slots(record: FakeRecord, path: string, bound: Bound = new Map()) {
-  // One step per key and per `[]`; an item step carries its path so far.
-  const steps: ({ key: string } | { items: string })[] = [];
-  let prefix = '';
-  for (const segment of path.split('.')) {
-    const name = segment.replace(/(\[\])+$/, '');
-    prefix += `${prefix === '' ? '' : '.'}${name}`;
-    steps.push({ key: name });
-    for (let i = name.length; i < segment.length; i += 2) {
-      prefix += '[]';
-      steps.push({ items: prefix });
-    }
-  }
+function slots(record: FakeRecord, path: Compiled, bound: Bound = new Map()) {
   let nodes: { value: FakeValue; bound: Bound }[] = [{ value: record, bound }];
   const found: Slot[] = [];
-  steps.forEach((step, i) => {
-    const last = i === steps.length - 1;
+  path.steps.forEach((step, i) => {
+    const last = i === path.steps.length - 1;
     const next: typeof nodes = [];
     for (const node of nodes) {
       const { value } = node;
@@ -314,40 +336,59 @@ function write(holder: Container, key: string | number, value: FakeValue) {
 }
 
 /** Each distinct path and how often it is listed. */
-type Multiset = ReadonlyMap<string, number>;
+type Multiset = [Compiled, number][];
 
-function multiset(paths: string[]): Multiset {
-  const counts = new Map<string, number>();
-  for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
-  return counts;
+class Unprintable extends Error {}
+
+function print(value: Decimal | undefined): number | null {
+  if (value === undefined) return null;
+  const number = toNumber(value);
+  if (number === undefined) throw new Unprintable();
+  return number;
 }
 
-type Totals = {
-  /** The sum of every value `path` reaches; null counts as 0. */
-  total: (path: string, bound?: Bound) => Decimal;
-  /** The sum over `paths` (from `multiset`), each total times its count. */
-  totals: (paths: Multiset, bound?: Bound) => Decimal;
-};
-
 /**
- * Path totals over one record. Each total is computed once per item of the
- * bound arrays it goes through, and a repeated path once, so derived fields
- * read each value a bounded number of times. Totals never go stale: a path
- * is read only after the derived fields it reaches are filled.
+ * Fills every derived field of `record` in place, in `order`. A field the
+ * blank draw left null stays null. Returns the rule-file issues of results
+ * that no number prints exactly.
  */
-function totalsOf(record: FakeRecord): Totals {
-  const memo = new Map<string, Decimal>();
-  const total = (path: string, bound: Bound = new Map()) => {
-    const used = [...bound].filter(([array]) => through(path, array));
-    const key = `${path}|${used.map(([, index]) => index).join(',')}`;
-    let sum = memo.get(key);
+export function fillDerived(
+  record: FakeRecord,
+  rules: Rules,
+  order: DerivedField[],
+): Issue[] {
+  const compile = compiler(rules);
+  const multiset = (paths: string[]): Multiset => {
+    const counts = new Map<Compiled, number>();
+    for (const path of paths) {
+      const compiled = compile(path);
+      counts.set(compiled, (counts.get(compiled) ?? 0) + 1);
+    }
+    return [...counts];
+  };
+
+  // Each path total is computed once per item of the bound arrays it goes
+  // through, so derived fields read each value a bounded number of times.
+  // Totals never go stale: a path is read only after the derived fields it
+  // reaches are filled.
+  const memo = new Map<Compiled, Map<string, Decimal>>();
+  const total = (path: Compiled, bound: Bound = new Map()): Decimal => {
+    const used = path.arrays.filter(array => bound.has(array));
+    const key = used.map(array => bound.get(array)).join(',');
+    let byBinding = memo.get(path);
+    if (byBinding === undefined) {
+      byBinding = new Map();
+      memo.set(path, byBinding);
+    }
+    let sum = byBinding.get(key);
     if (sum === undefined) {
       sum = zero;
-      for (const { holder, key } of slots(record, path, new Map(used))) {
+      const only = new Map(used.map(array => [array, bound.get(array) ?? 0]));
+      for (const { holder, key } of slots(record, path, only)) {
         const value = read(holder, key);
         if (typeof value === 'number') sum = add(sum, toDecimal(value));
       }
-      memo.set(key, sum);
+      byBinding.set(key, sum);
     }
     return sum;
   };
@@ -359,87 +400,65 @@ function totalsOf(record: FakeRecord): Totals {
     }
     return sum;
   };
-  return { total, totals };
-}
 
-class Unprintable extends Error {}
+  // Sums and percentages read the same values from every slot: one value.
+  const fillOnce = (path: string, value: () => number | null) => {
+    const targets = slots(record, compile(path)).filter(
+      ({ holder, key }) => read(holder, key) !== null,
+    );
+    if (targets.length === 0) return;
+    const result = value();
+    for (const { holder, key } of targets) write(holder, key, result);
+  };
 
-function print(value: Decimal | undefined): number | null {
-  if (value === undefined) return null;
-  const number = toNumber(value);
-  if (number === undefined) throw new Unprintable();
-  return number;
-}
-
-// Sums and percentages read the same values from every slot: one value.
-function fillOnce(
-  record: FakeRecord,
-  path: string,
-  value: () => number | null,
-) {
-  const targets = slots(record, path).filter(
-    ({ holder, key }) => read(holder, key) !== null,
-  );
-  if (targets.length === 0) return;
-  const result = value();
-  for (const { holder, key } of targets) write(holder, key, result);
-}
-
-// Row by row through each rows array; paths through the arrays around the
-// rows, and through the rows themselves, refer to the current item.
-function fillRunning(
-  record: FakeRecord,
-  { total, totals }: Totals,
-  path: string,
-  field: Extract<Derived, { type: 'runningBalance' }>,
-) {
-  const rows = rowsOf(path) as string;
-  const adds = multiset(field.add);
-  const subtracts = multiset(field.subtract);
-  let holder: Container | undefined;
-  let balance = zero;
-  for (const row of slots(record, rows)) {
-    if (row.holder !== holder) {
-      holder = row.holder;
-      balance = total(field.opening, row.bound);
-    }
-    if (read(row.holder, row.key) === null) continue;
-    balance = add(balance, totals(adds, row.bound));
-    balance = add(balance, negate(totals(subtracts, row.bound)));
-    for (const target of slots(record, path, row.bound)) {
-      if (read(target.holder, target.key) !== null) {
-        write(target.holder, target.key, print(balance));
+  // Row by row through each rows array; paths through the arrays around the
+  // rows, and through the rows themselves, refer to the current item.
+  const fillRunning = (
+    path: string,
+    field: Extract<Derived, { type: 'runningBalance' }>,
+  ) => {
+    const target = compile(path);
+    const opening = compile(field.opening);
+    const adds = multiset(field.add);
+    const subtracts = multiset(field.subtract);
+    let holder: Container | undefined;
+    let balance = zero;
+    for (const row of slots(record, compile(rowsOf(path) as string))) {
+      if (row.holder !== holder) {
+        holder = row.holder;
+        balance = total(opening, row.bound);
+      }
+      if (read(row.holder, row.key) === null) continue;
+      balance = add(balance, totals(adds, row.bound));
+      balance = add(balance, negate(totals(subtracts, row.bound)));
+      for (const slot of slots(record, target, row.bound)) {
+        if (read(slot.holder, slot.key) !== null) {
+          write(slot.holder, slot.key, print(balance));
+        }
       }
     }
-  }
-}
+  };
 
-/**
- * Fills every derived field of `record` in place, in `order`. A field the
- * blank draw left null stays null. Returns the rule-file issues of results
- * that no number prints exactly.
- */
-export function fillDerived(
-  record: FakeRecord,
-  order: DerivedField[],
-): Issue[] {
   const issues: Issue[] = [];
-  const { total, totals } = totalsOf(record);
   for (const { path, rulePath, field } of order) {
     try {
       switch (field.type) {
         case 'sum':
-          fillOnce(record, path, () => print(totals(multiset(field.of))));
+          fillOnce(path, () => print(totals(multiset(field.of))));
           break;
         case 'percentage':
-          fillOnce(record, path, () =>
+          fillOnce(path, () =>
             print(
-              percentage(total(field.part), total(field.whole), field.decimals),
+              percentage(
+                total(compile(field.part)),
+                total(compile(field.whole)),
+                field.decimals,
+              ),
             ),
           );
           break;
         case 'runningBalance':
-          fillRunning(record, { total, totals }, path, field);
+          fillRunning(path, field);
           break;
       }
     } catch (error) {

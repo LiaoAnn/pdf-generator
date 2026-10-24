@@ -243,6 +243,23 @@ test('running balances reuse a shared opening total across 20000 nested row grou
   `);
 }, 15_000);
 
+test('running balances reuse a million-character opening path across 20000 nested row groups', () => {
+  guardedGeneration(`
+    const longName = 'x'.repeat(1_000_000);
+    const record = generate(rulesFor({
+      [longName]: constant(37),
+      groups: array(20_000, object({
+        rows: array(1, object({
+          b: { type: 'runningBalance', opening: longName, add: [], subtract: [] },
+        })),
+      })),
+    }), 'long-opening-path');
+    assert.equal(record[longName], 37);
+    assert.equal(record.groups.length, 20_000);
+    for (const group of record.groups) assert.deepEqual(group.rows, [{ b: 37 }]);
+  `);
+}, 15_000);
+
 test('sum reuses a 20000-item column repeated 5000 times without losing multiplicity or decimal precision', () => {
   guardedGeneration(`
     const record = generate(rulesFor({

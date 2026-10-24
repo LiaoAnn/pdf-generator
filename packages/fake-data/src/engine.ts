@@ -213,7 +213,7 @@ export function generate(rules: unknown, seed: string): FakeRecord {
       return generator(field, createRng(seed, at), childAt(at));
     };
   const record = generateFields(parsedRules.data.fields, childAt(''));
-  const unprintable = fillDerived(record, order);
+  const unprintable = fillDerived(record, parsedRules.data, order);
   if (unprintable.length > 0) throw new InvalidRulesError(unprintable);
 
   const checked = recordSchema(parsedRules.data).safeParse(record);
