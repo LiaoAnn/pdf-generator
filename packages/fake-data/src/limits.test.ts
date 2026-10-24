@@ -3,7 +3,7 @@ import { expect, test } from 'vitest';
 
 // Kill synchronous CPU exhaustion without wedging the Vitest worker. Keep
 // assertions in the child so large records never need to cross stdout.
-function guardedGeneration(body: string) {
+function guardedGeneration(body: string, timeout = 10_000) {
   const script = `
     import assert from 'node:assert/strict';
     import { rulesSchema } from '@pdf-generator/contract';
@@ -22,10 +22,147 @@ function guardedGeneration(body: string) {
     execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
       encoding: 'utf8',
       cwd: new URL('../', import.meta.url),
-      timeout: 10_000,
+      timeout,
     }),
   ).toBe('ok');
 }
+
+function guardedDerivedBudget(body: string, timeout = 10_000) {
+  guardedGeneration(
+    `
+    const budgetFields = (rowCount = 50, balanceCount = 20, columnCount = 1_000) => {
+      const paths = Array.from({ length: columnCount }, (_, i) => 'rows[].c.v' + i);
+      return {
+        opening: constant(0),
+        rows: array(rowCount, object({
+          c: object(Object.fromEntries(paths.map((_, i) => ['v' + i, constant(1)]))),
+          ...Object.fromEntries(Array.from({ length: balanceCount }, (_, i) => [
+            'b' + i,
+            { type: 'runningBalance', opening: 'opening', add: paths, subtract: [] },
+          ])),
+        })),
+      };
+    };
+    const assertBudgetRejected = fields => {
+      const rules = rulesFor(fields);
+      assert.throws(() => generate(rules, 'derived-budget'), error => {
+        assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
+        assert.ok(error.issues.some(issue =>
+          JSON.stringify(issue.path) === '["fields"]'), 'expected a record-level fields issue');
+        return true;
+      }, 'expected derived-evaluation budget rejection before generation');
+    };
+    ${body}
+  `,
+    timeout,
+  );
+}
+
+test.each([
+  [200, 200, 200],
+  [160, 300, 300],
+])(
+  'derived budget promptly rejects %i rows × %i balances × %i distinct paths',
+  (rows, balances, paths) => {
+    guardedDerivedBudget(
+      `
+      assertBudgetRejected(budgetFields(${rows}, ${balances}, ${paths}));
+    `,
+      3_000,
+    );
+  },
+  15_000,
+);
+
+test('derived budget rejects one step above the limit contributed by a sum', () => {
+  guardedDerivedBudget(
+    `
+    // 50 × 20 × 1,000 balance steps + one distinct sum path = 1,000,001.
+    assertBudgetRejected({
+      ...budgetFields(),
+      extra: { type: 'sum', of: ['opening'] },
+    });
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test('derived budget multiplies all enclosing maxItems even for empty always-blank arrays', () => {
+  guardedDerivedBudget(
+    `
+    const fields = budgetFields(25);
+    const row = fields.rows.items;
+    for (let i = 0; i < 20; i++) {
+      row.fields['b' + i].add = Array.from({ length: 1_000 }, (_, j) =>
+        'groups[].rows[].c.v' + j);
+    }
+    // 2 × 25 × 20 × 1,000 + 1, although this seed produces no groups.
+    assertBudgetRejected({
+      opening: fields.opening,
+      groups: {
+        ...array(2, object({ rows: { ...fields.rows, minItems: 0, blankProbability: 1 } })),
+        minItems: 0, blankProbability: 1,
+      },
+      extra: { type: 'sum', of: ['opening'] },
+    });
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test('derived budget accepts exactly one million balance steps and deduplicates across add and subtract', () => {
+  guardedDerivedBudget(`
+    const fields = budgetFields();
+    for (let i = 0; i < 20; i++) fields.rows.items.fields['b' + i].subtract = ['rows[].c.v0'];
+    // 50 × 20 × 1,000 distinct paths = 1,000,000 steps; fewer than 53,000 values.
+    const record = generate(rulesFor(fields), 'balance-budget-boundary');
+    assert.equal(record.rows.length, 50);
+    for (const i of [0, 24, 49]) {
+      for (const b of ['b0', 'b10', 'b19']) assert.equal(record.rows[i][b], 999 * (i + 1));
+    }
+  `);
+}, 15_000);
+
+test.each([
+  [
+    'accepts exactly one million steps with repeated sum paths and identical percentage paths',
+    'v0',
+    false,
+  ],
+  [
+    'rejects one step above the limit when percentage paths are distinct',
+    'v1',
+    true,
+  ],
+])(
+  'derived budget %s',
+  (_regression, whole, rejected) => {
+    guardedDerivedBudget(
+      `
+      const fields = budgetFields(50, 20, 999);
+      const row = fields.rows.items.fields;
+      const paths = Array.from({ length: 999 }, (_, i) => 'rows[].c.v' + i);
+      row.total = { type: 'sum', of: [...paths, ...paths] };
+      row.ratio = { type: 'percentage', part: 'rows[].c.v0', whole: 'rows[].c.${whole}', decimals: 0 };
+      // Balances: 999,000; sum: 999 once, despite 50 instances and repeated paths;
+      // percentage: 1 for identical paths, 2 for distinct paths. Under 53,000 values.
+      if (${rejected}) {
+        assertBudgetRejected(fields);
+      } else {
+        const record = generate(rulesFor(fields), 'mixed-budget-boundary');
+        assert.equal(record.rows.length, 50);
+        for (const i of [0, 24, 49]) {
+          assert.equal(record.rows[i].b19, 999 * (i + 1));
+          assert.equal(record.rows[i].total, 99_900);
+          assert.equal(record.rows[i].ratio, 100);
+        }
+      }
+    `,
+      rejected ? 3_000 : 10_000,
+    );
+  },
+  15_000,
+);
 
 test.each([
   [

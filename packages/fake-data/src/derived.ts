@@ -144,32 +144,65 @@ function placement({ path, rulePath, field }: DerivedField): Issue[] {
   return issues;
 }
 
+/** The most derived-field evaluation steps one record may take. */
+const maxDerivedSteps = 1_000_000;
+
 /**
  * The rule file's derived fields, ordered so each comes after the derived
- * fields it reads. Issues: a cycle (at every field on it), and a running
- * balance outside an array item or with paths that miss its rows.
+ * fields it reads. Issues: too many worst-case steps, a cycle (at every
+ * field on it), and a running balance outside an array item or with paths
+ * that miss its rows.
  */
 export function derivedOrder(rules: Rules): {
   order: DerivedField[];
   issues: Issue[];
 } {
   const fields = new Map<string, DerivedField>();
+  // Worst-case evaluation steps: each instance of a running balance looks up
+  // its distinct paths (path totals themselves are memoized); a sum or
+  // percentage is computed once.
+  let steps = 0;
   const visit = (
     field: RuleField,
     path: string,
     rulePath: (string | number)[],
+    instances: number,
   ) => {
-    if (isDerived(field)) fields.set(path, { path, rulePath, field });
+    if (isDerived(field)) {
+      fields.set(path, { path, rulePath, field });
+      const distinct =
+        field.type === 'runningBalance'
+          ? new Set([...field.add, ...field.subtract]).size
+          : new Set(references(field)).size;
+      steps +=
+        field.type === 'runningBalance' ? instances * distinct : distinct;
+    }
     if (field.type === 'object') {
       for (const [key, child] of Object.entries(field.fields)) {
-        visit(child, `${path}.${key}`, [...rulePath, 'fields', key]);
+        visit(child, `${path}.${key}`, [...rulePath, 'fields', key], instances);
       }
     }
     if (field.type === 'array')
-      visit(field.items, `${path}[]`, [...rulePath, 'items']);
+      visit(
+        field.items,
+        `${path}[]`,
+        [...rulePath, 'items'],
+        instances * field.maxItems,
+      );
   };
   for (const [key, field] of Object.entries(rules.fields))
-    visit(field, key, ['fields', key]);
+    visit(field, key, ['fields', key], 1);
+  if (steps > maxDerivedSteps) {
+    return {
+      order: [],
+      issues: [
+        {
+          path: ['fields'],
+          message: `derived fields would take up to ${steps} steps; the limit is ${maxDerivedSteps}`,
+        },
+      ],
+    };
+  }
 
   const order: DerivedField[] = [];
   const issues = [...fields.values()].flatMap(placement);
