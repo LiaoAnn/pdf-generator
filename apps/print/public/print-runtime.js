@@ -284,18 +284,19 @@
     return rows;
   }
 
-  // Per page, each [data-gt] element's box (PDF points from the page's top
-  // left) and the text of its visible text nodes outside KaTeX's MathML copy,
-  // as the PDF's text layer should contain it there (T03 Must 4, PDF part).
-  // Text is matched per box, so a formula's single letters can't use up the
-  // letters of another block (T07-6). The box also covers its text where that
-  // overflows the element or is positioned outside it: whether text lies in
-  // its block's box is the self-check's to report (T14), not this guard's.
+  // Per page, each [data-gt] element's visible text nodes outside KaTeX's
+  // MathML copy, each with its client rects (PDF points from the page's top
+  // left), as the PDF's text layer should contain them there (T03 Must 4, PDF
+  // part). A text is matched only within its own rects, so a formula's single
+  // letters (T07-6) or a neighbouring table cell (T07-12) can't lend it
+  // letters. The rects are where the text is, also where it overflows its
+  // element or is positioned outside it: whether text lies in its block's box
+  // is the self-check's to report (T14), not this guard's.
   function expectedText() {
     const ptPerPx = 0.75;
     return pagedPages().map(page => {
       const origin = page.getBoundingClientRect();
-      /** @type {Map<Element, { texts: string[], rects: DOMRect[] }>} */
+      /** @type {Map<Element, { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[]>} */
       const blocks = new Map();
       const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -314,27 +315,23 @@
           rect => rect.width > 0 && rect.height > 0,
         );
         if (rects.length === 0) continue;
-        const block = blocks.get(element) ?? {
-          texts: [],
-          rects: [element.getBoundingClientRect()],
-        };
-        block.texts.push(text);
-        block.rects.push(...rects);
-        blocks.set(element, block);
+        const texts = blocks.get(element) ?? [];
+        texts.push({
+          text,
+          boxes: rects.map(rect => ({
+            x0: (rect.left - origin.left) * ptPerPx,
+            y0: (rect.top - origin.top) * ptPerPx,
+            x1: (rect.right - origin.left) * ptPerPx,
+            y1: (rect.bottom - origin.top) * ptPerPx,
+          })),
+        });
+        blocks.set(element, texts);
       }
-      return [...blocks.values()].map(({ texts, rects }) => ({
-        box: {
-          x0: (Math.min(...rects.map(r => r.left)) - origin.left) * ptPerPx,
-          y0: (Math.min(...rects.map(r => r.top)) - origin.top) * ptPerPx,
-          x1: (Math.max(...rects.map(r => r.right)) - origin.left) * ptPerPx,
-          y1: (Math.max(...rects.map(r => r.bottom)) - origin.top) * ptPerPx,
-        },
-        texts,
-      }));
+      return [...blocks.values()].map(texts => ({ texts }));
     });
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: { box: { x0: number, y0: number, x1: number, y1: number }, texts: string[] }[][] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
