@@ -68,6 +68,7 @@ Run them through `T3CODE_WORKTREE_PATH=/data/worktrees/pdf-generator/<wt> wt-exe
 You own every test the slice's behavior changes, not just new ones: search the package for existing tests of the modules the slice touches (`grep -rn <module> --include=*.test.ts`) and update their expectations now; the implementer may not touch any test, so a stale one costs a whole round. Test doubles must match the real types (for example, a mocked checker returns the real report type).
 Before you report, run the package typecheck (`pnpm --filter <package> typecheck`) and format your test files with the repo formatter (`T3CODE_WORKTREE_PATH=… wt-exec pnpm exec biome check --write <your files>`) and make sure `pnpm lint` passes on them: the implementer may not touch your tests, so a lint-only failure costs a whole extra round.
 A `.ts` file that `node` runs directly (scripts, `node --test`) must use erasable TypeScript only: no parameter properties, enums or namespaces, which Node's type stripping rejects.
+Don't `toEqual` multi-MB buffers (fonts, PDFs): Vitest's diff of a failing comparison ran out of heap (T07-13). Compare a hash, the length or the bytes you care about.
 Don't commit. Don't edit files outside the test directories and fixtures you create.
 Report: the files you wrote, each test's name and the regression it catches, the exact RED command and its relevant output.
 ```
