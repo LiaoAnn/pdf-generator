@@ -1,6 +1,7 @@
 import { batchSchema, fixtureListSchema } from '@pdf-generator/contract';
 import { createFileRoute, Link, useRouter } from '@tanstack/react-router';
 import { useEffect } from 'react';
+import { FixtureError } from '@/batches/fixture-error';
 import {
   batchStatusLabel,
   fixtureStatusLabel,
@@ -116,9 +117,10 @@ function BatchPage() {
                   <td className="py-1">
                     {fixtureStatusLabel[fixture.status]}
                     {fixture.error ? (
-                      <span className="text-destructive">
-                        ：{fixture.error}
-                      </span>
+                      <>
+                        <span className="text-destructive">：</span>
+                        <FixtureError error={fixture.error} />
+                      </>
                     ) : null}
                   </td>
                   <td className="py-1">

@@ -295,21 +295,21 @@ test('a session in use by a print is not closed even when listed without a conne
   await print('new');
   await elapse(100_000);
   listed = [idle('kept')];
-  let finish: () => void = () => {};
+  const rendering = Promise.withResolvers<() => void>();
   vi.mocked(renderPdf).mockImplementationOnce(
     () =>
       new Promise(resolve => {
-        finish = () =>
-          resolve({ pdf: new Uint8Array([1]), pageCount: 1 } as never);
+        rendering.resolve(() =>
+          resolve({ pdf: new Uint8Array([1]), pageCount: 1 } as never),
+        );
       }),
   );
   const longCtx = makeCtx();
   const longPrint = startPrint(longCtx, 'kept');
-  for (let tick = 0; tick < 1000; tick++) {
-    if (vi.mocked(renderPdf).mock.calls.length > 0) break;
-    await new Promise(resolve => setImmediate(resolve));
-  }
-  expect(renderPdf).toHaveBeenCalledTimes(1);
+  // Wait for this print's own render. A call count can't tell (print('new')
+  // above already rendered): under load the next print could then start
+  // first, take the pending render and hang (T09-3).
+  const finish = await rendering.promise;
 
   await print();
   expect(closedIds()).toEqual([]);

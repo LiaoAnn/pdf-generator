@@ -174,11 +174,29 @@ describe('template author error explanations', () => {
     'font-unused',
   ];
   const printCodes = [
+    'page_count_mismatch',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
     'text_missing',
   ];
+
+  test('preview page-count refusals explain the template CSS cause without changing the print code or diagnostic', () => {
+    const raw = 'The PDF has a different number of pages than Paged.js made';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'page_count_mismatch', message: raw }],
+    });
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('page_count_mismatch');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toMatch(cjk);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.explanation).toMatch(/\.pagedjs/);
+    expect(issue?.explanation).toMatch(/body/i);
+    expect(issue?.explanation).toMatch(/頁/);
+  });
 
   test.each([...uploadCodes, ...printCodes])(
     '%s has an actionable Chinese explanation instead of the unknown-code fallback',
@@ -373,5 +391,50 @@ describe('template author error explanations', () => {
     });
     expect(new Set(titles).size).toBe(codes.length);
     expect(invalid([]).issues).toEqual([]);
+  });
+});
+
+describe('stored fixture print errors', () => {
+  test.each([
+    'page_count_mismatch',
+    'font_not_loaded',
+    'pagination_timeout',
+    'row_fragmented',
+    'text_missing',
+  ])(
+    'explains the stored %s code with the same guidance as a preview refusal',
+    async code => {
+      const { explainFixtureError } = await import('./explain.ts');
+      expect(
+        explainFixtureError,
+        'stored fixture explanation is not implemented',
+      ).toBeTypeOf('function');
+      const expected = explain({
+        code: 'preview_failed',
+        message: 'Printing failed',
+        details: [{ code, message: 'Worker diagnostic' }],
+      }).issues[0]?.explanation;
+      expect(
+        explainFixtureError(
+          `print 422 ${code}: Worker diagnostic mentions page_count_mismatch`,
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    'self-check exploded',
+    'failed',
+    'print 500 future_code: Unknown failure',
+    'print 500 print_failed: page_count_mismatch mentioned',
+    'self-check exploded: print 422 page_count_mismatch: nested diagnostic',
+    'print 422 page_count_mismatch_extra: Unknown code',
+  ])('does not invent print guidance for %s', async raw => {
+    const { explainFixtureError } = await import('./explain.ts');
+    expect(
+      explainFixtureError,
+      'stored fixture explanation is not implemented',
+    ).toBeTypeOf('function');
+    expect(explainFixtureError(raw)).toBeUndefined();
   });
 });
