@@ -382,12 +382,12 @@
 - **不做**：改排版
 - **來源**：PR #11
 
-### T07-3 印 PDF：只允許樣板包自己的檔案
-- **目標**：列印時擋掉所有不是樣板包自己檔案的請求（含 CSS、SVG `<set>`、圖片），並維持 JavaScript 關閉；作為 T06 白名單之外的第二層防護
+### T07-3 印 PDF：送進樣板包自己的檔案，並擋掉其他請求
+- **目標**：`/print` 接收樣板包的檔案（路徑 → 內容），讓頁面用網址載入這些檔案（字型、圖片、CSS）；**依 T03 Must not 3，不要用 puppeteer request interception 把檔案塞給瀏覽器**（雲端 4 次有 3 次 error 1102），改由 print Worker 用自己的網址提供（例如以批次／session 為範圍的路徑，資料放 R2 或 Worker 記憶體）；interception 只用來中止不是樣板包檔案的請求（含 CSS、SVG `<set>`、圖片）；維持 JavaScript 關閉；作為 T06 白名單之外的第二層防護。T15 預覽與 T16 批次都要把樣板包檔案一起送進來
 - **Blocked by**：T07
-- **Blocks**：—（建議在 T15 開放上傳、T09-1 上線前完成）
+- **Blocks**：T22、T26（帶自己字型或圖片的樣板）
 - **撞車風險**：`apps/print`；T07-2 也改這裡，兩張不要同時派
-- **驗收測試**：樣板包外的網址（http、data: CSS、SVG `<set>` 改 href）在列印時都沒有發出請求；樣板包內的字型與圖片照常載入
+- **驗收測試**：T06 的 valid 範例包（自帶 `report.woff2`、`logo.svg`、`report.css`）印得出來且字型已載入；樣板包外的網址（http、data: CSS、SVG `<set>` 改 href）在列印時都沒有發出請求
 - **不做**：改 T06 的檢查
 - **來源**：PR #12
 
