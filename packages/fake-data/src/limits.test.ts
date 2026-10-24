@@ -367,6 +367,88 @@ test('running balances collapse 100000 repeated add paths across 20000 rows whil
   `);
 }, 15_000);
 
+test('distinct sums share the empty-array prefix across 20000 rows and 5000 columns promptly', () => {
+  guardedGeneration(`
+    const columns = Array.from({ length: 5_000 }, (_, i) => 'v' + i);
+    // Only 5,000 generated leaves and derived steps: empty items generate none.
+    const rules = rulesFor({
+      rows: array(20_000, object({
+        empty: array(0, object(Object.fromEntries(columns.map(key => [key, constant(1)])))),
+      })),
+      ...Object.fromEntries(columns.map(key => [
+        'sum_' + key, { type: 'sum', of: ['rows[].empty[].' + key] },
+      ])),
+    });
+    const start = performance.now();
+    const record = generate(rules, 'shared-empty-prefix');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 2_000, 'shared empty prefix took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 20_000);
+    for (const row of record.rows) assert.deepEqual(row, { empty: [] });
+    for (const key of columns) assert.equal(record['sum_' + key], 0, key);
+  `);
+}, 15_000);
+
+test('distinct sums and percentages share populated column prefixes across 2000 rows promptly', () => {
+  guardedGeneration(`
+    const columns = Array.from({ length: 40 }, (_, i) => ['v' + i, i + 3]);
+    const rules = rulesFor({
+      rows: array(2_000, object({
+        c: object(Object.fromEntries(columns.map(([key, value]) => [key, constant(value)]))),
+      })),
+      ...Object.fromEntries(columns.flatMap(([key]) => [
+        ['sum_' + key, { type: 'sum', of: ['rows[].c.' + key] }],
+        ['ratio_' + key, {
+          type: 'percentage', part: 'rows[].c.' + key, whole: 'rows[].c.v0', decimals: 2,
+        }],
+      ])),
+    });
+    const start = performance.now();
+    const record = generate(rules, 'shared-populated-prefix');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 2_000, 'shared populated prefix took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 2_000);
+    for (const [key, value] of columns) {
+      const expectedSum = 2_000 * value;
+      const expectedPercentage = Math.round(expectedSum * 10_000 / (2_000 * 3)) / 100;
+      assert.equal(record['sum_' + key], expectedSum, key);
+      assert.equal(record['ratio_' + key], expectedPercentage, key);
+    }
+  `);
+}, 15_000);
+
+test('running balances share deep distinct add prefixes across 1000 rows and 20 balances promptly', () => {
+  guardedGeneration(`
+    const values = Array.from({ length: 40 }, (_, i) => i + 1);
+    let nested = object(Object.fromEntries(values.map(value => ['v' + (value - 1), constant(value)])));
+    // rows is level 1, its item level 2, 29 objects levels 3–31, constants level 32.
+    for (let i = 1; i < 29; i++) nested = object({ child: nested });
+    const prefix = 'rows[].deep.' + 'child.'.repeat(28);
+    const paths = values.map((_, i) => prefix + 'v' + i);
+    // 1,000 × 20 × 40 = 800,000 derived steps; 60,001 generated leaves.
+    const rules = rulesFor({
+      opening: constant(17),
+      rows: array(1_000, object({
+        deep: nested,
+        ...Object.fromEntries(Array.from({ length: 20 }, (_, i) => [
+          'b' + i, { type: 'runningBalance', opening: 'opening', add: paths, subtract: [] },
+        ])),
+      })),
+    });
+    const start = performance.now();
+    const record = generate(rules, 'shared-deep-row-prefix');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 2_000, 'shared deep row prefix took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 1_000);
+    const increment = values.reduce((sum, value) => sum + value, 0);
+    for (const [i, row] of record.rows.entries()) {
+      for (let b = 0; b < 20; b++) {
+        assert.equal(row['b' + b], 17 + (i + 1) * increment, 'row ' + i + ', balance ' + b);
+      }
+    }
+  `);
+}, 15_000);
+
 test.each([
   [
     'bounds cycle diagnostics for 500 repeated back edges instead of expanding every cycle path',

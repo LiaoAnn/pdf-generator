@@ -259,9 +259,14 @@ type Slot = { holder: Container; key: string | number; bound: Bound };
  * A field path compiled once against the rules: one step per key and per
  * `[]` (a derived field's own path may hold several, for an array of
  * arrays). An item step names its array by the array's rule, so binding
- * and lookups never depend on how long the names are.
+ * and lookups never depend on how long the names are. Each step also names
+ * the rule it reaches (`at`, the same for every path through it) and the
+ * arrays passed so far.
  */
-type Step = { key: string } | { items: RuleField };
+type Step = ({ key: string } | { items: RuleField }) & {
+  at: RuleField;
+  arrays: RuleField[];
+};
 type Compiled = { steps: Step[]; arrays: RuleField[] };
 
 function compiler(rules: Rules) {
@@ -275,14 +280,15 @@ function compiler(rules: Rules) {
     for (const segment of path.split('.')) {
       const name = segment.replace(/(\[\])+$/, '');
       let field: RuleField | undefined = fields?.[name];
-      steps.push({ key: name });
+      if (field === undefined) throw new Error(`no field at ${path}`);
+      steps.push({ key: name, at: field, arrays: [...arrays] });
       for (let i = name.length; i < segment.length; i += 2) {
-        if (field?.type !== 'array') throw new Error(`no array at ${path}`);
-        steps.push({ items: field });
+        if (field.type !== 'array') throw new Error(`no array at ${path}`);
         arrays.push(field);
+        steps.push({ items: field, at: field.items, arrays: [...arrays] });
         field = field.items;
       }
-      fields = field?.type === 'object' ? field.fields : undefined;
+      fields = field.type === 'object' ? field.fields : undefined;
     }
     const result = { steps, arrays };
     compiled.set(path, result);
@@ -290,45 +296,36 @@ function compiler(rules: Rules) {
   };
 }
 
+type Node = { value: FakeValue; bound: Bound };
+
 /**
- * Where a field's values sit in the record. An array on the path gives
- * every item, or only the item `bound` names for it; each slot records the
- * items it went through.
+ * One step from `nodes`: into a key, or into the items of an array (every
+ * item, or only the one `bound` names). Slots when `last`, else nodes.
  */
-function slots(record: FakeRecord, path: Compiled, bound: Bound = new Map()) {
-  let nodes: { value: FakeValue; bound: Bound }[] = [{ value: record, bound }];
+function advance(nodes: Node[], step: Step, bound: Bound, last: boolean) {
   const found: Slot[] = [];
-  path.steps.forEach((step, i) => {
-    const last = i === path.steps.length - 1;
-    const next: typeof nodes = [];
-    for (const node of nodes) {
-      const { value } = node;
-      if ('key' in step) {
-        if (!isContainer(value) || Array.isArray(value)) continue;
-        if (last)
-          found.push({ holder: value, key: step.key, bound: node.bound });
-        else if (value[step.key] !== undefined) {
-          next.push({ value: value[step.key] ?? null, bound: node.bound });
-        }
-        continue;
+  const next: Node[] = [];
+  for (const node of nodes) {
+    const { value } = node;
+    if ('key' in step) {
+      if (!isContainer(value) || Array.isArray(value)) continue;
+      if (last) found.push({ holder: value, key: step.key, bound: node.bound });
+      else if (value[step.key] !== undefined) {
+        next.push({ value: value[step.key] ?? null, bound: node.bound });
       }
-      if (!Array.isArray(value)) continue;
-      const only = node.bound.get(step.items);
-      const indices =
-        only === undefined ? value.keys() : only < value.length ? [only] : [];
-      for (const index of indices) {
-        // An item already bound adds nothing to the binding.
-        const itemBound =
-          only === undefined
-            ? new Map(node.bound).set(step.items, index)
-            : node.bound;
-        if (last) found.push({ holder: value, key: index, bound: itemBound });
-        else next.push({ value: value[index] ?? null, bound: itemBound });
-      }
+      continue;
     }
-    nodes = next;
-  });
-  return found;
+    if (!Array.isArray(value)) continue;
+    const only = bound.get(step.items);
+    const indices =
+      only === undefined ? value.keys() : only < value.length ? [only] : [];
+    for (const index of indices) {
+      const itemBound = new Map(node.bound).set(step.items, index);
+      if (last) found.push({ holder: value, key: index, bound: itemBound });
+      else next.push({ value: value[index] ?? null, bound: itemBound });
+    }
+  }
+  return { found, next };
 }
 
 const read = (holder: Container, key: string | number) =>
@@ -362,6 +359,30 @@ export function fillDerived(
   order: DerivedField[],
 ): Issue[] {
   const compile = compiler(rules);
+
+  // Where a path's values sit: holder and key, for every array item on the
+  // way, or only the items `bound` names. The nodes after each step are
+  // kept per rule reached and binding, so paths sharing a prefix walk it
+  // once (the record's shape doesn't change while derived fields fill).
+  const prefixes = new Map<RuleField, Map<string, Node[]>>();
+  const slots = (path: Compiled, bound: Bound = new Map()): Slot[] => {
+    let nodes: Node[] = [{ value: record, bound: new Map() }];
+    const { steps } = path;
+    for (const step of steps.slice(0, -1)) {
+      const key = step.arrays.map(array => bound.get(array) ?? '*').join(',');
+      let byBinding = prefixes.get(step.at);
+      if (byBinding === undefined) {
+        byBinding = new Map();
+        prefixes.set(step.at, byBinding);
+      }
+      const known = byBinding.get(key);
+      if (known === undefined) {
+        nodes = advance(nodes, step, bound, false).next;
+        byBinding.set(key, nodes);
+      } else nodes = known;
+    }
+    return advance(nodes, steps[steps.length - 1] as Step, bound, true).found;
+  };
   const multiset = (paths: string[]): Multiset => {
     const counts = new Map<Compiled, number>();
     for (const path of paths) {
@@ -388,7 +409,7 @@ export function fillDerived(
     if (sum === undefined) {
       sum = zero;
       const only = new Map(used.map(array => [array, bound.get(array) ?? 0]));
-      for (const { holder, key } of slots(record, path, only)) {
+      for (const { holder, key } of slots(path, only)) {
         const value = read(holder, key);
         if (typeof value === 'number') sum = add(sum, toDecimal(value));
       }
@@ -407,7 +428,7 @@ export function fillDerived(
 
   // Sums and percentages read the same values from every slot: one value.
   const fillOnce = (path: string, value: () => number | null) => {
-    const targets = slots(record, compile(path)).filter(
+    const targets = slots(compile(path)).filter(
       ({ holder, key }) => read(holder, key) !== null,
     );
     if (targets.length === 0) return;
@@ -427,7 +448,7 @@ export function fillDerived(
     const subtracts = multiset(field.subtract);
     let holder: Container | undefined;
     let balance = zero;
-    for (const row of slots(record, compile(rowsOf(path) as string))) {
+    for (const row of slots(compile(rowsOf(path) as string))) {
       if (row.holder !== holder) {
         holder = row.holder;
         balance = total(opening, row.bound);
@@ -435,7 +456,7 @@ export function fillDerived(
       if (read(row.holder, row.key) === null) continue;
       balance = add(balance, totals(adds, row.bound));
       balance = add(balance, negate(totals(subtracts, row.bound)));
-      for (const slot of slots(record, target, row.bound)) {
+      for (const slot of slots(target, row.bound)) {
         if (read(slot.holder, slot.key) !== null) {
           write(slot.holder, slot.key, print(balance));
         }
