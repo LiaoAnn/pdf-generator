@@ -18,7 +18,6 @@ import {
   isValidNationalId,
   isValidPhone,
   recordSchema,
-  UnsupportedRuleError,
 } from './index.ts';
 
 const rules: Rules = {
@@ -180,20 +179,51 @@ describe('public fake-data engine', () => {
     expect(generate({ ...rules, fields: remaining }, seed)).toEqual(expected);
   });
 
-  it('reports only runningBalance as unsupported in the contract example', () => {
-    const error = caught(() => generate(example('valid'), seed));
-    expect(error).toBeInstanceOf(UnsupportedRuleError);
-    expect(error).toMatchObject({
-      ticket: 'T12',
-      unsupported: [
-        { path: 'transactions[].balance', feature: 'derived field' },
-      ],
-    });
-    expect(error.message).toContain('not supported yet (T12)');
-    expect(error.message).toContain('transactions[].balance');
-    expect(error.message).not.toContain('totalDeposits');
-    expect(error.message).not.toContain('utilization');
-    expect(error.message).not.toContain('memo');
+  it('generates the whole contract example with exact transaction balances, deposits and utilization', () => {
+    const contractRules = rulesSchema.parse(example('valid'));
+    // Independent decimal-digit oracle; do not accumulate binary floats.
+    const cents = (value: number): bigint => {
+      const [whole = '0', fraction = ''] = String(value).split('.');
+      return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, '0'));
+    };
+    let transactionCount = 0;
+    for (let index = 0; index < 10; index++) {
+      const record = generate(contractRules, `contract-example-${index}`);
+      expect(recordSchema(contractRules).parse(record)).toEqual(record);
+      expect(
+        JSON.stringify(generate(contractRules, `contract-example-${index}`)),
+      ).toBe(JSON.stringify(record));
+      if (!Array.isArray(record.transactions))
+        throw new Error('Expected transactions');
+      let balance = cents(Number(record.openingBalance));
+      let deposits = 0n;
+      for (const row of record.transactions) {
+        if (row === null || typeof row !== 'object' || Array.isArray(row))
+          throw new Error('Expected transaction');
+        transactionCount++;
+        deposits += cents(Number(row.deposit));
+        balance += cents(Number(row.deposit)) - cents(Number(row.withdrawal));
+        expect(row.balance).toBe(Number(balance) / 100);
+      }
+      expect(record.totalDeposits).toBe(Number(deposits) / 100);
+      const account = record.account;
+      if (
+        account === null ||
+        typeof account !== 'object' ||
+        Array.isArray(account)
+      )
+        throw new Error('Expected account');
+      const limit = cents(Number(account.creditLimit));
+      const numerator = deposits * 10_000n;
+      const rounded =
+        limit === 0n
+          ? null
+          : numerator / limit + (2n * (numerator % limit) >= limit ? 1n : 0n);
+      expect(record.utilization).toBe(
+        rounded === null ? null : Number(rounded) / 100,
+      );
+    }
+    expect(transactionCount).toBeGreaterThan(0);
   });
 
   it.each([

@@ -12,6 +12,7 @@ type Decimal = { units: bigint; scale: number };
 
 const zero: Decimal = { units: 0n, scale: 0 };
 const pow10 = (n: number) => 10n ** BigInt(n);
+const negate = (a: Decimal): Decimal => ({ units: -a.units, scale: a.scale });
 
 function toDecimal(value: number): Decimal {
   const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]\d+))?$/.exec(String(value));
@@ -104,9 +105,48 @@ function references(field: Derived): string[] {
   }
 }
 
+/** A running balance's rows: the array of its last `[]` (e.g. `a[].b[]`). */
+function rowsOf(path: string): string | undefined {
+  const end = path.lastIndexOf('[]');
+  return end < 0 ? undefined : path.slice(0, end + 2);
+}
+
+const through = (path: string, array: string) =>
+  path === array || path.startsWith(`${array}.`);
+
+/** Where a running balance's paths must, or must not, go. */
+function placement({ path, rulePath, field }: DerivedField): Issue[] {
+  if (field.type !== 'runningBalance') return [];
+  const rows = rowsOf(path);
+  if (rows === undefined) {
+    return [
+      { path: rulePath, message: 'a running balance must be in an array item' },
+    ];
+  }
+  const issues: Issue[] = [];
+  for (const key of ['add', 'subtract'] as const) {
+    field[key].forEach((each, i) => {
+      if (!through(each, rows)) {
+        issues.push({
+          path: [...rulePath, key, i],
+          message: `${each} does not go through the rows ${rows}`,
+        });
+      }
+    });
+  }
+  if (through(field.opening, rows)) {
+    issues.push({
+      path: [...rulePath, 'opening'],
+      message: `the opening must not go through the rows ${rows}`,
+    });
+  }
+  return issues;
+}
+
 /**
  * The rule file's derived fields, ordered so each comes after the derived
- * fields it reads; a cycle is a rule-file issue at every field on it.
+ * fields it reads. Issues: a cycle (at every field on it), and a running
+ * balance outside an array item or with paths that miss its rows.
  */
 export function derivedOrder(rules: Rules): {
   order: DerivedField[];
@@ -131,7 +171,7 @@ export function derivedOrder(rules: Rules): {
     visit(field, key, ['fields', key]);
 
   const order: DerivedField[] = [];
-  const issues: Issue[] = [];
+  const issues = [...fields.values()].flatMap(placement);
   const state = new Map<string, 'visiting' | 'done'>();
   const stack: DerivedField[] = [];
   const place = (derived: DerivedField) => {
@@ -166,54 +206,72 @@ type Container = { [key: string]: FakeValue } | FakeValue[];
 const isContainer = (value: FakeValue | undefined): value is Container =>
   typeof value === 'object' && value !== null;
 
-/** Where a field's values sit in the record: holder and key, for every array item on the way. */
-function slots(
-  record: FakeRecord,
-  path: string,
-): { holder: Container; key: string | number }[] {
-  let nodes: FakeValue[] = [record];
+/** Array field path (e.g. `rows[]`) → the index of the item it stands for. */
+type Bound = ReadonlyMap<string, number>;
+type Slot = { holder: Container; key: string | number; bound: Bound };
+
+/**
+ * Where a field's values sit in the record. An array on the path gives
+ * every item, or only the item `bound` names for it; each slot records the
+ * items it went through.
+ */
+function slots(record: FakeRecord, path: string, bound: Bound = new Map()) {
+  let nodes: { value: FakeValue; bound: Bound }[] = [{ value: record, bound }];
   const segments = path.split('.');
-  const found: { holder: Container; key: string | number }[] = [];
+  const found: Slot[] = [];
   segments.forEach((segment, i) => {
     const each = segment.endsWith('[]');
     const name = each ? segment.slice(0, -2) : segment;
+    const prefix = segments.slice(0, i + 1).join('.');
     const last = i === segments.length - 1;
-    const next: FakeValue[] = [];
+    const next: typeof nodes = [];
     for (const node of nodes) {
-      if (!isContainer(node) || Array.isArray(node)) continue;
+      const { value } = node;
+      if (!isContainer(value) || Array.isArray(value)) continue;
       if (last && !each) {
-        found.push({ holder: node, key: name });
+        found.push({ holder: value, key: name, bound: node.bound });
         continue;
       }
-      const value = node[name];
-      if (each) {
-        if (!Array.isArray(value)) continue;
-        value.forEach((item, index) => {
-          if (last) found.push({ holder: value, key: index });
-          else next.push(item);
-        });
-      } else if (value !== undefined) next.push(value);
+      const child = value[name];
+      if (!each) {
+        if (child !== undefined) next.push({ value: child, bound: node.bound });
+        continue;
+      }
+      if (!Array.isArray(child)) continue;
+      const only = node.bound.get(prefix);
+      const indices =
+        only === undefined ? child.keys() : only < child.length ? [only] : [];
+      for (const index of indices) {
+        const itemBound = new Map(node.bound).set(prefix, index);
+        if (last) found.push({ holder: child, key: index, bound: itemBound });
+        else next.push({ value: child[index] ?? null, bound: itemBound });
+      }
     }
     nodes = next;
   });
   return found;
 }
 
-const read = (
-  holder: Container,
-  key: string | number,
-): FakeValue | undefined =>
+const read = (holder: Container, key: string | number) =>
   Array.isArray(holder) ? holder[key as number] : holder[key as string];
 
+function write(holder: Container, key: string | number, value: FakeValue) {
+  if (Array.isArray(holder)) holder[key as number] = value;
+  else holder[key as string] = value;
+}
+
 /** The sum of every value `path` reaches; null counts as 0. */
-function total(record: FakeRecord, path: string): Decimal {
+function total(record: FakeRecord, path: string, bound?: Bound): Decimal {
   let sum = zero;
-  for (const { holder, key } of slots(record, path)) {
+  for (const { holder, key } of slots(record, path, bound)) {
     const value = read(holder, key);
     if (typeof value === 'number') sum = add(sum, toDecimal(value));
   }
   return sum;
 }
+
+const totals = (record: FakeRecord, paths: string[], bound?: Bound) =>
+  paths.reduce((sum, path) => add(sum, total(record, path, bound)), zero);
 
 class Unprintable extends Error {}
 
@@ -224,22 +282,43 @@ function print(value: Decimal | undefined): number | null {
   return number;
 }
 
-function compute(record: FakeRecord, field: Derived): number | null {
-  switch (field.type) {
-    case 'sum':
-      return print(
-        field.of.reduce((sum, path) => add(sum, total(record, path)), zero),
-      );
-    case 'percentage':
-      return print(
-        percentage(
-          total(record, field.part),
-          total(record, field.whole),
-          field.decimals,
-        ),
-      );
-    case 'runningBalance':
-      throw new Error('unreachable: runningBalance is rejected up front');
+// Sums and percentages read the same values from every slot: one value.
+function fillOnce(
+  record: FakeRecord,
+  path: string,
+  value: () => number | null,
+) {
+  const targets = slots(record, path).filter(
+    ({ holder, key }) => read(holder, key) !== null,
+  );
+  if (targets.length === 0) return;
+  const result = value();
+  for (const { holder, key } of targets) write(holder, key, result);
+}
+
+// Row by row through each rows array; paths through the arrays around the
+// rows, and through the rows themselves, refer to the current item.
+function fillRunning(
+  record: FakeRecord,
+  path: string,
+  field: Extract<Derived, { type: 'runningBalance' }>,
+) {
+  const rows = rowsOf(path) as string;
+  let holder: Container | undefined;
+  let balance = zero;
+  for (const row of slots(record, rows)) {
+    if (row.holder !== holder) {
+      holder = row.holder;
+      balance = total(record, field.opening, row.bound);
+    }
+    if (read(row.holder, row.key) === null) continue;
+    balance = add(balance, totals(record, field.add, row.bound));
+    balance = add(balance, negate(totals(record, field.subtract, row.bound)));
+    for (const target of slots(record, path, row.bound)) {
+      if (read(target.holder, target.key) !== null) {
+        write(target.holder, target.key, print(balance));
+      }
+    }
   }
 }
 
@@ -254,25 +333,32 @@ export function fillDerived(
 ): Issue[] {
   const issues: Issue[] = [];
   for (const { path, rulePath, field } of order) {
-    const targets = slots(record, path).filter(
-      ({ holder, key }) => read(holder, key) !== null,
-    );
-    if (targets.length === 0) continue;
-    let value: number | null;
     try {
-      // Paths reach the same values from every slot, so compute once.
-      value = compute(record, field);
+      switch (field.type) {
+        case 'sum':
+          fillOnce(record, path, () => print(totals(record, field.of)));
+          break;
+        case 'percentage':
+          fillOnce(record, path, () =>
+            print(
+              percentage(
+                total(record, field.part),
+                total(record, field.whole),
+                field.decimals,
+              ),
+            ),
+          );
+          break;
+        case 'runningBalance':
+          fillRunning(record, path, field);
+          break;
+      }
     } catch (error) {
       if (!(error instanceof Unprintable)) throw error;
       issues.push({
         path: rulePath,
         message: 'the exact result has more digits than a number can print',
       });
-      continue;
-    }
-    for (const { holder, key } of targets) {
-      if (Array.isArray(holder)) holder[key as number] = value;
-      else holder[key as string] = value;
     }
   }
   return issues;

@@ -11,8 +11,6 @@ import {
   InvalidSeedError,
   type Issue,
   issuesOf,
-  type Unsupported,
-  UnsupportedRuleError,
 } from './errors.ts';
 import { createRng, type Rng } from './random.ts';
 import { type FakeRecord, type FakeValue, recordSchema } from './schema.ts';
@@ -33,12 +31,6 @@ type Generator<T extends RuleField['type']> = (
   rng: Rng,
   child: (field: RuleField, key: string | number) => FakeValue,
 ) => FakeValue;
-
-// T12 replaces these with real generators (derived fields also need a pass
-// over the finished record) and removes their entries from `unsupported`.
-const notYet = (): never => {
-  throw new Error('unreachable: unsupported fields are rejected up front');
-};
 
 const generators: { [T in RuleField['type']]: Generator<T> } = {
   name: (field, rng) => personName(rng, field.gender),
@@ -69,20 +61,9 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
     fillerText(rng, field.lang, rng.int(field.minLength, field.maxLength)),
   // Placeholders: fillDerived computes them once every drawn value exists.
   sum: () => 0,
-  runningBalance: notYet,
+  runningBalance: () => 0,
   percentage: () => 0,
 };
-
-/** Features of `field` itself that the engine cannot generate yet (T12). */
-function unsupported(field: RuleField): string[] {
-  const features: string[] = [];
-  switch (field.type) {
-    case 'runningBalance':
-      features.push('derived field');
-      break;
-  }
-  return features;
-}
 
 /** Ranges the contract allows but no value satisfies, as rule-file issues. */
 function impossible(field: RuleField): Issue[] {
@@ -140,32 +121,24 @@ function valueCount(field: RuleField): number {
   }
 }
 
-/** Every unsupported feature and impossible range in the rule file. */
-function check(rules: Rules) {
-  const features: Unsupported[] = [];
+/** Every impossible range in the rule file, and a record too large. */
+function check(rules: Rules): Issue[] {
   const issues: Issue[] = [];
-  const visit = (
-    field: RuleField,
-    recordPath: string,
-    rulePath: (string | number)[],
-  ) => {
-    for (const feature of unsupported(field)) {
-      features.push({ path: recordPath, feature });
-    }
+  const visit = (field: RuleField, rulePath: (string | number)[]) => {
     for (const issue of impossible(field)) {
       issues.push({ ...issue, path: [...rulePath, ...issue.path] });
     }
     if (field.type === 'object') {
       for (const [key, child] of Object.entries(field.fields)) {
-        visit(child, `${recordPath}.${key}`, [...rulePath, 'fields', key]);
+        visit(child, [...rulePath, 'fields', key]);
       }
     }
     if (field.type === 'array') {
-      visit(field.items, `${recordPath}[]`, [...rulePath, 'items']);
+      visit(field.items, [...rulePath, 'items']);
     }
   };
   for (const [key, field] of Object.entries(rules.fields)) {
-    visit(field, key, ['fields', key]);
+    visit(field, ['fields', key]);
   }
   const count = valueCount({ type: 'object', fields: rules.fields });
   if (count > maxValues) {
@@ -174,7 +147,7 @@ function check(rules: Rules) {
       message: `a record would hold up to ${count} values; the limit is ${maxValues}`,
     });
   }
-  return { features, issues };
+  return issues;
 }
 
 type Child = (field: RuleField, key: string | number) => FakeValue;
@@ -205,12 +178,9 @@ export function generate(rules: unknown, seed: string): FakeRecord {
       `invalid seed ${JSON.stringify(seed)}: use 1-64 of A-Z a-z 0-9 _ -`,
     );
   }
-  const { features, issues } = check(parsedRules.data);
-  if (features.length > 0) throw new UnsupportedRuleError(features);
-  const { order, issues: cycles } = derivedOrder(parsedRules.data);
-  if (issues.length + cycles.length > 0) {
-    throw new InvalidRulesError([...issues, ...cycles]);
-  }
+  const { order, issues: derivedIssues } = derivedOrder(parsedRules.data);
+  const issues = [...check(parsedRules.data), ...derivedIssues];
+  if (issues.length > 0) throw new InvalidRulesError(issues);
 
   const childAt =
     (path: string): Child =>
