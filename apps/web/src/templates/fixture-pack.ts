@@ -1,7 +1,10 @@
-// A small, fixed template pack (one A4 page of Taiwanese customer data) that
-// batches run on until T15 uploads real ones. Its template uses only the
-// `{{path}}` form the fill stub understands (fill.ts).
-import type { TemplatePack } from './source.ts';
+// A small, fixed template pack (one A4 page of Taiwanese customer data) for
+// batch tests: as a template source, or stored as an uploaded version.
+import { drizzle } from 'drizzle-orm/d1';
+import { strToU8, zipSync } from 'fflate';
+import * as schema from '../db/schema.ts';
+import type { TemplatePack, TemplateSourceApi } from './source.ts';
+import { saveVersion } from './store.ts';
 
 const template = `<!doctype html>
 <html lang="zh-Hant-TW">
@@ -39,7 +42,7 @@ export const fixtureReport: TemplatePack = {
     schemaVersion: 1,
     id: 'fixture-report',
     name: '客戶基本資料表（測試樣板）',
-    description: 'T16 的固定樣板，T15 上線前批次用它產生。',
+    description: 'T16 的固定樣板，批次測試用。',
     page: { size: 'A4', orientation: 'portrait' },
     files: {
       template: 'template.hbs',
@@ -68,4 +71,40 @@ export const fixtureReport: TemplatePack = {
       creditLimit: { type: 'money', min: 100000, max: 5000000 },
     },
   },
+  sample: {
+    company: '青禾測試股份有限公司',
+    businessId: '04595257',
+    contact: {
+      name: '王小明',
+      nationalId: 'A123456789',
+      mobile: '0912-345-678',
+      address: '100臺北市中正區重慶南路一段122號',
+    },
+    openedOn: '2024-03-15',
+    creditLimit: 1200000,
+  },
 };
+
+/** Knows only `fixture-report` version 1. */
+export const fixtureTemplates: TemplateSourceApi = {
+  get: async (id, version) =>
+    id === fixtureReport.manifest.id && version === 1
+      ? fixtureReport
+      : undefined,
+};
+
+/** Stores the pack as version 1 of `fixture-report`, as an upload would. */
+export async function storeFixturePack(env: Env): Promise<void> {
+  const { manifest, template, styles, rules, sample } = fixtureReport;
+  const json = (value: unknown) => strToU8(JSON.stringify(value));
+  const zip = zipSync({
+    'manifest.json': json(manifest),
+    [manifest.files.template]: strToU8(template),
+    ...Object.fromEntries(
+      manifest.files.styles.map((path, i) => [path, strToU8(styles[i] ?? '')]),
+    ),
+    [manifest.files.rules]: json(rules),
+    [manifest.files.sample]: json(sample),
+  });
+  await saveVersion(drizzle(env.DB, { schema }), env.FILES, manifest, zip);
+}

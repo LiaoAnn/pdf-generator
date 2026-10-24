@@ -5,10 +5,8 @@
 import { and, eq } from 'drizzle-orm';
 import { type DrizzleD1Database, drizzle } from 'drizzle-orm/d1';
 import * as schema from '../db/schema.ts';
-import {
-  fixtureTemplates,
-  type TemplateSourceApi,
-} from '../templates/source.ts';
+import type { TemplateSourceApi } from '../templates/source.ts';
+import { templateStore } from '../templates/store.ts';
 import { type FixtureJob, makeFixture } from './fixture.ts';
 import { createPrinter, type Printer } from './printer.ts';
 import { countFinished, readBatchRow } from './store.ts';
@@ -136,10 +134,11 @@ export async function consumeFixtures(
       printer: createPrinter(env.PRINT, env.PRINT_TOKEN),
     };
   }
+  const db = drizzle(env.DB, { schema });
   await handleFixtureMessages(batch.messages, {
-    db: drizzle(env.DB, { schema }),
+    db,
     files: env.FILES,
-    templates: fixtureTemplates,
+    templates: templateStore(db, env.FILES),
     printer: printer.printer,
     workflow: env.BATCH_WORKFLOW,
   });

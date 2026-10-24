@@ -12,7 +12,10 @@ import { getPlatformProxy } from 'wrangler';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import * as schema from '../db/schema.ts';
-import { fixtureTemplates } from '../templates/source.ts';
+import {
+  fixtureTemplates,
+  storeFixturePack,
+} from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 import type { FixtureJob } from './fixture.ts';
 import { handleFixtureMessages } from './queue.ts';
@@ -129,6 +132,7 @@ beforeEach(async () => {
   await migrate(db(), {
     migrationsFolder: fileURLToPath(new URL('../../drizzle', import.meta.url)),
   });
+  await storeFixturePack(platform.env);
 }, 60_000);
 afterEach(async () => {
   await platform?.dispose();

@@ -11,6 +11,7 @@ import { migrate } from 'drizzle-orm/d1/migrator';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
+import { storeFixturePack } from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 
 const configPath = fileURLToPath(
@@ -96,6 +97,7 @@ beforeEach(async () => {
   fakeWorkflow.get.mockClear();
   platform = await getPlatformProxy<Env>({ configPath, persist: false });
   await migrate(drizzle(platform.env.DB), { migrationsFolder });
+  await storeFixturePack(platform.env);
 }, 60_000);
 afterEach(async () => {
   await platform?.dispose();

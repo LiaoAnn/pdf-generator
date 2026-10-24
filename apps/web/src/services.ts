@@ -4,7 +4,8 @@
 import { type DrizzleD1Database, drizzle } from 'drizzle-orm/d1';
 import { Context, Effect } from 'effect';
 import * as schema from './db/schema.ts';
-import { fixtureTemplates, TemplateSource } from './templates/source.ts';
+import { TemplateSource } from './templates/source.ts';
+import { templateStore } from './templates/store.ts';
 
 /** D1 through Drizzle, typed by src/db/schema.ts. */
 export class Database extends Context.Service<
@@ -28,9 +29,10 @@ function database(env: Env): DrizzleD1Database<typeof schema> {
 }
 
 export function provideServices(env: Env) {
+  const db = database(env);
   return <A, E>(effect: Effect.Effect<A, E, Services>): Effect.Effect<A, E> =>
     effect.pipe(
-      Effect.provideService(Database, database(env)),
+      Effect.provideService(Database, db),
       Effect.provideService(Files, env.FILES),
       Effect.provideService(BatchRunner, {
         start: async batchId => {
@@ -40,6 +42,6 @@ export function provideServices(env: Env) {
           });
         },
       }),
-      Effect.provideService(TemplateSource, fixtureTemplates),
+      Effect.provideService(TemplateSource, templateStore(db, env.FILES)),
     );
 }

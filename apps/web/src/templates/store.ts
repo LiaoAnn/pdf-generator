@@ -1,10 +1,18 @@
 // Uploaded template versions: the zip in R2 under its SHA-256, a row per
 // version in D1. Versions never change once written, so a batch that names one
 // always gets the same pack.
-import type { Manifest, TemplateSummary } from '@pdf-generator/contract';
+import {
+  type Manifest,
+  manifestSchema,
+  rulesSchema,
+  type TemplateSummary,
+} from '@pdf-generator/contract';
+import { recordSchema } from '@pdf-generator/fake-data';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
+import { strFromU8, unzipSync } from 'fflate';
 import * as schema from '../db/schema.ts';
+import type { TemplatePack, TemplateSourceApi } from './source.ts';
 
 const { templates } = schema;
 type Db = DrizzleD1Database<typeof schema>;
@@ -91,4 +99,56 @@ export async function readPackZip(
   row: TemplateRow,
 ): Promise<R2ObjectBody | null> {
   return files.get(packKey(row.id, row.packSha256));
+}
+
+// The parts of a stored zip a batch needs. It passed checkPack on upload, so
+// it is only parsed here, not checked again.
+function unpack(zip: Uint8Array): TemplatePack {
+  const files = unzipSync(zip);
+  const text = (path: string) => {
+    const bytes = files[path];
+    if (bytes === undefined) throw new Error(`the stored pack has no ${path}`);
+    return strFromU8(bytes);
+  };
+  const manifest = manifestSchema.parse(JSON.parse(text('manifest.json')));
+  const rules = rulesSchema.parse(JSON.parse(text(manifest.files.rules)));
+  return {
+    manifest,
+    template: text(manifest.files.template),
+    styles: manifest.files.styles.map(text),
+    rules,
+    sample: recordSchema(rules).parse(JSON.parse(text(manifest.files.sample))),
+  };
+}
+
+// Unpacked versions, newest use last. A version never changes, so an entry
+// stays valid; the bound keeps an isolate's memory small.
+const unpacked = new Map<string, TemplatePack>();
+const maxUnpacked = 8;
+
+/** Template versions as batches read them: uploaded packs in R2 + D1. */
+export function templateStore(db: Db, files: R2Bucket): TemplateSourceApi {
+  return {
+    async get(id, version) {
+      const row = await readVersion(db, id, version);
+      if (!row) return undefined;
+      const key = `${row.id}/${row.version}/${row.packSha256}`;
+      let pack = unpacked.get(key);
+      if (pack) {
+        unpacked.delete(key);
+      } else {
+        const object = await readPackZip(files, row);
+        if (!object) {
+          throw new Error(`template ${id} version ${version}: zip missing`);
+        }
+        pack = unpack(new Uint8Array(await object.arrayBuffer()));
+      }
+      unpacked.set(key, pack);
+      for (const old of unpacked.keys()) {
+        if (unpacked.size <= maxUnpacked) break;
+        unpacked.delete(old);
+      }
+      return pack;
+    },
+  };
 }
