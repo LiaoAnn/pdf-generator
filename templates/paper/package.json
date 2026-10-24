@@ -1,0 +1,21 @@
+{
+  "name": "@pdf-generator/paper",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "acceptance": "node src/acceptance.ts",
+    "build-pack": "node src/build.ts",
+    "check-pack": "INIT_CWD=\"$PWD\" node ../../packages/template-tools/src/cli.ts pack",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@pdf-generator/template-tools": "workspace:*",
+    "@types/node": "^24.13.6",
+    "katex": "~0.16.47",
+    "parse5": "^8.0.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
