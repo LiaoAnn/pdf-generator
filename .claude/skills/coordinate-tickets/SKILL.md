@@ -13,7 +13,7 @@ You run as a Local thread in the main checkout `/data/code/pdf-generator`. You c
 
 - Workers commit, push their own branch and open PRs.
 - You merge a PR yourself, without asking, when it passes "Merge bar" below, and settle the worker's thread once it has cleaned up.
-- At most **3** worker threads running at once.
+- At most **3** worker threads running at once. Once T16-3 (batch browser sessions closed) has merged, at most **4** (granted 2026-10-24), with the memory rule in "Dispatch".
 - After a ticket merges and its thread is settled, `wt-down` its stack and remove its worktree and local branch ("Cleanup" below). Granted 2026-10-24.
 
 Everything else still needs the user's OK each time: external-service calls (see `AGENTS.md`), `wt-down` of any worktree whose ticket hasn't merged, changing a ticket's scope, splitting or merging tickets, contract tickets, edits to `AGENTS.md` or skills.
@@ -65,7 +65,7 @@ Workers don't send their plans; they plan and carry them out on their own. A pla
 
 ## Dispatch
 
-A ticket is dispatchable when it is ready, fewer than 3 workers are running, and the collision rules allow it.
+A ticket is dispatchable when it is ready, fewer workers than the cap are running, and the collision rules allow it. The 4th worker also needs `MemAvailable` of at least 5 GB (`free -g`, the `available` column) right before you launch it; otherwise wait. On 2026-10-24, 3 workers took the 10-minute average down to 3.4 GB, and an active worker's peaks add about 1.5–2 GB.
 
 ### Collision rules (from `docs/tickets.md`'s 派工撞車表)
 
@@ -160,6 +160,6 @@ Workers wake you by message, but a thread that crashes sends nothing. When the f
 
 - Write or fix feature code, or edit a worker's branch.
 - Answer a user decision for the user, or let an earlier OK for an external call cover a new one.
-- Exceed 3 running workers, or start a ticket whose Blocked by hasn't merged.
+- Exceed the worker cap, or start a ticket whose Blocked by hasn't merged.
 - Merge on the worker's word: check every point of the merge bar yourself.
 - Use `t3_thread_send` to start a cross-model review: reviews are the worker's job, through `cross-model-delegate`.
