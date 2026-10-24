@@ -13,6 +13,7 @@
   "account": {
     "number": 39120647402621
   },
+  "statementDigits": [3, 0, 9, 1, 5, 7, 2, 8, 4, 6],
   "periodStart": "2026-09-01",
   "periodEnd": "2026-09-30",
   "issueDate": "2026-10-03",

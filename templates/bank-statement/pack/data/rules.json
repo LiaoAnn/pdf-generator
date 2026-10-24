@@ -28,16 +28,27 @@
             "新竹分行"
           ]
         },
-        "branchPhone": { "type": "phone", "kind": "landline" },
-        "businessId": { "type": "businessId" },
-        "address": { "type": "address" }
+        "branchPhone": {
+          "type": "phone",
+          "kind": "landline"
+        },
+        "businessId": {
+          "type": "businessId"
+        },
+        "address": {
+          "type": "address"
+        }
       }
     },
     "customer": {
       "type": "object",
       "fields": {
-        "name": { "type": "name" },
-        "address": { "type": "address" }
+        "name": {
+          "type": "name"
+        },
+        "address": {
+          "type": "address"
+        }
       }
     },
     "account": {
@@ -50,9 +61,29 @@
         }
       }
     },
-    "periodStart": { "type": "constant", "value": "2026-09-01" },
-    "periodEnd": { "type": "constant", "value": "2026-09-30" },
-    "issueDate": { "type": "constant", "value": "2026-10-03" },
+    "statementDigits": {
+      "type": "array",
+      "description": "The statement number, one digit per item, so the template can draw each Code 39 character.",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "integer",
+        "min": 0,
+        "max": 9
+      }
+    },
+    "periodStart": {
+      "type": "constant",
+      "value": "2026-09-01"
+    },
+    "periodEnd": {
+      "type": "constant",
+      "value": "2026-09-30"
+    },
+    "issueDate": {
+      "type": "constant",
+      "value": "2026-10-03"
+    },
     "opening": {
       "type": "money",
       "description": "At least 32 rows × the largest withdrawal, so no balance goes negative.",
@@ -68,7 +99,11 @@
       "items": {
         "type": "object",
         "fields": {
-          "date": { "type": "date", "min": "2026-09-01", "max": "2026-09-30" },
+          "date": {
+            "type": "date",
+            "min": "2026-09-01",
+            "max": "2026-09-30"
+          },
           "summary": {
             "type": "choice",
             "options": [
@@ -121,8 +156,14 @@
     "totals": {
       "type": "object",
       "fields": {
-        "deposits": { "type": "sum", "of": ["transactions[].deposit"] },
-        "withdrawals": { "type": "sum", "of": ["transactions[].withdrawal"] }
+        "deposits": {
+          "type": "sum",
+          "of": ["transactions[].deposit"]
+        },
+        "withdrawals": {
+          "type": "sum",
+          "of": ["transactions[].withdrawal"]
+        }
       }
     }
   }
