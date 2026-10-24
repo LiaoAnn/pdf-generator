@@ -28,6 +28,36 @@
     },
   };
 
+  // The pack's stylesheets are linked after this script and may still be
+  // loading at DOMContentLoaded. Remember every link that has loaded or
+  // failed, from the start, so one that settled early is not waited on.
+  /** @type {WeakSet<EventTarget>} */
+  const settledLinks = new WeakSet();
+  /** @param {Event} event */
+  const settle = event => {
+    if (event.target instanceof HTMLLinkElement) settledLinks.add(event.target);
+  };
+  document.addEventListener('load', settle, true);
+  document.addEventListener('error', settle, true);
+  // The stylesheets Paged.js reads (its Polisher's removeStyles).
+  const linkedStylesheets = () => [
+    .../** @type {NodeListOf<HTMLLinkElement>} */ (
+      document.querySelectorAll("link[rel='stylesheet']")
+    ),
+  ];
+  function stylesheetsSettled() {
+    return Promise.all(
+      linkedStylesheets().map(link =>
+        settledLinks.has(link)
+          ? undefined
+          : new Promise(resolve => {
+              link.addEventListener('load', resolve, { once: true });
+              link.addEventListener('error', resolve, { once: true });
+            }),
+      ),
+    );
+  }
+
   /** @type {Set<string>} Faces in use, as "<family key>|regular" or "<family key>|bold". */
   const used = new Set();
   /** @param {string} weight */
@@ -72,11 +102,24 @@
   // Rules computed styles can't show before Paged.js runs: @page rules (margin
   // boxes exist only after pagination) and @media print rules (Paged.js
   // applies them; the page is still on screen media here). Read them from the
-  // stylesheets' text: a platform family named anywhere in a declaration
-  // block's font or font-family, bold when the block asks for bold.
-  function findUsedInAtRules() {
-    for (const style of document.querySelectorAll('style')) {
-      const css = (style.textContent ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
+  // stylesheets' text, as Paged.js does, of <style> and linked stylesheets
+  // alike: a platform family named anywhere in a declaration block's font or
+  // font-family, bold when the block asks for bold.
+  async function findUsedInAtRules() {
+    const texts = [
+      ...[...document.querySelectorAll('style')].map(
+        style => style.textContent ?? '',
+      ),
+      ...(await Promise.all(
+        linkedStylesheets().map(link =>
+          fetch(link.href)
+            .then(response => (response.ok ? response.text() : ''))
+            .catch(() => ''),
+        ),
+      )),
+    ];
+    for (const text of texts) {
+      const css = text.replace(/\/\*[\s\S]*?\*\//g, '');
       const starts = /@page\b|@media\b[^{;]*\bprint\b/gi;
       for (let match = starts.exec(css); match; match = starts.exec(css)) {
         const open = css.indexOf('{', match.index);
@@ -111,8 +154,9 @@
   // Declares only the faces in use (T03 Must 8) and waits for them. A face
   // that fails to load stays in document.fonts with status "error".
   async function loadUsedFaces() {
+    await stylesheetsSettled();
     findUsedInDocument();
-    findUsedInAtRules();
+    await findUsedInAtRules();
     const faces = [...used].sort().map(entry => {
       const [key = '', variant] = entry.split('|');
       const font = platformFonts[key];
