@@ -66,6 +66,8 @@ export const fixtures = sqliteTable(
     error: text('error'),
     attempts: integer('attempts').notNull(),
     pageCount: integer('page_count'),
+    checkPassed: integer('check_passed', { mode: 'boolean' }),
+    checkDifferences: integer('check_differences'),
     /** SHA-256 hex of the stored files, to compare a batch with its re-run. */
     dataSha256: text('data_sha256'),
     gtSha256: text('gt_sha256'),

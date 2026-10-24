@@ -230,6 +230,9 @@ test('uploaded v1 and v2 batches reach the queue printer with their own text eve
       templates: templateStore(db(), platform.env.FILES),
       printer: { print },
       workflow: { get: async () => ({ sendEvent: async () => {} }) },
+      checker: {
+        check: async () => ({ ok: true, differences: [] }),
+      },
     });
     expect(message.retry).not.toHaveBeenCalled();
     expect(message.ack).toHaveBeenCalledOnce();
@@ -302,6 +305,10 @@ test.each([true, false])(
       templates: { get: async () => value },
       printer: { print },
       files: platform.env.FILES,
+      // makeFixture checks the printed PDF. This test only covers filling.
+      checker: {
+        check: async () => ({ ok: true, differences: [] }),
+      },
     };
     await makeFixture(job, deps);
     const first = print.mock.calls[0]?.[0];

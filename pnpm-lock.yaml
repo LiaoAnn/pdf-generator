@@ -245,6 +245,9 @@ importers:
       '@pdf-generator/fake-data':
         specifier: workspace:*
         version: link:../../packages/fake-data
+      '@pdf-generator/self-check':
+        specifier: workspace:*
+        version: link:../../packages/self-check
       '@pdf-generator/template-tools':
         specifier: workspace:*
         version: link:../../packages/template-tools

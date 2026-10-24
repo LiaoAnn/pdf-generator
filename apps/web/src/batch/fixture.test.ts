@@ -6,6 +6,7 @@ import {
   seedSchema,
 } from '@pdf-generator/contract';
 import { generate } from '@pdf-generator/fake-data';
+import type { SelfCheckReport } from '@pdf-generator/self-check';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
@@ -39,6 +40,26 @@ const pdf = new Uint8Array([37, 80, 68, 70, 45, 0, 128, 255, 10]);
 const hash = (bytes: Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
 
+const passingReport: SelfCheckReport = { ok: true, differences: [] };
+
+function fakeChecker(report: SelfCheckReport = passingReport) {
+  return vi.fn(async (_pdf: Uint8Array, _gt: GroundTruth) => report);
+}
+
+// A missing call is asserted separately. Comparing the absent argument to gt
+// would dump the whole ground-truth document into the failure.
+function expectCheckCall(
+  check: ReturnType<typeof fakeChecker>,
+  nth: number,
+  pdfBytes: Uint8Array,
+  groundTruth: GroundTruth,
+) {
+  const call = check.mock.calls[nth];
+  if (!call) return;
+  expect(call[0]).toEqual(pdfBytes);
+  expect(call[1]).toEqual(groundTruth);
+}
+
 beforeAll(async () => {
   platform = await getPlatformProxy<Env>({
     configPath: fileURLToPath(new URL('../../wrangler.jsonc', import.meta.url)),
@@ -52,7 +73,7 @@ afterAll(async () => {
 async function stored(
   batchId: string,
   index: number,
-  file: 'data.json' | 'gt.json' | 'fixture.pdf',
+  file: 'data.json' | 'gt.json' | 'fixture.pdf' | 'check.json',
 ) {
   // Literal prefix expectation prevents a shared bug in fixtureKey and makeFixture hiding misplaced files.
   const object = await platform.env.FILES.get(
@@ -65,14 +86,18 @@ async function stored(
 
 describe('makeFixture with local R2', () => {
   test('stores a reproducible fixture with exact printer bytes, matching source and hashes', async () => {
+    // Regression: makeFixture stores the PDF without check.json, or returns
+    // FixtureFiles without checkPassed and checkDifferences.
     const print = vi
       .fn<Printer['print']>()
       .mockResolvedValue({ pageCount: 2, pdf, gt });
     const get = vi.fn(fixtureTemplates.get);
+    const check = fakeChecker();
     const deps = {
       templates: { get },
       printer: { print },
       files: platform.env.FILES,
+      checker: { check },
     };
     const expectedRecord = generate(
       fixtureReport.rules,
@@ -115,21 +140,37 @@ describe('makeFixture with local R2', () => {
     expect(gtSchema.parse(storedGt)).toEqual(gt);
     expect(storedGt.source).toEqual(source);
     expect(pdfBytes).toEqual(pdf);
-    expect(first).toEqual({
+    const checkKey = `batches/${job.batchId}/${String(job.index).padStart(4, '0')}/check.json`;
+    expect.soft(first).toEqual({
       pageCount: 2,
       dataSha256: hash(dataBytes),
       gtSha256: hash(gtBytes),
       pdfSha256: hash(pdfBytes),
+      checkPassed: passingReport.ok,
+      checkDifferences: passingReport.differences.length,
     });
-    expect(
-      (await platform.env.FILES.list({ prefix: 'batches/b1/' })).objects
-        .map(o => o.key)
-        .sort(),
-    ).toEqual([
-      'batches/b1/0007/data.json',
-      'batches/b1/0007/fixture.pdf',
-      'batches/b1/0007/gt.json',
-    ]);
+    expect
+      .soft(
+        (await platform.env.FILES.list({ prefix: 'batches/b1/' })).objects
+          .map(o => o.key)
+          .sort(),
+      )
+      .toEqual([
+        'batches/b1/0007/check.json',
+        'batches/b1/0007/data.json',
+        'batches/b1/0007/fixture.pdf',
+        'batches/b1/0007/gt.json',
+      ]);
+    const checkObject = await platform.env.FILES.get(checkKey);
+    expect.soft(checkObject, 'check.json').not.toBeNull();
+    const checkBytes = checkObject
+      ? new Uint8Array(await checkObject.arrayBuffer())
+      : undefined;
+    if (checkBytes) {
+      expect(new TextDecoder().decode(checkBytes)).toBe(
+        `${JSON.stringify(passingReport, null, 2)}\n`,
+      );
+    }
 
     const second = await makeFixture(job, deps);
     expect(await stored(job.batchId, job.index, 'data.json')).toEqual(
@@ -138,6 +179,81 @@ describe('makeFixture with local R2', () => {
     expect(await stored(job.batchId, job.index, 'gt.json')).toEqual(gtBytes);
     expect(second).toEqual(first);
     expect(print).toHaveBeenCalledTimes(2);
+    const secondCheck = await platform.env.FILES.get(checkKey);
+    expect.soft(secondCheck, 'check.json after the second run').not.toBeNull();
+    if (checkBytes && secondCheck) {
+      expect(new Uint8Array(await secondCheck.arrayBuffer())).toEqual(
+        checkBytes,
+      );
+    }
+    expect.soft(check.mock.calls.map(([bytes]) => bytes)).toEqual([pdf, pdf]);
+    expectCheckCall(check, 0, pdf, gt);
+    expectCheckCall(check, 1, pdf, gt);
+  });
+
+  test('stores a failing self-check as check.json and returns its pass flag and difference count', async () => {
+    // Regression: a difference makes makeFixture throw or drop the PDF, or
+    // checkPassed and checkDifferences are not report.ok and differences.length.
+    const mismatchReport: SelfCheckReport = {
+      ok: false,
+      differences: [
+        {
+          kind: 'text',
+          page: 1,
+          blockId: 'title',
+          expected: '臺灣示範股份有限公司 月報',
+          actual: '月報',
+          message:
+            'Block title on page 1: the PDF text is not the ground truth',
+        },
+        {
+          kind: 'page_count',
+          expected: 2,
+          actual: 1,
+          message: 'The PDF has 1 page; gt.json has 2',
+        },
+      ],
+    };
+    const print = vi
+      .fn<Printer['print']>()
+      .mockResolvedValue({ pageCount: 2, pdf, gt });
+    const check = fakeChecker(mismatchReport);
+    const mismatchJob = { ...job, batchId: 'mismatch' };
+    const result = await makeFixture(mismatchJob, {
+      templates: fixtureTemplates,
+      printer: { print },
+      files: platform.env.FILES,
+      checker: { check },
+    });
+    expect(
+      await stored(mismatchJob.batchId, mismatchJob.index, 'fixture.pdf'),
+    ).toEqual(pdf);
+    expect.soft(result).toMatchObject({
+      checkPassed: mismatchReport.ok,
+      checkDifferences: mismatchReport.differences.length,
+    });
+    expect.soft(check.mock.calls.map(([bytes]) => bytes)).toEqual([pdf]);
+    expectCheckCall(check, 0, pdf, gt);
+    const checkKey = `batches/${mismatchJob.batchId}/${String(mismatchJob.index).padStart(4, '0')}/check.json`;
+    const checkObject = await platform.env.FILES.get(checkKey);
+    expect.soft(checkObject, 'check.json').not.toBeNull();
+    if (checkObject) {
+      expect(new TextDecoder().decode(await checkObject.arrayBuffer())).toBe(
+        `${JSON.stringify(mismatchReport, null, 2)}\n`,
+      );
+    }
+    expect
+      .soft(
+        (await platform.env.FILES.list({ prefix: 'batches/mismatch/' })).objects
+          .map(o => o.key)
+          .sort(),
+      )
+      .toEqual([
+        'batches/mismatch/0007/check.json',
+        'batches/mismatch/0007/data.json',
+        'batches/mismatch/0007/fixture.pdf',
+        'batches/mismatch/0007/gt.json',
+      ]);
   });
 
   test('uses the selected pack rules and inlines every stylesheet in order while escaping generated text', async () => {
@@ -159,12 +275,14 @@ describe('makeFixture with local R2', () => {
     const print = vi
       .fn<Printer['print']>()
       .mockResolvedValue({ pageCount: 2, pdf, gt });
+    const check = fakeChecker();
     await makeFixture(
       { ...job, batchId: 'custom', templateId: 'custom', templateVersion: 3 },
       {
         templates: { get },
         printer: { print },
         files: platform.env.FILES,
+        checker: { check },
       },
     );
     expect(get).toHaveBeenCalledExactlyOnceWith('custom', 3);
@@ -184,8 +302,11 @@ describe('makeFixture with local R2', () => {
   });
 
   test('rejects an unknown template without printing or storing a partial fixture', async () => {
+    // Regression: the checker runs before the template is resolved, or a miss
+    // still writes check.json.
     const print = vi.fn<Printer['print']>();
     const get = vi.fn(fixtureTemplates.get);
+    const check = fakeChecker();
     await expect(
       makeFixture(
         { ...job, batchId: 'unknown', templateVersion: 999 },
@@ -193,19 +314,23 @@ describe('makeFixture with local R2', () => {
           templates: { get },
           printer: { print },
           files: platform.env.FILES,
+          checker: { check },
         },
       ),
     ).rejects.toBeInstanceOf(Error);
     expect(get).toHaveBeenCalledExactlyOnceWith(job.templateId, 999);
     expect(print).not.toHaveBeenCalled();
+    expect(check).not.toHaveBeenCalled();
     expect(
       (await platform.env.FILES.list({ prefix: 'batches/unknown/' })).objects,
     ).toEqual([]);
   });
 
   test('propagates the printer error unchanged without storing a partial fixture', async () => {
+    // Regression: a printer failure still runs the checker or leaves check.json.
     const error = new Error('print unavailable');
     const print = vi.fn<Printer['print']>().mockRejectedValue(error);
+    const check = fakeChecker();
     await expect(
       makeFixture(
         { ...job, batchId: 'failed' },
@@ -213,10 +338,12 @@ describe('makeFixture with local R2', () => {
           templates: fixtureTemplates,
           printer: { print },
           files: platform.env.FILES,
+          checker: { check },
         },
       ),
     ).rejects.toBe(error);
     expect(print).toHaveBeenCalledTimes(1);
+    expect(check).not.toHaveBeenCalled();
     expect(
       (await platform.env.FILES.list({ prefix: 'batches/failed/' })).objects,
     ).toEqual([]);

@@ -166,6 +166,9 @@ test('a started 100-fixture batch exposes rising HTTP progress and finishes with
         }),
       },
       workflow: { get: async () => ({ sendEvent: async () => {} }) },
+      checker: {
+        check: async () => ({ ok: true, differences: [] }),
+      },
     });
     for (const message of messages) {
       expect(message.ack).toHaveBeenCalledTimes(1);

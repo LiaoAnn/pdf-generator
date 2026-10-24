@@ -3,6 +3,7 @@
 import { type FakeRecord, generate } from '@pdf-generator/fake-data';
 import { fill } from '@pdf-generator/template-tools';
 import type { TemplatePack, TemplateSourceApi } from '../templates/source.ts';
+import type { Checker } from './check.ts';
 import type { Printer } from './printer.ts';
 
 export interface FixtureJob {
@@ -14,13 +15,19 @@ export interface FixtureJob {
   index: number;
 }
 
-export type FixtureFile = 'data.json' | 'gt.json' | 'fixture.pdf';
+export type FixtureFile =
+  | 'data.json'
+  | 'gt.json'
+  | 'fixture.pdf'
+  | 'check.json';
 
 export interface FixtureFiles {
   pageCount: number;
   dataSha256: string;
   gtSha256: string;
   pdfSha256: string;
+  checkPassed: boolean;
+  checkDifferences: number;
 }
 
 const encoder = new TextEncoder();
@@ -74,7 +81,12 @@ export function render(pack: TemplatePack, record: FakeRecord): string {
 
 export async function makeFixture(
   job: FixtureJob,
-  deps: { templates: TemplateSourceApi; printer: Printer; files: R2Bucket },
+  deps: {
+    templates: TemplateSourceApi;
+    printer: Printer;
+    files: R2Bucket;
+    checker: Checker;
+  },
 ): Promise<FixtureFiles> {
   const pack = await deps.templates.get(job.templateId, job.templateVersion);
   if (!pack) {
@@ -93,10 +105,12 @@ export async function makeFixture(
       index: job.index,
     },
   });
+  const report = await deps.checker.check(printed.pdf, printed.gt);
   const files: [FixtureFile, Uint8Array<ArrayBuffer>][] = [
     ['data.json', encoder.encode(`${JSON.stringify(record, null, 2)}\n`)],
     ['gt.json', encoder.encode(`${JSON.stringify(printed.gt, null, 2)}\n`)],
     ['fixture.pdf', printed.pdf],
+    ['check.json', encoder.encode(`${JSON.stringify(report, null, 2)}\n`)],
   ];
   const [dataSha256, gtSha256, pdfSha256] = await Promise.all(
     files.map(async ([file, bytes]) => {
@@ -109,5 +123,7 @@ export async function makeFixture(
     dataSha256: dataSha256 ?? '',
     gtSha256: gtSha256 ?? '',
     pdfSha256: pdfSha256 ?? '',
+    checkPassed: report.ok,
+    checkDifferences: report.differences.length,
   };
 }
