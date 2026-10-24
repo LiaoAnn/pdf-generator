@@ -47,6 +47,7 @@ It uploads `pack/` as a new version, prints a batch and prints one line per fixt
 - every fixture completed and passed self-check;
 - its pages are landscape, with the header and footer on every page;
 - every fragment of the statement table, on consecutive pages, starts with exactly the three header rows;
+- every later fragment's columns have the first page's x ranges, within 1 pt (T07-14);
 - the body rows across the fragments and the signer row are the ones its data.json asks for;
 - at least one fixture's table ran across pages.
 
