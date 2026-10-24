@@ -21,6 +21,8 @@ export const templates = sqliteTable(
     orientation: text('orientation', {
       enum: ['portrait', 'landscape'],
     }).notNull(),
+    /** SHA-256 hex of the uploaded zip, which R2 keeps under packKey(). */
+    packSha256: text('pack_sha256').notNull(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
       .default(sql`(cast(unixepoch('subsec') * 1000 as integer))`),
