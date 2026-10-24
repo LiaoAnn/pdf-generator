@@ -14,7 +14,7 @@ Call T3's `delegate_task` (it may appear as `mcp__t3-code__delegate_task`). Don'
 | Role | Primary `target` | Fallback `target` |
 | --- | --- | --- |
 | Implementer | `{"providerInstanceId": "codex", "model": "gpt-6.1-sol", "options": {"reasoningEffort": "medium"}}` | none: the worker implements the slice itself |
-| Test author, review lens | `{"providerInstanceId": "grok", "model": "grok-4.7", "options": {"reasoningEffort": "medium"}}` | `{"providerInstanceId": "claudeAgent", "model": "claude-sonnet-5-5", "options": {"effort": "high"}}` |
+| Test author, review lens | `{"providerInstanceId": "grok", "model": "grok-4.7", "options": {"reasoningEffort": "high"}}` | `{"providerInstanceId": "claudeAgent", "model": "claude-sonnet-5-5", "options": {"effort": "high"}}` |
 
 Never give a test author or review lens to Codex in a ticket where Codex implemented: they must be a model that wrote none of the code. (Tickets started before 2026-10-24 12:00 Taipei keep the old flow: the worker implements, Codex is the test author and reviewer, Sonnet the fallback.)
 

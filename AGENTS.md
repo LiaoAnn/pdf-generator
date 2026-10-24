@@ -90,7 +90,7 @@ Run every project command inside your worktree's stack (see "Environment"), neve
 | --- | --- | --- |
 | Coordinator, worker (planning, checking, acceptance, PR) | Claude Opus 5.5, effort medium | none |
 | Implementer (one child per slice, and per fix) | GPT-6.1-Sol (Codex), reasoning medium | the worker implements itself |
-| Test author, every review lens | Grok 4.7, reasoning medium | Claude Sonnet 5.5, effort high |
+| Test author, every review lens | Grok 4.7, reasoning high | Claude Sonnet 5.5, effort high |
 
 The test author and reviewers are always a different model from the implementer, so a misunderstanding isn't shared between the code and its tests. Code goes to Codex children so the long-running Opus worker keeps a short context: most of the Claude spend was workers rereading their own long histories (set 2026-10-24; tickets started before then finish on the old flow, where Opus implemented and Codex tested and reviewed). `cross-model-delegate` says how to call them and when to fall back.
 
