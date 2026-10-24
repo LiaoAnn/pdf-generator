@@ -346,7 +346,7 @@
 - **不做**：門牌號碼真實性
 - **來源**：PR #5 的 open risks
 
-### T09-1 線上環境設定
+### T09-1 線上環境設定（暫緩：使用者 2026-10-24 決定目前只在本機自用，上線前再決定 auth 方式）
 - **目標**：把 T09 的網站接上真的 Cloudflare 帳號：wrangler 登入加 `d1:write`（使用者操作）；建立 D1 `pdf-generator`、R2 `pdf-generator-files`；線上跑 migration；部署 `pdf-generator-web`；在後台為 workers.dev 網址開 Cloudflare Access（允許使用者 email 與一組 service token，使用者操作）；帶 Access 設定重新部署；建立 R2 `pdf-generator-print-pack-files`（T07-3 的列印暫存檔）並設定清掉孤兒檔的 lifecycle 規則
 - **Blocked by**：T09
 - **Blocks**：—（建議跟 T15、T16 第一次部署一起做，使用者只需登入與進後台各一次）
@@ -454,7 +454,7 @@
 - **不做**：改批次功能
 - **來源**：PR #14
 
-### T02-3 契約：錯誤細節加 `code`、批次進度加自我檢查數（需使用者同意）
+### T02-3 契約：錯誤細節加 `code`、批次進度加自我檢查數（使用者 2026-10-24 同意）
 - **目標**：`ApiError` 的 `details[]` 加選用欄位 `code`，讓問題代碼不必塞在 message 開頭；網頁與本地工具改讀這個欄位。`Batch.progress`（目前是嚴格的 `{ completed, failed }`，只算列印結果）加自我檢查的通過／失敗數，並接到 `GET /api/batches/:id`（T16-1 先只做每份的 `Fixture.check`，批次層級的數字等這張）
 - **Blocked by**：T02、T15、T16-1
 - **Blocks**：—（T20 結果檢視頁會用到批次層級的數字）
@@ -499,7 +499,7 @@
 - **不做**：新的規則功能
 - **來源**：PR #16 的 review
 
-### T02-4 契約：表格列內的路徑（需使用者同意）
+### T02-4 契約：表格列內的路徑（使用者 2026-10-24 同意；在 T24 之前）
 - **目標**：規則裡經過欄位自己所屬陣列的路徑代表「目前這一列」，讓列小計、某列佔總額的比例寫得出來（目前的字面路徑會讀到每一列）；T12 引擎跟著實作
 - **Blocked by**：T12
 - **Blocks**：—（有列小計的樣板，例如 T24 財務明細，可能需要）
