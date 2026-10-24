@@ -131,7 +131,7 @@ Merge a PR only when all of these hold. Check each yourself:
 4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by GPT-6.1-Sol or a fallback (Grok 4.7, Sonnet 5.5), the last round had no Blockers, and the tests were written by a test author, not the implementer.
 5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`, and not the shared contract unless it's a contract ticket.
 
-Then `gh pr merge <n> --squash --delete-branch`, with the subject `<type>: <summary> (TNN)`. Then:
+Then `gh pr merge <n> --squash`, with the subject `<type>: <summary> (TNN)`. Don't pass `--delete-branch`: twice (T16-1, T15-2) the worker's next turn after it made T3 prune and recreate the worktree folder, which left the running container on a deleted folder and broke `wt-exec`. The remote branch is deleted in Cleanup instead. Then:
 
 - Work out which tickets it made ready.
 - Send the worker `[TNN] DONE`.
@@ -148,7 +148,7 @@ Merged tickets don't keep a stack or a worktree; `/data` is shared by every work
 
 1. After the merge, the worker's `DONE` cleanup, and settling its thread, check the worktree is clean: `git -C <path> status --porcelain` empty and `git -C <path> rev-parse HEAD` equal to the merged PR's `headRefOid` (`gh pr view <n> --json headRefOid`); `@{u}` is gone once the remote branch is deleted. If not, ask the worker what's left; don't delete it.
 2. `wt-down <path>` (deletes that stack's containers and volumes; shared volumes stay).
-3. `git -C /data/code/pdf-generator worktree remove <path>`, then `git -C /data/code/pdf-generator branch -D <branch>` (the squash commit on `main` and the PR keep the history).
+3. `git -C /data/code/pdf-generator worktree remove <path>`, then `git -C /data/code/pdf-generator branch -D <branch>` and `git -C /data/code/pdf-generator push origin --delete <branch>` (the squash commit on `main` and the PR keep the history).
 
 Before starting a worker (a new thread and worktree), check space: `df -h /data` and `docker ps -a`. Clean up any merged ticket whose stack or worktree is still there first. If `/data` is above 80% with nothing merged left to clean, tell the user what uses the space (`du -sh /data/worktrees/pdf-generator/*`, `docker system df`); don't prune Docker images, volumes or build cache yourself.
 

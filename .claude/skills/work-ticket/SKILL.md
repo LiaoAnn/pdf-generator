@@ -85,7 +85,7 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
    - body: plan (Why/How/What), per-slice report (`implement-plan`'s Output format), whole-ticket acceptance evidence, final review result (lenses run, Blockers fixed, residual risk, which model ran each and any fallback), stubs left for future tickets, proposed new tickets, proposed edits to `AGENTS.md` or skills.
    Register it with `link_pull_request`.
 5. Wait for CI (`gh pr checks <n> --watch`). Fix a failure caused by your change; report one that isn't as `BLOCKED`.
-6. Send `PR` with the PR URL, the CI result, and a 5-line summary: what it does, acceptance result, review result, open risks, anything inconclusive.
+6. Free your runtime before you send it: stop the dev servers (AGENTS.md stop recipe), kill your tmux sessions, close your T3 previews. Start them again only if a review comment or rebase needs them. Then send `PR` with the PR URL, the CI result, and a 5-line summary: what it does, acceptance result, review result, open risks, anything inconclusive.
 
 ## 5. Until merged
 

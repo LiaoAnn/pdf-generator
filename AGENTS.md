@@ -51,7 +51,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 ## Commands
 
-Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]rangler-dist/cli.js'; pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (wrangler first: a surviving wrangler respawns `workerd`, and the next `dev:print` fails with `Address already in use`) (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
+Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]rangler-dist/cli.js'; pkill -f '[v]ite'; pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (wrangler first: a surviving wrangler respawns `workerd`, and the next `dev:print` fails with `Address already in use`) (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
 | Command | Purpose |
 | --- | --- |
@@ -120,7 +120,7 @@ These hold for every ticket. A ticket's "不做" (out of scope) list adds to the
 
 The VM's own rules (`~/.config/devvm/AGENTS.md`, loaded for you) win over anything here on how to run things: your stack, `wt-*` tools, worktree URLs, no host ports, no work outside your worktree. In short: `wt-status` first, `wt-up <your path>` when there is no stack, project commands through `T3CODE_WORKTREE_PATH=<path> wt-exec …`, verify on `https://app-<wt>.pdf-generator.liaoann.net`.
 
-To see what a page or a rendered PDF looks like, use T3's preview tools (`preview_open`, `preview_snapshot`, `preview_click`, …) on your worktree URL; they reach it over the tailnet and need no OK. Use them for every visual check: layout, pagination, boxes drawn over a page.
+To see what a page or a rendered PDF looks like, use T3's preview tools (`preview_open`, `preview_snapshot`, `preview_click`, …) on your worktree URL; they reach it over the tailnet and need no OK. Use them for every visual check: layout, pagination, boxes drawn over a page. The preview browser downloads a PDF instead of showing it: to look at one, open a signed-in app page and draw the pages onto canvases with pdf.js (import `unpdf`'s `dist/pdfjs.mjs` through Vite's `/@fs/` path).
 
 ### External services: always ask, through the coordinator
 

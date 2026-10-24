@@ -392,7 +392,7 @@
 - **來源**：PR #12
 
 ### T06-1 樣板工具強化
-- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致；T16 的 `inlineStyles` 只認字面上的 `</head>`，`</head >` 或沒有 `</head>` 的樣板包會過 `checkPack` 卻在批次失敗：兩邊對齊（接受這兩種寫法，或 `checkPack` 要求 `</head>`）；valid 範例包的 `assets/report.woff2` 是 27 位元組的佔位檔、永遠載不進來，換成真的子集字型（可參考 `apps/print/src/test-fixtures/pack-font/report.woff2`）
+- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致；T16 的 `inlineStyles` 只認字面上的 `</head>`，`</head >` 或沒有 `</head>` 的樣板包會過 `checkPack` 卻在批次失敗：兩邊對齊（接受這兩種寫法，或 `checkPack` 要求 `</head>`）；valid 範例包的 `assets/report.woff2` 是 27 位元組的佔位檔、永遠載不進來，換成真的子集字型；子集要涵蓋規則會產生的字，不只是範例資料的字（`apps/print/src/test-fixtures/pack-font/report.woff2` 不夠，批次會退回系統字型而被自我檢查標出）
 - **Blocked by**：T06
 - **Blocks**：—（建議在 T15 之後、樣板票之前）
 - **撞車風險**：`packages/template-tools`
@@ -525,3 +525,13 @@
 - **驗收測試**：連跑 3 次 10 份的批次，結束後本機 Chrome 數回到 0；批次中途失敗時也會關閉
 - **不做**：批次間共用 session、快取樣板包檔案（T07-5）
 - **來源**：T15-2 的資源量測
+
+### T09-2 網站：在 workerd 裡跑對執行環境敏感的測試
+- **目標**：`apps/web` 的字型名稱讀取、樣板儲存等測試改在 workerd 裡跑（`@cloudflare/vitest-pool-workers`）；Node 與 workerd 的 `node:zlib` 行為不同（`maxOutputLength` 依倍增緩衝區檢查），T15-2 只有在 stack 上驗收才抓到
+- **Blocked by**：T15-2
+- **Blocks**：—
+- **撞車風險**：`apps/web` 的 vitest 設定；與改 `apps/web` 測試的票 rebase 時重跑
+- **驗收測試**：故意讓 `maxOutputLength` 的處理退回 Node 寫法時，workerd 裡的測試會失敗
+- **不做**：把所有 web 測試搬進 workerd
+- **來源**：PR #19
+
