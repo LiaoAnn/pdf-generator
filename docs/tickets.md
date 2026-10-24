@@ -562,3 +562,21 @@
 - **不做**：放進正式產品
 - **來源**：PR #18
 
+
+### T07-7 印 PDF：連結的樣式表套用前就選字型（急）
+- **目標**：T15-2 起樣板包的 CSS 以 `<link>` 載入；print runtime 在 `PagedConfig.before`（DOMContentLoaded）就用 computed style 與 `<style>` 的 at-rule 決定要宣告哪些平台字型（`apps/print/public/print-runtime.js` 的 `loadUsedFaces`），連結的樣式表還沒套用時一個字型都沒宣告，整份 PDF 印成系統備用字型，而「字型載入失敗」的檢查也不會觸發。改成等每個 `link[rel=stylesheet]` 載入後再掃描，並讓 `findUsedInAtRules` 也讀連結樣式表裡的 `@page`／`@media print`
+- **Blocked by**：T15-2
+- **Blocks**：T22（驗收「10 份全過」）；T23 已 merge，修好後重跑它的驗收批次
+- **撞車風險**：`apps/print` 的 print runtime；與 T07-5、T07-6、T07-8 不要同時派
+- **驗收測試**：只在連結 CSS 裡用平台字型的樣板包（minimal-example、T22 月報）連跑 30 份，全部用 Noto 字型、自我檢查無 `font` 差異；平台字型真的載入失敗時仍會擋下
+- **不做**：改樣板包、改 `linkStyles`
+- **來源**：PR #20（T10，10/30 失敗）與 T22 驗收（7/10、8/10 失敗）各自獨立發現
+
+### T07-8 印 PDF：被擋的請求偶爾仍送出
+- **目標**：`apps/print/src/lib.ts` 的 `blockOtherRequests` 先呼叫 `onBlocked`（停止列印），`finally` 隨即 `page.close()`；推測 Chrome 在套用 `Fetch.failRequest` 之前就拆掉攔截，被暫停的請求於是被放行。回應正確回報 `422 request_blocked`，但外部伺服器已收到請求。改成等 abort 完成後再關分頁
+- **Blocked by**：T07-3
+- **Blocks**：—
+- **撞車風險**：`apps/print`；與 T07-7 不要同時派；T16-2 會把這個斷言的失敗記為已知問題
+- **驗收測試**：data: 樣式表 `@import` 外部伺服器的文件連印 200 次，外部伺服器收到 0 個請求（修正前約 1/100 會收到）
+- **不做**：其他攔截規則
+- **來源**：T16-2（單獨重複跑 100 次的實驗）
