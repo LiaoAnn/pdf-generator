@@ -121,6 +121,10 @@ Coordinator thread ID: <this thread's id from orchestrator_capabilities.parentTh
 <user answers, T03/T04 findings that apply, or "none">
 ```
 
+## Pilot of the Codex-implements flow (set 2026-10-24)
+
+The user chose to move implementation to Codex children and tests and reviews to Grok, to cut Claude spend (`cross-model-delegate`). Run it on **one** ticket first: dispatch only that ticket on the new flow and no other new ticket until it merges. The workers running before it (T07-3, T12, T15) finish on the old flow. When the pilot merges, report to the user: Claude tokens of its worker (from `~/.claude/projects/-data-worktrees-pdf-generator-<wt>/*.jsonl`, compared with a similar old-flow ticket), what the Codex and Grok children got wrong, review rounds needed, and fallbacks. The user then decides whether to keep it.
+
 ## Merge bar
 
 Merge a PR only when all of these hold. Check each yourself:
@@ -128,7 +132,7 @@ Merge a PR only when all of these hold. Check each yourself:
 1. **CI green**: `gh pr checks <n>`. Before T01 adds CI, the worker's recorded checks stand in; say so in the merge note.
 2. **Up to date**: `mergeable` is `MERGEABLE`, and the branch is rebased on the current `main`.
 3. **Acceptance observed**: every 驗收測試 item has observed or executed evidence in the PR body; an item reported inconclusive doesn't block the merge if a later ticket or check will cover it and nothing in the PR depends on it; name it in the merge note and your report. If the ticket's core outcome is inconclusive, send the PR back instead.
-4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by GPT-6.1-Sol or the Sonnet fallback, the last round had no Blockers, and the tests were written by a test author, not the implementer.
+4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by a model that wrote none of the code (Grok 4.7 or the Sonnet fallback when Codex implemented; GPT-6.1-Sol or Sonnet on the old flow), the last round had no Blockers, and the tests were written by a test author, not the implementer. On the new flow the PR says which slices Codex implemented and any the worker implemented itself, with the reason.
 5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`, and not the shared contract unless it's a contract ticket.
 
 Then `gh pr merge <n> --squash --delete-branch`, with the subject `<type>: <summary> (TNN)`. Then:
