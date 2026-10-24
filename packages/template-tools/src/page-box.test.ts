@@ -51,6 +51,29 @@ function rejects(files: PackFiles, token: string, file = cssFile) {
 
 describe('page-box upload guard', () => {
   it.each([
+    ['body { font-family: "Arial"; padding-left: 10mm; }', 'padding-left'],
+    ['body { content: "a;b}"; padding: 1mm; }', 'padding'],
+  ])(
+    'a closed CSS string cannot hide later page movement: %s',
+    (css, token) => {
+      rejects(pack(css), token);
+      rejects(
+        pack('', `<style>${css}</style>${paragraph}`),
+        token,
+        templateFile,
+      );
+    },
+  );
+
+  it('quoted font names and a fallback keep a neutral html margin allowed', () => {
+    const css = 'html { font-family: "Noto Sans TC", sans-serif; margin: 0 }';
+    expect(checkPack(pack(css))).toMatchObject({ ok: true, issues: [] });
+    expect(
+      checkPack(pack('', `<style>${css}</style>${paragraph}`)),
+    ).toMatchObject({ ok: true, issues: [] });
+  });
+
+  it.each([
     '.pagedjs_page',
     '.PAGEDJS_pages > div',
     '[class*=pagedjs]',

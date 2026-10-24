@@ -469,10 +469,13 @@ function inkDifference(
   const [x0, y0, x1, y1] = block.bbox;
   const inside: Box[] = [];
   const spilling: Box[] = [];
-  for (const { box } of page?.marks ?? ([] as PdfMark[])) {
+  // A clip places a drawing but paints nothing: something must be painted.
+  let painted = false;
+  for (const { kind, box } of page?.marks ?? ([] as PdfMark[])) {
     const [m0, n0, m1, n1] = box;
     if (m0 >= x0 - t && n0 >= y0 - t && m1 <= x1 + t && n1 <= y1 + t) {
       inside.push(box);
+      painted ||= kind !== 'clip';
     } else if (
       // Overlapping it, but not covering all of it.
       m0 < x1 - t &&
@@ -482,6 +485,7 @@ function inkDifference(
       !(m0 <= x0 + t && n0 <= y0 + t && m1 >= x1 - t && n1 >= y1 - t)
     ) {
       spilling.push(box);
+      painted ||= kind !== 'clip';
     }
   }
   const at = `Block ${block.id} on page ${block.page}`;
@@ -491,10 +495,10 @@ function inkDifference(
     blockId: block.id,
     bbox: block.bbox,
   };
-  if (inside.length === 0 && spilling.length === 0) {
+  if (!painted) {
     return {
       ...where,
-      message: `${at} has no text and the PDF draws nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
+      message: `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
     };
   }
   const inkBox = unionOf([...inside, ...spilling]);

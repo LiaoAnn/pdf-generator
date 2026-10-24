@@ -21,8 +21,10 @@ function masked(css: string): string {
     } else if (c === '"' || c === "'") {
       let end = i + 1;
       while (end < css.length && css[end] !== c && css[end] !== '\n') end++;
-      out += `${c}${css.slice(i + 1, end).replace(/[^\n]/g, ' ')}`;
-      i = end;
+      // The closing quote, when there is one, ends the string.
+      const close = css[end] === c ? c : '';
+      out += `${c}${css.slice(i + 1, end).replace(/[^\n]/g, ' ')}${close}`;
+      i = end + close.length;
     } else {
       out += c;
       i++;

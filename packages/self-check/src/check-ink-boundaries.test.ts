@@ -64,6 +64,26 @@ test('spill reports the union of inside and spilling ink, excluding enclosing co
   ]);
 });
 
+test('a spilling clip still reports spill when a painted mark exists inside', async () => {
+  const result = await check([
+    mark([50, 50, 150, 90]),
+    { kind: 'clip', box: [140, 60, 155, 80] },
+  ]);
+  expect(result).toEqual({
+    ok: false,
+    differences: [
+      {
+        kind: 'ink',
+        page: 1,
+        blockId: 'blank',
+        bbox,
+        inkBox: [50, 50, 155, 90],
+        message: expect.any(String),
+      },
+    ],
+  });
+});
+
 test.each([
   { why: '1pt edge rounding', box: [49, 89, 151, 90] as Box },
   { why: '1pt quiet-zone asymmetry', box: [57, 50, 142, 90] as Box },

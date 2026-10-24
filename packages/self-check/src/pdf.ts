@@ -178,6 +178,9 @@ interface GraphicsState {
   ctm: Matrix;
   clip: Rect;
   lineWidth: number;
+  /** Constant alpha of fills (and images) and of strokes: 0 paints nothing. */
+  fillAlpha: number;
+  strokeAlpha: number;
 }
 
 /**
@@ -191,10 +194,8 @@ function readMarks(
   view: Rect,
 ): PdfMark[] {
   const [left, , , top] = view;
-  const painted = new Set(
+  const filled = new Set(
     [
-      'stroke',
-      'closeStroke',
       'fill',
       'eoFill',
       'fillStroke',
@@ -223,7 +224,13 @@ function readMarks(
   );
   const marks: PdfMark[] = [];
   const stack: GraphicsState[] = [];
-  let state: GraphicsState = { ctm: identity, clip: view, lineWidth: 1 };
+  let state: GraphicsState = {
+    ctm: identity,
+    clip: view,
+    lineWidth: 1,
+    fillAlpha: 1,
+    strokeAlpha: 1,
+  };
   let clipping = false;
   const push = () => stack.push({ ...state });
   const pop = () => {
@@ -245,9 +252,10 @@ function readMarks(
       if (typeof args[0] === 'number') state.lineWidth = args[0];
     } else if (fn === OPS.setGState) {
       for (const entry of (args[0] ?? []) as unknown[]) {
-        if (Array.isArray(entry) && entry[0] === 'LW') {
-          if (typeof entry[1] === 'number') state.lineWidth = entry[1];
-        }
+        if (!Array.isArray(entry) || typeof entry[1] !== 'number') continue;
+        if (entry[0] === 'LW') state.lineWidth = entry[1];
+        else if (entry[0] === 'ca') state.fillAlpha = entry[1];
+        else if (entry[0] === 'CA') state.strokeAlpha = entry[1];
       }
     } else if (fn === OPS.clip || fn === OPS.eoClip) clipping = true;
     else if (fn === OPS.constructPath) {
@@ -255,17 +263,21 @@ function readMarks(
       const op = args[0] as number;
       if (bounds) {
         const rect = mapRect(state.ctm, bounds);
-        if (painted.has(op)) {
-          // A stroke reaches half its width beyond the path, scaled by the CTM.
+        // Only paint at some opacity is a mark.
+        const stroke = stroked.has(op) && state.strokeAlpha > 0;
+        const fill = filled.has(op) && state.fillAlpha > 0;
+        if (stroke || fill) {
+          // A stroke reaches half its width beyond the path: on each axis,
+          // as far as the CTM stretches a circle of that radius.
           const [a, b, c, d] = state.ctm;
-          const half = stroked.has(op)
-            ? (state.lineWidth * Math.sqrt(Math.abs(a * d - b * c))) / 2
-            : 0;
+          const half = stroke ? state.lineWidth / 2 : 0;
+          const hx = half * Math.hypot(a, c);
+          const hy = half * Math.hypot(b, d);
           mark('path', [
-            rect[0] - half,
-            rect[1] - half,
-            rect[2] + half,
-            rect[3] + half,
+            rect[0] - hx,
+            rect[1] - hy,
+            rect[2] + hx,
+            rect[3] + hy,
           ]);
         }
         if (clipping) {
@@ -274,8 +286,9 @@ function readMarks(
         }
       }
       clipping = false;
-    } else if (images.has(fn)) mark('image', mapRect(state.ctm, [0, 0, 1, 1]));
-    else if (fn === OPS.shadingFill) mark('path', state.clip);
+    } else if (images.has(fn)) {
+      if (state.fillAlpha > 0) mark('image', mapRect(state.ctm, [0, 0, 1, 1]));
+    } else if (fn === OPS.shadingFill) mark('path', state.clip);
     else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
       push();
       const group = args[0] as { matrix?: unknown; bbox?: unknown } | undefined;
