@@ -101,8 +101,26 @@ Only an eval-free subset (`fill` in `packages/template-tools`):
 | `{{#each list}}…{{/each}}`, `{{#with obj}}` | `@index`, `@key`, `@first`, `@last`, `@root`, block params (`as \|row\|`). |
 | `{{eq a b}}`, `{{lookup obj key}}` | Mostly as sub-expressions: `{{#if (eq status "已結案")}}`. |
 | `{{number x}}`, `{{number x decimals=2}}` | Thousands separators: `1,234,567`; `decimals` 0-20. |
+| `{{rocDate x}}`, `{{rocDate x format="slash"}}` | A `date` field in the 民國 calendar (year − 1911); `format` below. |
 
-Anything else is `template-unsupported`: raw output (`{{{x}}}`, `{{& x}}`), partials, decorators, other helpers. Dates print as stored (`YYYY-MM-DD`); there is no date or 民國年 helper yet.
+Anything else is `template-unsupported`: raw output (`{{{x}}}`, `{{& x}}`), partials, decorators, other helpers. Without `rocDate`, dates print as stored (`YYYY-MM-DD`).
+
+**`rocDate` formats**, for `2024-05-07` (`format=` must be one of these names, quoted; a path or another name is `template-unsupported`):
+
+| `format` | Prints |
+| --- | --- |
+| none, `"text"` | `民國113年5月7日` |
+| `"full"` | `中華民國113年5月7日` |
+| `"chinese"` | `中華民國一一三年五月七日`: the year digit by digit (`2011` → `一〇〇`), month and day as numbers (`十月`, `二十一日`) |
+| `"slash"` | `113/05/07`: month and day two digits, the year as is (`99/01/02`) |
+| `"dot"` | `113.05.07` |
+| `"year"`, `"month"`, `"day"` | `113`, `5`, `7`: for a form with separate 年 月 日 boxes |
+
+The value must be a `YYYY-MM-DD` string from `1912-01-01` (民國元年) on, else `template-render`; `null` prints nothing. The date is read as written: no timezone applies, so the same record prints the same date everywhere. Spaces between the parts (`民國 113 年 5 月 7 日`) are text in the template: `民國 {{rocDate d format="year"}} 年 {{rocDate d format="month"}} 月`.
+
+```html pack-error template-unsupported
+<p data-gt="paragraph">{{rocDate period format="iso"}}</p>
+```
 
 **Where statements may sit.** The checks see the HTML with the Handlebars statements taken out, so a statement must not change the HTML structure (`template-structure`). Put `{{…}}` in text or in a quoted attribute value. Never inside a tag outside a quoted value, right after `<`, in CSS (`<style>` or `style="…"`), in an HTML comment, or as a block statement (`{{#if}}`) inside a URL (`src`, `href`) or inside `<title>`/`<textarea>`. An element must open and close within the same `{{#…}}`/`{{else}}` branch (`gt-branch`): to print one of two elements, put each element whole in its branch.
 
