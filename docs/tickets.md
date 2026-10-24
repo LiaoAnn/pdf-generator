@@ -643,3 +643,12 @@
 - **驗收測試**：T24 財務明細跨頁後每頁的欄寬與第 1 頁相同（量測每欄的 x 範圍）；gt.json 每頁仍與 PDF 相符；批次 10 份自我檢查全過
 - **不做**：其他 Paged.js 表格缺陷
 - **來源**：PR #33（T24）
+
+### T07-15 印 PDF：只設在頁碼欄位上的平台字型
+- **目標**：T02-5 的頁碼欄位（`data-gt-page-number`、`data-gt-page-count`）在找字型時還是空的，所以只設在欄位本身的平台字型或字重不會在分頁前載入，數字改用後援字型。`findUsedInDocument` 要把這兩種欄位當成有自己的文字
+- **Blocked by**：T02-5
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與 T07-14、T07-5、T07-8、T07-9、T07-10 不要同時派
+- **驗收測試**：一份只在頁碼欄位設粗體平台字型的 fixture，印出的頁碼用的是該字型（PDF 字型清單），gt.json 每頁仍與 PDF 相符
+- **不做**：改頁碼欄位的寫法
+- **來源**：PR #35（T02-5）。順帶：`templates/monthly-report/src/acceptance.ts` 用法註解的 `acceptance -- --url` 在 pnpm 12 會失敗，拿掉 `--`
