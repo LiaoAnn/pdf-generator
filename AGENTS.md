@@ -68,7 +68,7 @@ Run every project command inside your worktree's stack (see "Environment"), neve
 | `pnpm --filter @pdf-generator/web build` / `preview` | Production build, served locally (fails closed with 503 until Access vars are set) |
 | `pnpm dev:print --ip 0.0.0.0` | `wrangler dev` for `apps/print` (port 8788, inside the stack only) |
 | `pnpm cf-typegen` | Regenerate every Worker's binding types after changing its `wrangler.jsonc` |
-| Batch locally (two tmux sessions) | print: `CI=1 XDG_CACHE_HOME=<writable dir> pnpm dev:print --ip 0.0.0.0 --var PRINT_TOKEN:<token> --var ASSET_ORIGIN:http://127.0.0.1:8788`; web: `pnpm dev --ip 0.0.0.0` (`wt-up` sets `MINIFLARE_REGISTRY_PATH` and `WRANGLER_REGISTRY_PATH` for you; a stack started before 2026-10-24 16:00 lacks the first: rerun `wt-up <path>`) with the same token as `PRINT_TOKEN` in `apps/web/.env` (gitignored). Don't put print values in `apps/print/.env`: its own tests load it |
+| Batch locally (two tmux sessions) | print: `CI=1 XDG_CACHE_HOME=<writable dir> pnpm dev:print --ip 0.0.0.0 --var PRINT_TOKEN:<token> --var ASSET_ORIGIN:http://127.0.0.1:8788`; web: `pnpm dev --ip 0.0.0.0` (`wt-up` sets `MINIFLARE_REGISTRY_PATH` and `WRANGLER_REGISTRY_PATH` for you; a stack started before 2026-10-24 16:00 lacks the first: rerun `wt-up <path>`) with the same token as `PRINT_TOKEN` in `apps/web/.env` (gitignored). On a fresh stack run `db:migrate:local` first, or uploads answer `storage_error`. The stop recipe's `pkill workerd` stops both dev servers' workerd: restart both. Don't put print values in `apps/print/.env`: its own tests load it |
 | `pnpm --filter @pdf-generator/contract schemas` | Regenerate the committed JSON Schema after a contract change (a test fails when it is stale) |
 
 ## How work is organized

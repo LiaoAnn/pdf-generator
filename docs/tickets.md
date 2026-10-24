@@ -445,14 +445,14 @@
 - **不做**：改 `checkPack`
 - **來源**：PR #14 的 Security Hardening
 
-### T16-2 批次：`batch-zip.test.ts` 偶發失敗
-- **目標**：T16 的 `batch-zip.test.ts`「reports batch_not_found for an unknown ZIP」在完整 `pnpm verify` 中 5 次失敗 1 次（單獨跑 3/3 通過），沒留下錯誤訊息；先抓到錯誤，再修正成穩定（推測是記憶體吃緊時 `getPlatformProxy` 啟動，未證實）
-- **Blocked by**：T16
-- **Blocks**：—（CI 偶發紅燈會擋 merge）
-- **撞車風險**：`apps/web` 批次測試；不要跟 T16-1 同時派
-- **驗收測試**：記錄下失敗原因；修正後完整 `pnpm verify` 連跑 10 次都通過
-- **不做**：改批次功能
-- **來源**：PR #14
+### T16-2 測試：完整並行跑時 workerd 測試偶發失敗
+- **目標**：完整 `pnpm verify`／CI 並行跑各 Vitest 專案時，啟動 workerd 的測試會偶發失敗，單獨跑都通過：T16 的 `batch-zip.test.ts`（5 次 1 次，沒留錯誤）；`apps/print` 的 `print-route.test.ts`（PR #18 的 CI 2/2：120 秒逾時，以及 workerd `SQLITE_BUSY_RECOVERY` 後卡到 job 逾時）；`request-blocking.test.ts`（本機 1/1：data: 樣式表 @import 的外部伺服器收到 `/imported.css`）。先找出共用的狀態（推測是各專案的 workerd 共用 `.wrangler/state`、本機 Chrome 或錄製用伺服器的連接埠，未證實），再讓測試彼此隔離；request-blocking 那次要確認是測試隔離問題，不是封鎖真的漏掉
+- **Blocked by**：T16、T07-3
+- **Blocks**：—（CI 偶發紅燈會擋每張 PR 的 merge；在樣板票大量 merge 前修好）
+- **撞車風險**：`apps/print`、`apps/web` 的 vitest 設定與測試；不要跟 T16-3 同時派
+- **驗收測試**：記錄下每種失敗的原因；修正後完整 `pnpm verify` 連跑 10 次（CI=1）都通過，CI 連跑 3 次都通過
+- **不做**：改功能程式（除非原因是真的漏洞，那就另開票）
+- **來源**：PR #14、PR #18
 
 ### T02-3 契約：錯誤細節加 `code`、批次進度加自我檢查數（使用者 2026-10-24 同意）
 - **目標**：`ApiError` 的 `details[]` 加選用欄位 `code`，讓問題代碼不必塞在 message 開頭；網頁與本地工具改讀這個欄位。`Batch.progress`（目前是嚴格的 `{ completed, failed }`，只算列印結果）加自我檢查的通過／失敗數，並接到 `GET /api/batches/:id`（T16-1 先只做每份的 `Fixture.check`，批次層級的數字等這張）
@@ -534,4 +534,31 @@
 - **驗收測試**：故意讓 `maxOutputLength` 的處理退回 Node 寫法時，workerd 裡的測試會失敗
 - **不做**：把所有 web 測試搬進 workerd
 - **來源**：PR #19
+
+### T12-2 假資料：依領域的填充文字
+- **目標**：`text` 填充文字目前都像營運報告；加上主題或詞庫選項（或句子的 `choice`），讓通報單、論文等看起來像該領域的文件（若需改規則檔格式，先開契約小票）
+- **Blocked by**：T12
+- **Blocks**：—
+- **撞車風險**：`packages/fake-data`；可能是契約變更
+- **驗收測試**：同一規則檔換主題後產出的文字詞彙不同；同 seed 穩定
+- **不做**：AI 生成文字
+- **來源**：PR #18
+
+### T12-3 假資料：姓名跟著性別
+- **目標**：`name` 規則可以參照另一個欄位的性別，避免「王秀蓁」配「男」（需改規則檔格式，先開契約小票）
+- **Blocked by**：T12
+- **Blocks**：—
+- **撞車風險**：`packages/fake-data`；契約變更
+- **驗收測試**：100 份裡姓名與性別都一致；同 seed 穩定
+- **不做**：其他欄位間的參照
+- **來源**：PR #18
+
+### T14-2 開發工具：共用的 PDF 轉圖
+- **目標**：T3 預覽瀏覽器只會下載 PDF、不會顯示；提供一個共用指令把 PDF 每頁轉成圖片（pdf.js + container 裡的 Playwright Chromium），樣板票的目視檢查不必各自重寫
+- **Blocked by**：T14
+- **Blocks**：—
+- **撞車風險**：新的開發工具，不改功能程式
+- **驗收測試**：對一份多頁 PDF 產出每頁 PNG，並可疊上 gt.json 的框
+- **不做**：放進正式產品
+- **來源**：PR #18
 
