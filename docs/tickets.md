@@ -699,7 +699,7 @@
 - **來源**：PR #38（T25；該樣板目前改帶 TTF）
 
 ### T10-1 規格書：雙欄與 KaTeX 公式的寫法
-- **目標**：`packages/pack-spec` 的 SPEC §5 或 `skill/references/recipes.md` 補上「雙欄」與「KaTeX 公式」兩則寫法，指向 `templates/paper`：用 `build.ts` 預先渲染、帶 KaTeX 字型（T15-3 後 woff2 可用）、兩個 CSS 修正（T14-3 後可能不再需要）、公式的留白；雙欄要用 `column-fill: balance`（`auto` 配 `break-inside: avoid` 會把整個多欄區塊推到下一頁）
+- **目標**：`packages/pack-spec` 的 SPEC §5 或 `skill/references/recipes.md` 補上「雙欄」與「KaTeX 公式」兩則寫法，指向 `templates/paper`：用 `build.ts` 預先渲染、帶 KaTeX 字型（T15-3 後 woff2 可用）、直接用 KaTeX 原本的 CSS（T14-3 後不再需要繞道）、公式的留白；雙欄要用 `column-fill: balance`（`auto` 配 `break-inside: avoid` 會把整個多欄區塊推到下一頁）
 - **Blocked by**：T25
 - **Blocks**：—
 - **撞車風險**：`packages/pack-spec`；T14-3、T15-3 合併後要同步改寫法
@@ -742,3 +742,12 @@
 - **驗收測試**：批次 10 份自我檢查與 `compare.ts` 全過；樣板包大小前後對照
 - **不做**：改平台程式
 - **來源**：PR #43（T15-3）
+
+### T14-5 自我檢查：公式比對的搜尋要有上限
+- **目標**：T14-3 的公式比對（`packages/self-check` 的 `covers`）用 PDF 文字項目拼出 gt 文字，搜尋沒有步數上限；刻意重複的公式在 `checkPdf` 裡跑了 12 秒。加上固定的步數上限（與輸入無關、可重現），超過時把該公式回報為文字不符或明確的「無法判定」，不要跑好幾秒
+- **Blocked by**：T14-3
+- **Blocks**：—
+- **撞車風險**：`packages/self-check`
+- **驗收測試**：該重複公式在 1 秒內得到明確結果；`templates/paper` 批次 10 份仍全過
+- **不做**：改公式比對規則
+- **來源**：PR #45（T14-3）。另：T14-3 的盲點是公式裡兩個完整項目對調（例如分子分母），記錄在 PR #45
