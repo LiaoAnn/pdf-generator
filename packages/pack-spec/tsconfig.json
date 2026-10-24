@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node only: reads the files next to it from disk.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

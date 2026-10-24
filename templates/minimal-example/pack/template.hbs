@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>會議紀錄</title>
+</head>
+<body>
+<div class="word-footer" data-gt="page_footer">本文件內容為測試用假資料，與真實人物、公司無關。</div>
+<p class="word-title" data-gt="title">{{company}}業務會議紀錄</p>
+<p class="pair"><span data-gt="label">會議日期：</span><span data-gt="field">{{meetingDate}}</span></p>
+<p class="pair"><span data-gt="label">會議地點：</span><span data-gt="field">{{place}}</span></p>
+<p class="pair"><span data-gt="label">主　　席：</span><span data-gt="field">{{chair}}</span></p>
+<p class="pair"><span data-gt="label">記　　錄：</span><span data-gt="field">{{recorder}}</span></p>
+<h2 data-gt="heading">一、出席人員</h2>
+<table data-gt="table">
+<colgroup><col class="name"><col class="role"><col></colgroup>
+<thead>
+<tr><th>姓名</th><th>職稱</th><th>是否出席</th></tr>
+</thead>
+<tbody>
+{{#each attendees}}
+<tr><td>{{name}}</td><td>{{title}}</td><td>{{#if present}}<span class="box" data-gt-checked="true">☑</span>是　<span class="box" data-gt-checked="false">☐</span>否{{else}}<span class="box" data-gt-checked="false">☐</span>是　<span class="box" data-gt-checked="true">☑</span>否{{/if}}</td></tr>
+{{/each}}
+</tbody>
+</table>
+<h2 data-gt="heading">二、討論事項</h2>
+<p data-gt="paragraph">{{summary}}</p>
+<ol>
+{{#each items}}
+<li data-gt="list_item">{{this}}</li>
+{{/each}}
+</ol>
+<h2 data-gt="heading">三、確認</h2>
+<p data-gt="checkbox" data-gt-checked="{{confirmed}}"><span class="box">{{#if confirmed}}☑{{else}}☐{{/if}}</span>本紀錄已經主席確認無誤。</p>
+</body>
+</html>

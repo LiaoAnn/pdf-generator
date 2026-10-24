@@ -1,0 +1,125 @@
+/*
+ * word.css: a starting point that prints like a Word document with the
+ * zh-TW Normal template (SPEC.md, "Word-style CSS"). Copy it into your pack
+ * (e.g. styles/word.css), list it first in manifest files.styles, and put
+ * your own rules in a second stylesheet; don't edit the copy, so it can be
+ * compared with this file. Platform fonts only: 新細明體 → Noto Serif TC,
+ * 微軟正黑體 → Noto Sans TC, 標楷體 → LXGW WenKai TC (T03 §2.1); ☑ ☐ come
+ * from Noto Sans Symbols 2.
+ */
+
+/* Page: A4, Word's default margins (2.54 cm top and bottom, 3.17 cm left
+   and right); header 1.5 cm from the top edge, footer 1.75 cm from the
+   bottom edge. */
+@page {
+  size: A4;
+  margin: 25.4mm 31.7mm;
+
+  @top-center {
+    content: element(word-header);
+    vertical-align: top;
+    padding-top: 15mm;
+  }
+
+  @bottom-center {
+    content: element(word-footer);
+    vertical-align: bottom;
+    padding-bottom: 17.5mm;
+  }
+}
+
+/* 內文 (Normal): 新細明體 12 pt, single spacing, no space between
+   paragraphs, justified. */
+html {
+  font-family: "Noto Serif TC", "Noto Sans Symbols 2", serif;
+  font-size: 12pt;
+  line-height: 1.3;
+  color: #000;
+}
+
+body {
+  margin: 0;
+}
+
+p {
+  margin: 0;
+  text-align: justify;
+}
+
+/* 標題 (Title), 標題 1-3 (Heading 1-3). */
+.word-title {
+  font-size: 16pt;
+  font-weight: bold;
+  text-align: center;
+  margin: 12pt 0 3pt;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: bold;
+  margin: 0;
+  break-after: avoid;
+}
+
+h1 {
+  font-size: 24pt;
+  margin: 18pt 0;
+}
+
+h2 {
+  font-size: 18pt;
+  margin: 9pt 0;
+}
+
+h3 {
+  font-size: 14pt;
+  margin: 9pt 0;
+}
+
+/* Header and footer: put the element first in <body> with this class; it
+   prints in the page margin on every page from there on. */
+.word-header {
+  /* biome-ignore lint/correctness/noUnknownFunction: GCPM running(), which Paged.js implements */
+  position: running(word-header);
+  font-size: 9pt;
+}
+
+.word-footer {
+  /* biome-ignore lint/correctness/noUnknownFunction: GCPM running(), which Paged.js implements */
+  position: running(word-footer);
+  font-size: 9pt;
+}
+
+/* 表格格線 (Table Grid): 0.5 pt black borders, 0.19 cm cell padding left and
+   right, full text width, fixed column widths (Paged.js would otherwise
+   lay a split table out again with other widths; T03 §5). */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+th,
+td {
+  border: 0.5pt solid #000;
+  padding: 0 5.4pt;
+  vertical-align: top;
+  text-align: left;
+  font-weight: normal;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tr {
+  break-inside: avoid;
+}
+
+/* 清單段落 (List Paragraph): lists indent by two characters. */
+ol,
+ul {
+  margin: 0;
+  padding-left: 2em;
+}

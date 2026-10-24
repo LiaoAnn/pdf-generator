@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "minimal-example",
+  "name": "會議紀錄（最小範例包）",
+  "description": "T10 的最小範例包：一頁 A4 會議紀錄，用 word.css 排成 Word 的樣子，示範每種常用的 data-gt 標記。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "template.hbs",
+    "styles": ["styles/word.css", "styles/minutes.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json"
+  }
+}

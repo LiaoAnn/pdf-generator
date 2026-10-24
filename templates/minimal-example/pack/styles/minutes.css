@@ -1,0 +1,16 @@
+/* This pack's own rules, after word.css. */
+.pair {
+  text-align: left;
+}
+
+col.name {
+  width: 30%;
+}
+
+col.role {
+  width: 30%;
+}
+
+.box {
+  font-family: "Noto Sans Symbols 2", "Noto Serif TC", serif;
+}
