@@ -8,6 +8,7 @@ import {
   createBatch,
   downloadBatch,
   getBatch,
+  getFixtureCheck,
   listBatches,
   listFixtures,
   rerunBatch,
@@ -48,6 +49,8 @@ const routes: Record<string, Route> = {
   'GET /api/batches/:id': ({ params }) => getBatch(params.id ?? ''),
   'GET /api/batches/:id/fixtures': ({ params }) =>
     listFixtures(params.id ?? ''),
+  'GET /api/batches/:id/fixtures/:index/check': ({ params }) =>
+    getFixtureCheck(params.id ?? '', params.index ?? ''),
   'POST /api/batches/:id/rerun': ({ params }) => rerunBatch(params.id ?? ''),
   'GET /api/batches/:id/zip': ({ params }) => downloadBatch(params.id ?? ''),
 };

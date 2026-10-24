@@ -3,8 +3,10 @@ import { fileURLToPath } from 'node:url';
 import {
   batchSchema,
   fixtureListSchema,
+  type GroundTruth,
   gtSchema,
 } from '@pdf-generator/contract';
+import type { Difference, SelfCheckReport } from '@pdf-generator/self-check';
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/d1';
 import { migrate } from 'drizzle-orm/d1/migrator';
@@ -18,9 +20,9 @@ import {
   storeFixturePack,
 } from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
-import { type FixtureJob, fixtureKey } from './fixture.ts';
+import { type FixtureFile, type FixtureJob, fixtureKey } from './fixture.ts';
 import { type Printer, PrintFailure } from './printer.ts';
-import { handleFixtureMessages } from './queue.ts';
+import { consumeFixtures, handleFixtureMessages } from './queue.ts';
 
 let platform: Awaited<ReturnType<typeof getPlatformProxy<Env>>>;
 const local = createLocalAccess();
@@ -41,6 +43,12 @@ const sendEvent = vi.fn(
   async (_event: { type: string; payload?: unknown }) => {},
 );
 const get = vi.fn(async (_id: string) => ({ sendEvent }));
+const check = vi.fn(
+  async (_pdf: Uint8Array, _gt: GroundTruth): Promise<SelfCheckReport> => ({
+    ok: true,
+    differences: [],
+  }),
+);
 
 function db() {
   return drizzle(platform.env.DB, { schema });
@@ -52,6 +60,7 @@ function deps() {
     templates: fixtureTemplates,
     printer: { print },
     workflow: { get },
+    checker: { check },
   };
 }
 function message(batchId: string, index: number, attempts = 1) {
@@ -119,6 +128,33 @@ function retried(msg: ReturnType<typeof message>) {
   expect(msg.retry).toHaveBeenCalledTimes(1);
   expect(msg.retry.mock.calls[0]?.[0]?.delaySeconds).toBeGreaterThan(0);
 }
+const textDecoder = new TextDecoder();
+async function storedText(batchId: string, index: number, file: FixtureFile) {
+  const object = await platform.env.FILES.get(fixtureKey(batchId, index, file));
+  if (!object) return null;
+  return textDecoder.decode(await object.arrayBuffer());
+}
+async function storedPdf(batchId: string, index: number) {
+  const object = await platform.env.FILES.get(
+    fixtureKey(batchId, index, 'fixture.pdf'),
+  );
+  if (!object) throw new Error(`missing fixture.pdf for ${index}`);
+  return new Uint8Array(await object.arrayBuffer());
+}
+async function storedGroundTruth(batchId: string, index: number) {
+  const text = await storedText(batchId, index, 'gt.json');
+  if (text === null) throw new Error(`missing gt.json for ${index}`);
+  return gtSchema.parse(JSON.parse(text));
+}
+async function recordedCheck(batchId: string, index: number) {
+  const row = (await rows(batchId)).find(item => item.index === index);
+  return {
+    status: row?.status ?? null,
+    checkPassed: row?.checkPassed,
+    checkDifferences: row?.checkDifferences,
+    checkJson: await storedText(batchId, index, 'check.json'),
+  };
+}
 
 beforeEach(async () => {
   platform = await getPlatformProxy<Env>({
@@ -138,6 +174,8 @@ beforeEach(async () => {
   get.mockClear();
   sendEvent.mockReset();
   sendEvent.mockResolvedValue(undefined);
+  check.mockReset();
+  check.mockResolvedValue({ ok: true, differences: [] });
 }, 60_000);
 afterEach(async () => {
   await platform?.dispose();
@@ -150,7 +188,11 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   acknowledged(first);
   expect(await progress(id)).toEqual({ completed: 1, failed: 0 });
   expect(await statuses(id)).toEqual([
-    { index: 0, status: 'completed' },
+    {
+      index: 0,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
     { index: 1, status: 'pending' },
     { index: 2, status: 'pending' },
   ]);
@@ -209,8 +251,16 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   }
   expect(await progress(id)).toEqual({ completed: 2, failed: 1 });
   expect(await statuses(id)).toEqual([
-    { index: 0, status: 'completed' },
-    { index: 1, status: 'completed' },
+    {
+      index: 0,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
+    {
+      index: 1,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
     {
       index: 2,
       status: 'failed',
@@ -343,8 +393,201 @@ test('one failing message does not prevent later messages in the delivery from c
   expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
   expect(await statuses(id)).toEqual([
     { index: 0, status: 'pending' },
-    { index: 1, status: 'completed' },
-    { index: 2, status: 'completed' },
+    {
+      index: 1,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
+    {
+      index: 2,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
   ]);
   expect(get).not.toHaveBeenCalled();
+});
+
+const textDifference: Difference = {
+  kind: 'text',
+  page: 1,
+  blockId: 'title',
+  expected: '臺灣示範股份有限公司 月報',
+  actual: '月報',
+  message: 'Block title on page 1: the PDF text is not the ground truth',
+};
+const pageDifference: Difference = {
+  kind: 'page_count',
+  expected: 2,
+  actual: 1,
+  message: 'The PDF has 1 page; gt.json has 2',
+};
+const passingReport: SelfCheckReport = { ok: true, differences: [] };
+const mismatchReport: SelfCheckReport = {
+  ok: false,
+  differences: [textDifference, pageDifference],
+};
+
+test('records each fixture self-check in R2 and D1, including a mismatch that stays completed', async () => {
+  // Regression: skipping the check, writing it off fixtureKey(..., 'check.json'),
+  // or failing the fixture when gt and the PDF differ ships a bad fixture silently.
+  const id = await start(2);
+  const printed = new Map<number, { pdf: Uint8Array; gt: GroundTruth }>();
+  print.mockImplementation(async job => {
+    const value = {
+      pdf: new Uint8Array([37, 80, 68, 70, job.source.index]),
+      pageCount: 2,
+      gt: gtSchema.parse({ ...gtExample, source: job.source }),
+    };
+    printed.set(job.source.index, value);
+    return { ...value, pdf: value.pdf.slice() };
+  });
+  const inspect = vi.fn(async (_pdf: Uint8Array, gt: GroundTruth) =>
+    gt.source.index === 0 ? passingReport : mismatchReport,
+  );
+  const messages = [message(id, 0), message(id, 1)];
+  await handleFixtureMessages(messages, {
+    ...deps(),
+    checker: { check: inspect },
+  });
+
+  expect(await recordedCheck(id, 0)).toEqual({
+    status: 'completed',
+    checkPassed: true,
+    checkDifferences: 0,
+    checkJson: `${JSON.stringify(passingReport, null, 2)}\n`,
+  });
+  expect(await recordedCheck(id, 1)).toEqual({
+    status: 'completed',
+    checkPassed: false,
+    checkDifferences: mismatchReport.differences.length,
+    checkJson: `${JSON.stringify(mismatchReport, null, 2)}\n`,
+  });
+  for (const index of [0, 1]) {
+    const value = printed.get(index);
+    if (!value) throw new Error(`print did not return a PDF for ${index}`);
+    expect(await storedPdf(id, index)).toEqual(value.pdf);
+    expect(await storedGroundTruth(id, index)).toEqual(value.gt);
+    expect(inspect).toHaveBeenCalledWith(value.pdf, value.gt);
+  }
+  for (const msg of messages) acknowledged(msg);
+  expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
+  expect(get).toHaveBeenCalledWith(id);
+  expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
+});
+
+test('retries a throwing checker, then fails the fixture with null check columns and no check.json', async () => {
+  // Regression: a checker exception is stored as a completed pass, or a failed
+  // fixture keeps check.json / non-null check columns.
+  const id = await start(1);
+  const failure = new Error('self-check exploded');
+  const bytes = new Uint8Array([37, 80, 68, 70, 9]);
+  let printedGt: GroundTruth | undefined;
+  print.mockImplementation(async job => {
+    printedGt = gtSchema.parse({ ...gtExample, source: job.source });
+    return { pdf: bytes.slice(), pageCount: 2, gt: printedGt };
+  });
+  const inspect = vi.fn(async () => {
+    throw failure;
+  });
+  const withChecker = () => ({ ...deps(), checker: { check: inspect } });
+
+  for (const attempt of [1, 2]) {
+    const msg = message(id, 0, attempt);
+    await handleFixtureMessages([msg], withChecker());
+    expect(printedGt, 'printed gt').toBeDefined();
+    expect(inspect).toHaveBeenCalledWith(bytes, printedGt);
+    retried(msg);
+    expect(await rows(id)).toEqual([]);
+    expect(await storedText(id, 0, 'check.json')).toBeNull();
+  }
+  const last = message(id, 0, 3);
+  await handleFixtureMessages([last], withChecker());
+  acknowledged(last);
+  const row = (await rows(id)).find(item => item.index === 0);
+  expect(row).toMatchObject({
+    status: 'failed',
+    attempts: 3,
+    error: expect.stringContaining('self-check exploded'),
+  });
+  expect(row?.checkPassed, 'failed checkPassed').toBeNull();
+  expect(row?.checkDifferences, 'failed checkDifferences').toBeNull();
+  expect(await storedText(id, 0, 'check.json')).toBeNull();
+  expect(await progress(id)).toEqual({ completed: 0, failed: 1 });
+  expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
+});
+
+test('a printer failure leaves null check columns and does not write check.json', async () => {
+  // Regression: the print-failure path still runs the checker or records a
+  // check for a PDF the printer rejected.
+  const id = await start(1);
+  const inspect = vi.fn(async () => passingReport);
+  print.mockRejectedValue(new PrintFailure(503, 'busy', 'busy: unavailable'));
+  const early = message(id, 0, 1);
+  await handleFixtureMessages([early], {
+    ...deps(),
+    checker: { check: inspect },
+  });
+  retried(early);
+  expect(inspect).not.toHaveBeenCalled();
+  expect(await storedText(id, 0, 'check.json')).toBeNull();
+
+  const last = message(id, 0, 3);
+  await handleFixtureMessages([last], {
+    ...deps(),
+    checker: { check: inspect },
+  });
+  acknowledged(last);
+  const row = (await rows(id)).find(item => item.index === 0);
+  expect(row).toMatchObject({
+    status: 'failed',
+    attempts: 3,
+    error: expect.stringContaining('busy: unavailable'),
+  });
+  expect(row?.checkPassed, 'failed checkPassed').toBeNull();
+  expect(row?.checkDifferences, 'failed checkDifferences').toBeNull();
+  expect(await storedText(id, 0, 'check.json')).toBeNull();
+  expect(inspect).not.toHaveBeenCalled();
+});
+
+test('the queue handler fails an unreadable PDF instead of completing it', async () => {
+  // Regression: consumeFixtures supplies a checker that does not read the PDF,
+  // so a fixture whose bytes are not a PDF is stored as completed.
+  const id = await start(1);
+  const garbage = new Uint8Array([1, 2, 3, 4]);
+  const msg = message(id, 0, 3);
+  await consumeFixtures(
+    { messages: [msg] } as unknown as MessageBatch<FixtureJob>,
+    {
+      ...platform.env,
+      PRINT_TOKEN: 'test-token',
+      PRINT: {
+        fetch: async () =>
+          Response.json({
+            pageCount: 2,
+            pdf: btoa(String.fromCharCode(...garbage)),
+            gt: gtSchema.parse({
+              ...gtExample,
+              source: {
+                templateId: input.templateId,
+                templateVersion: input.templateVersion,
+                seed: input.seed,
+                index: 0,
+              },
+            }),
+          }),
+      } as unknown as Env['PRINT'],
+      BATCH_WORKFLOW: {
+        get: async () => ({ sendEvent: async () => {} }),
+      } as unknown as Env['BATCH_WORKFLOW'],
+    },
+  );
+  const row = (await rows(id)).find(item => item.index === 0);
+  expect(row).toMatchObject({
+    status: 'failed',
+    error: expect.stringContaining('Invalid PDF'),
+  });
+  expect(row?.checkPassed, 'failed checkPassed').toBeNull();
+  expect(row?.checkDifferences, 'failed checkDifferences').toBeNull();
+  expect(await storedText(id, 0, 'check.json')).toBeNull();
+  acknowledged(msg);
 });

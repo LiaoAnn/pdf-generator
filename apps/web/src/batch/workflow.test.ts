@@ -166,6 +166,9 @@ test('a started 100-fixture batch exposes rising HTTP progress and finishes with
         }),
       },
       workflow: { get: async () => ({ sendEvent: async () => {} }) },
+      checker: {
+        check: async () => ({ ok: true, differences: [] }),
+      },
     });
     for (const message of messages) {
       expect(message.ack).toHaveBeenCalledTimes(1);
@@ -191,7 +194,11 @@ test('a started 100-fixture batch exposes rising HTTP progress and finishes with
   const response = await request(`/api/batches/${id}/fixtures`);
   expect(response.status).toBe(200);
   expect(fixtureListSchema.parse(await response.json()).fixtures).toEqual(
-    Array.from({ length: 100 }, (_, index) => ({ index, status: 'completed' })),
+    Array.from({ length: 100 }, (_, index) => ({
+      index,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    })),
   );
   expect(context.step.waitForEvent).toHaveBeenCalledWith(expect.any(String), {
     type: 'fixtures-done',

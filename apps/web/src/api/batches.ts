@@ -7,8 +7,9 @@ import {
   type Fixture,
   type FixtureList,
 } from '@pdf-generator/contract';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { Effect } from 'effect';
+import { fixtureKey } from '../batch/fixture.ts';
 import {
   readBatch,
   readBatches,
@@ -16,7 +17,7 @@ import {
   toBatch,
 } from '../batch/store.ts';
 import { fixtureEntries, zipStream } from '../batch/zip.ts';
-import { batches } from '../db/schema.ts';
+import { batches, fixtures } from '../db/schema.ts';
 import { BatchRunner, Database, Files } from '../services.ts';
 import { TemplateSource } from '../templates/source.ts';
 import { ApiFailure } from './errors.ts';
@@ -174,7 +175,17 @@ const fixtureList = (batch: Batch) =>
         if (!row) return { index, status: 'pending' };
         return row.status === 'failed'
           ? { index, status: 'failed', error: row.error ?? 'failed' }
-          : { index, status: 'completed' };
+          : {
+              index,
+              status: 'completed',
+              ...(row.checkPassed !== null &&
+                row.checkDifferences !== null && {
+                  check: {
+                    passed: row.checkPassed,
+                    differences: row.checkDifferences,
+                  },
+                }),
+            };
       }),
     };
     return list;
@@ -186,6 +197,53 @@ export const listFixtures = (id: string) =>
     Effect.flatMap(fixtureList),
     Effect.map(list => Response.json(list)),
   );
+
+/** GET /api/batches/:id/fixtures/:index/check */
+export const getFixtureCheck = (id: string, index: string) =>
+  Effect.gen(function* () {
+    const batch = yield* found(id);
+    const number = Number(index);
+    if (
+      !/^(0|[1-9]\d*)$/.test(index) ||
+      !Number.isSafeInteger(number) ||
+      number >= batch.count
+    ) {
+      return yield* new ApiFailure({
+        status: 404,
+        code: 'fixture_not_found',
+        message: `No fixture ${index} in batch ${id}.`,
+      });
+    }
+    const db = yield* Database;
+    const [row] = yield* database('read the fixture', () =>
+      db
+        .select()
+        .from(fixtures)
+        .where(and(eq(fixtures.batchId, id), eq(fixtures.index, number))),
+    );
+    const missing = new ApiFailure({
+      status: 404,
+      code: 'check_not_found',
+      message: `No check for fixture ${index} in batch ${id}.`,
+    });
+    if (row?.status !== 'completed') return yield* missing;
+    const files = yield* Files;
+    const object = yield* Effect.tryPromise({
+      try: () => files.get(fixtureKey(id, number, 'check.json')),
+      catch: cause => {
+        console.error('batches: reading the fixture check failed', cause);
+        return new ApiFailure({
+          status: 500,
+          code: 'storage_error',
+          message: 'Could not read the fixture check.',
+        });
+      },
+    });
+    if (!object) return yield* missing;
+    return new Response(object.body, {
+      headers: { 'content-type': 'application/json' },
+    });
+  });
 
 const encoder = new TextEncoder();
 
@@ -209,7 +267,9 @@ export const downloadBatch = (id: string) =>
       { name: 'fixtures.json', bytes: json(list) },
       ...list.fixtures
         .filter(fixture => fixture.status === 'completed')
-        .flatMap(fixture => fixtureEntries(files, id, fixture.index)),
+        .flatMap(fixture =>
+          fixtureEntries(files, id, fixture.index, fixture.check !== undefined),
+        ),
     ]);
     return new Response(body, {
       headers: {

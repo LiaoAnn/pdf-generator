@@ -1,5 +1,6 @@
 // A finished batch as one zip, streamed from R2: batch.json, fixtures.json,
-// then each completed fixture's files. Entries are stored (PDFs don't
+// then each completed fixture's data.json, gt.json, fixture.pdf and, when
+// present, check.json. Entries are stored (PDFs don't
 // compress) with a fixed time, so the same batch always zips to the same
 // bytes, and only one R2 object is in memory at a time.
 import { Zip, ZipPassThrough } from 'fflate';
@@ -65,8 +66,10 @@ export function fixtureEntries(
   bucket: R2Bucket,
   batchId: string,
   index: number,
+  hasCheck: boolean,
 ): ZipEntry[] {
-  return files.map(file => ({
+  const entries: FixtureFile[] = hasCheck ? [...files, 'check.json'] : files;
+  return entries.map(file => ({
     name: `${String(index).padStart(4, '0')}/${file}`,
     bytes: async () => {
       const key = fixtureKey(batchId, index, file);

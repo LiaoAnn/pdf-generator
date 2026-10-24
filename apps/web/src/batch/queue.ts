@@ -7,6 +7,7 @@ import { type DrizzleD1Database, drizzle } from 'drizzle-orm/d1';
 import * as schema from '../db/schema.ts';
 import type { TemplateSourceApi } from '../templates/source.ts';
 import { templateStore } from '../templates/store.ts';
+import { type Checker, selfChecker } from './check.ts';
 import { type FixtureJob, makeFixture } from './fixture.ts';
 import { createPrinter, type Printer } from './printer.ts';
 import { countFinished, readBatchRow } from './store.ts';
@@ -22,6 +23,7 @@ export interface FixtureDeps {
   files: R2Bucket;
   templates: TemplateSourceApi;
   printer: Printer;
+  checker: Checker;
   workflow: {
     get(id: string): Promise<{
       sendEvent(event: { type: string; payload?: unknown }): Promise<void>;
@@ -140,6 +142,7 @@ export async function consumeFixtures(
     files: env.FILES,
     templates: templateStore(db, env.FILES),
     printer: printer.printer,
+    checker: selfChecker,
     workflow: env.BATCH_WORKFLOW,
   });
 }
