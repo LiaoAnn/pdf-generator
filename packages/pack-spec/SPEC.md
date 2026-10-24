@@ -301,7 +301,7 @@ A `page_number` block holds its fixed text and two kinds of empty slot (no value
   - any rule with `pagedjs` anywhere in a selector (`.pagedjs_page`, `.pagedjs_pages > div`, `[class*=pagedjs]`), whatever it declares: those elements are the platform's;
   - on `html`, `body`, `:root` or `*` as the element a selector styles (`body.report`, `html > body`, `p, body` too), a `margin`, `padding` or `border` width other than 0 (`margin: auto` and `var(--x)` count as nonzero), a `border` that isn't `none`, `hidden` or 0, `position` other than `static`, `transform`, `translate`, `rotate` or `scale` other than `none`, and `zoom` other than `normal`, `1` or `100%`. A Word-style reset `* { margin: 0 }` is fine; `* { margin: 2px }` is not.
 
-  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. Don't rely on its limits (it doesn't look inside quotes, so `[class*="pagedjs"]` gets through): page movement that slips past it shows in the self-check, where a shift of more than 1 pt makes text-free blocks report `ink` (§9).
+  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. Don't rely on its limits (it doesn't look inside quotes, so `[class*="pagedjs"]` gets through): page movement that slips past it shows in the self-check, where a shift of more than 1 pt can make text-free blocks report `ink` (§9), though not always: a drawing that moves from one edge of its box to the middle still fits.
 
 ```css pack-error css-page-box
 body {
@@ -436,4 +436,4 @@ Chrome prints a formula's positioned pieces (sub- and superscripts, fraction par
 
 `Block <id> on page <n>: the formula match budget was exceeded before its <k> printed items could be matched to gt.json's text, so it fails undecided`
 
-The search only runs when the PDF doesn't already print the text in order, and runs out only when many arrangements of the pieces fit a long way before failing: many printed pieces made of the same few characters, in a long formula. Simplify the formula, or split it into several `formula` blocks, each with its own `data-gt-latex` (§4.3).
+The search only runs when the PDF doesn't already print the text in order. It runs out on a long formula with many printed pieces, sooner when many of them are made of the same few characters. Simplify the formula, or split it into several `formula` blocks, each with its own `data-gt-latex` (§4.3).
