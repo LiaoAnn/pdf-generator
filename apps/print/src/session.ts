@@ -34,6 +34,24 @@ const reconnectDelaysMs = [1_000, 2_000];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+// Local Browser Rendering sometimes fails one of several concurrent launches
+// after starting its Chrome, which then can't be reached or closed (T16-3:
+// 1 of 20 concurrent launches, 0 of 24 sequential). One launch at a time.
+let launching: Promise<unknown> = Promise.resolve();
+
+function launch(
+  binding: Binding,
+  options?: Parameters<typeof puppeteer.launch>[1],
+): Promise<Browser> {
+  const launched = launching.then(() =>
+    options === undefined
+      ? puppeteer.launch(binding)
+      : puppeteer.launch(binding, options),
+  );
+  launching = launched.catch(() => undefined);
+  return launched;
+}
+
 // This isolate's view of kept sessions: how many prints use each, and since
 // when each has been idle (released, or first seen without a connection).
 const inUse = new Map<string, number>();
@@ -80,7 +98,7 @@ export async function openBrowser(
 ): Promise<OpenedBrowser> {
   const { session, keepAliveMs = defaultKeepAliveMs } = options;
   if (session === undefined) {
-    const browser = await puppeteer.launch(binding);
+    const browser = await launch(binding);
     const close = () => browser.close();
     return { browser, sessionId: undefined, release: close, discard: close };
   }
@@ -105,7 +123,7 @@ export async function openBrowser(
     const connected = await connectSession(binding, session);
     if (connected) return kept(connected);
   }
-  return kept(await puppeteer.launch(binding, { keep_alive: keepAliveMs }));
+  return kept(await launch(binding, { keep_alive: keepAliveMs }));
 }
 
 /**
