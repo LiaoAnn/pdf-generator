@@ -429,3 +429,11 @@ The drawings that overlap the box must lie inside it, within 1 pt, and together 
 
 - **Nothing is painted in the box**: `Block <id> on page <n> has no text and the PDF paints nothing in its box [x0, y0, x1, y1], so its box can't be checked`. Usually a blank field with no border or underline (one that can be `null`, or is always empty, such as a signature line), or an empty `<span>` used as a checkbox. Give it an underline (`border-bottom: 0.5pt solid #000`), a border or a background (§5 "Blank fields").
 - **The drawing doesn't fit the box**: `Block <id> on page <n>: the PDF draws at [...], which doesn't fit its box [...]`. Either it spills out by more than 1 pt (an `<img>` wider than the block around it), or it sits inside but off-centre and away from every edge (a line raised with `::after { bottom: 4pt }`, a drawing pushed sideways with `transform`). Draw on the block's own box: its border or background, or content that fills it or is centred in it. When every text-free block on a page reports it, the page itself has usually moved: see `css-page-box` (§5).
+
+### The self-check's `formula_undecided` difference
+
+Chrome prints a formula's positioned pieces (sub- and superscripts, fraction parts, delimiters) after the rest of its line, so a `formula` block's text in the PDF is often in another order than in `gt.json`. The self-check then accepts the block when its printed items, each used once and whole, spell its text in some order. That search has a fixed work budget, far above what the paper's formulas need, so every run gives the same answer. A formula it can't decide within the budget is reported, and never passes:
+
+`Block <id> on page <n>: the formula match budget was exceeded before its <k> printed items could be matched to gt.json's text, so it fails undecided`
+
+The search only runs when the PDF doesn't already print the text in order, and runs out only when many arrangements of the pieces fit a long way before failing: many printed pieces made of the same few characters, in a long formula. Simplify the formula, or split it into several `formula` blocks, each with its own `data-gt-latex` (§4.3).
