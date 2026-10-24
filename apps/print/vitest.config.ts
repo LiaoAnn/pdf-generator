@@ -18,10 +18,10 @@ export default defineProject({
     env: browserEnv,
     // Installs Chrome once before the test files start (see the file).
     globalSetup: ['src/test-browser-setup.ts'],
-    // One test file at a time: each file's Worker keeps local R2 state in the
-    // same .wrangler/state, whose store fails writes ("put: Unspecified
-    // error") when several workerd processes use it at once. It also keeps a
-    // single local Chrome running.
+    // One test file at a time keeps a single local Chrome running. Workers
+    // start through src/test-worker.ts, which keeps their local storage in
+    // memory: several workerd processes sharing .wrangler/state failed R2
+    // writes and SQLite opens.
     fileParallelism: false,
     testTimeout: 120_000,
     hookTimeout: 120_000,

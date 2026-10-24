@@ -1,13 +1,12 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { fileURLToPath } from 'node:url';
 import { apiErrorSchema } from '@pdf-generator/contract';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'linked-styles-fonts-local-test';
-let worker: Awaited<ReturnType<typeof unstable_startWorker>>;
+let worker: PrintWorker;
 let server: Server;
 let origin: string;
 let failedFont: string | undefined;
@@ -56,14 +55,7 @@ beforeAll(async () => {
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: {
-      PRINT_TOKEN: { type: 'plain_text', value: token },
-      ASSET_ORIGIN: { type: 'plain_text', value: origin },
-    },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token, { ASSET_ORIGIN: origin });
   await worker.url;
 });
 

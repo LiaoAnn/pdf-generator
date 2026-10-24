@@ -1,18 +1,13 @@
-import { fileURLToPath, URL } from 'node:url';
+import { URL } from 'node:url';
 import { getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'slice-two-layout-test-token';
-type Worker = Awaited<ReturnType<typeof unstable_startWorker>>;
-let worker: Worker;
+let worker: PrintWorker;
 
 beforeAll(async () => {
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
   await worker.url;
 });
 

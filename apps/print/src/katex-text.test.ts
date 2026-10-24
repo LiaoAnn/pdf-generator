@@ -1,16 +1,14 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { apiErrorSchema } from '@pdf-generator/contract';
 import katex from 'katex';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'katex-text-local-test-token';
-type Worker = Awaited<ReturnType<typeof unstable_startWorker>>;
-let worker: Worker;
+let worker: PrintWorker;
 // KaTeX's stylesheet and every woff2 it declares, as pack files: the print
 // browser loads only pack files and platform fonts.
 const katexFiles: Record<string, string> = {};
@@ -28,11 +26,7 @@ beforeAll(async () => {
       await readFile(join(dist, 'fonts', name))
     ).toString('base64');
   }
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
   await worker.url;
 });
 

@@ -1,11 +1,11 @@
-import { fileURLToPath, URL } from 'node:url';
+import { URL } from 'node:url';
 import { apiErrorSchema, gtSchema } from '@pdf-generator/contract';
 import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import { unstable_startWorker } from 'wrangler';
+import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'final-fixes-local-test-token';
-let worker: Awaited<ReturnType<typeof unstable_startWorker>>;
+let worker: PrintWorker;
 const source = {
   templateId: 'monthly-report',
   templateVersion: 3,
@@ -14,11 +14,7 @@ const source = {
 };
 
 beforeAll(async () => {
-  worker = await unstable_startWorker({
-    config: fileURLToPath(new URL('../wrangler.jsonc', import.meta.url)),
-    bindings: { PRINT_TOKEN: { type: 'plain_text', value: token } },
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
-  });
+  worker = await startPrintWorker(token);
   await worker.url;
 });
 
