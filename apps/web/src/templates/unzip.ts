@@ -3,12 +3,15 @@
 // all of it and returns the declared 10. Here the zip is inflated as a stream,
 // a few kilobytes of input at a time, counting what each entry really holds,
 // and stops at the first entry larger than it says or once the pack is larger
-// than `maxBytes`.
+// than `maxBytes`. Entries are counted too, directories included: walking
+// hundreds of thousands of tiny ones takes seconds.
 import type { PackIssue } from '@pdf-generator/template-tools';
 import { Unzip, UnzipInflate, unzipSync } from 'fflate';
 
 /** Input per step: one step inflates to at most ~1000 times this. */
 const slice = 8 * 1024;
+/** Most entries a pack's zip may have, directories included. */
+const maxEntries = 1000;
 
 /** Directory entries and macOS metadata, which checkPack ignores too. */
 const ignored = (path: string) =>
@@ -22,6 +25,12 @@ const whole = (code: string, message: string): PackIssue => ({
   file: '.',
   message,
 });
+
+const tooMany = () =>
+  whole(
+    'pack-too-many-files',
+    `the zip has more than ${maxEntries} entries (files and folders)`,
+  );
 
 const tooLarge = (size: number, maxBytes: number) =>
   whole(
@@ -42,15 +51,18 @@ export function unzipBounded(
   // says it holds. Its errors read as checkPack's own zip-invalid.
   const declared = new Map<string, number>();
   let total = 0;
+  const overflow = new Error('too many entries');
   try {
     unzipSync(zip, {
       filter: entry => {
+        if (declared.size >= maxEntries) throw overflow;
         declared.set(entry.name, entry.originalSize);
         total += entry.originalSize;
         return false;
       },
     });
   } catch (error) {
+    if (error === overflow) return { issue: tooMany() };
     return {
       issue: whole(
         'zip-invalid',
@@ -62,10 +74,24 @@ export function unzipBounded(
 
   const files: Record<string, Uint8Array> = {};
   let inflated = 0;
+  let entries = 0;
   let stop: PackIssue | undefined;
   const unzip = new Unzip(file => {
-    if (ignored(file.name) || stop) return;
-    const limit = declared.get(file.name) ?? 0;
+    if (stop) return;
+    if (++entries > maxEntries) {
+      stop = tooMany();
+      return;
+    }
+    const limit = declared.get(file.name);
+    if (limit === undefined) {
+      stop = {
+        code: 'zip-invalid',
+        file: file.name,
+        message: `${file.name} is in the zip's data but not in its directory`,
+      };
+      return;
+    }
+    if (ignored(file.name)) return;
     const chunks: Uint8Array[] = [];
     let size = 0;
     file.ondata = (error, data, final) => {
