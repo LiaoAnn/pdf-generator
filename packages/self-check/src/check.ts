@@ -206,6 +206,18 @@ function covers(pieces: readonly string[], wanted: string): boolean {
     length += piece.length;
   }
   if (length !== wanted.length) return false;
+  // Pieces that don't hold `wanted`'s characters can't spell it, however
+  // they are ordered: settled before the search, which can take exponential
+  // time to find out.
+  const chars = new Map<string, number>();
+  for (const char of wanted) chars.set(char, (chars.get(char) ?? 0) + 1);
+  for (const piece of pieces) {
+    for (const char of piece) {
+      const left = (chars.get(char) ?? 0) - 1;
+      if (left < 0) return false;
+      chars.set(char, left);
+    }
+  }
   // Positions known not to lead to a cover, with the pieces left then.
   const dead = new Set<string>();
   const from = (at: number): boolean => {
