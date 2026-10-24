@@ -679,3 +679,30 @@
 - **驗收測試**：`apps/print` 不載入 DOM lib 也能 typecheck；`pnpm verify` 全過；行為不變
 - **不做**：改執行邏輯
 - **來源**：T08-1 的 ASK
+
+### T14-3 自我檢查：公式文字的順序與 U+200B
+- **目標**：自我檢查依 PDF 的繪製順序比對公式文字；KaTeX 有定位的 span（上下標、分數、`\tag`）晚於同一行其他文字繪製，所以幾乎每個真實公式都失敗。另外 `.vlist-s` 的 U+200B 會進 gt 的文字，但 PDF 沒有。T25 的樣板在自己的 CSS（`templates/paper/src/build.ts`）繞過了這兩點；其他有公式的樣板會再碰到。改成公式文字的比對不看順序（或依 KaTeX 的結構還原順序），並讓 gt 與自我檢查都不含 U+200B
+- **Blocked by**：T14、T13
+- **Blocks**：—
+- **撞車風險**：`packages/self-check`、`packages/ground-truth` 的公式文字；與 T08-1 不要同時派
+- **驗收測試**：一份不帶 T25 CSS 修正、含上下標、分數與 `\tag` 的 KaTeX fixture，自我檢查通過；T25 的樣板拿掉繞道後仍全過（或說明為何保留）；其他樣板 gt.json 不變
+- **不做**：改公式的 `latex` 欄位
+- **來源**：PR #38（T25）
+
+### T15-3 樣板上傳：`KaTeX_Main-Regular.woff2` 的字型名稱在批次裡讀不到
+- **目標**：同一個樣板包裡 `KaTeX_Math-Italic.woff2`、`KaTeX_Size2-Regular.woff2` 正常，`KaTeX_Main-Regular.woff2` 卻被當成非樣板包字型；Node 讀得到 `postScriptName`。推測是 workerd 裡 brotli 的輸出上限（`apps/web/src/templates/font-names.ts` 的 `outputLimit`；這個字型的表解壓後 42,926 bytes），未驗證。先在 workerd 裡重現並確認原因，再修
+- **Blocked by**：T15
+- **Blocks**：—
+- **撞車風險**：`apps/web/src/templates/font-names.ts`；可與 T09-2（在 workerd 裡跑字型名稱測試）一起考慮
+- **驗收測試**：上傳含 `KaTeX_Main-Regular.woff2` 的樣板包，批次裡它的文字被認成樣板包字型；在 workerd 內有測試
+- **不做**：改字型白名單規則
+- **來源**：PR #38（T25；該樣板目前改帶 TTF）
+
+### T10-1 規格書：雙欄與 KaTeX 公式的寫法
+- **目標**：`packages/pack-spec` 的 SPEC §5 或 `skill/references/recipes.md` 補上「雙欄」與「KaTeX 公式」兩則寫法，指向 `templates/paper`：用 `build.ts` 預先渲染、帶 TTF 字型、兩個 CSS 修正、公式的留白；雙欄要用 `column-fill: balance`（`auto` 配 `break-inside: avoid` 會把整個多欄區塊推到下一頁）
+- **Blocked by**：T25
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`；T14-3、T15-3 合併後要同步改寫法
+- **驗收測試**：文件內容與 `templates/paper` 一致；skill 的範例片段能通過 check-pack
+- **不做**：改平台程式
+- **來源**：PR #38（T25）
