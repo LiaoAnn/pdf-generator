@@ -29,24 +29,6 @@ export class InvalidSeedError extends Error {
   override readonly name = 'InvalidSeedError';
 }
 
-/** A field the rule file allows but the engine cannot generate yet. */
-export type Unsupported = { path: string; feature: string };
-
-/** The rule file is valid but uses features ticket T12 adds. */
-export class UnsupportedRuleError extends Error {
-  override readonly name = 'UnsupportedRuleError';
-  readonly ticket = 'T12';
-  readonly unsupported: Unsupported[];
-  constructor(unsupported: Unsupported[]) {
-    super(
-      `not supported yet (T12): ${unsupported
-        .map(({ path, feature }) => `${path} (${feature})`)
-        .join(', ')}`,
-    );
-    this.unsupported = unsupported;
-  }
-}
-
 /** A generated record failed its own schema: an engine bug. */
 export class InvalidRecordError extends Error {
   override readonly name = 'InvalidRecordError';

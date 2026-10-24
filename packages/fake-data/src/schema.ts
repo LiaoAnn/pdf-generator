@@ -100,8 +100,10 @@ function valueSchema(field: RuleField): z.ZodType<FakeValue> {
         );
     case 'sum':
     case 'runningBalance':
-    case 'percentage':
       return z.number();
+    case 'percentage':
+      // null when the whole is 0.
+      return z.number().nullable();
   }
 }
 
