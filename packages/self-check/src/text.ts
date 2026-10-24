@@ -1,11 +1,15 @@
 import { type PdfTextItem, readPdf } from './pdf.ts';
 
 /**
- * The form texts are compared in: NFKC, no whitespace, lower case
+ * The form texts are compared in: NFKC, no whitespace or U+200B (KaTeX's
+ * `.vlist-s` filler, which the PDF doesn't print; T14-3), lower case
  * (text-transform changes case in the PDF but not in the DOM).
  */
 export function normaliseText(text: string): string {
-  return text.normalize('NFKC').replace(/\s/g, '').toLowerCase();
+  return text
+    .normalize('NFKC')
+    .replace(/[\s\u200b]/g, '')
+    .toLowerCase();
 }
 
 interface Box {

@@ -20,9 +20,7 @@ The paper runs 2–3 pages. There are no page numbers because the page count dep
 No script runs at print time, so KaTeX's output is pre-rendered. `src/formulas.ts` holds the LaTeX pool. `src/paper.hbs` is the template source, where a `<!-- formula eqN -->` line marks each equation. `src/build.ts` writes:
 
 - `pack/templates/paper.hbs`: the source with each marker replaced by one `{{#if (eq @root.eqN k)}}` branch per option. Each branch is a `data-gt="formula"` block whose `data-gt-latex` holds the LaTeX (braces as `&#123;`/`&#125;`, so Handlebars leaves them alone), with KaTeX's display-mode HTML inside (no MathML).
-- `pack/styles/katex.css`: KaTeX 0.16's stylesheet, with `@font-face` only for the faces the pool prints, plus two fixes the PDF self-check needs. Both are described in `build.ts` and proposed as a platform ticket:
-  - every KaTeX span is `position: relative`, so Chrome paints sub/superscripts, fractions and tags in DOM order;
-  - `.vlist-s` is hidden: its U+200B is in the DOM text but not in the PDF.
+- `pack/styles/katex.css`: KaTeX 0.16's stylesheet as it ships, with `@font-face` only for the faces the pool prints. The platform handles KaTeX's paint order and its `.vlist-s` U+200B itself (T14-3), so the pack needs no fixes of its own.
 - `pack/fonts/KaTeX_*.ttf`: TTF, not woff2, because the batch didn't recognise `KaTeX_Main-Regular.woff2` as a pack font.
 
 After changing `formulas.ts`, `paper.hbs` or the KaTeX version, rebuild. `build.test.ts` fails while the committed files are stale:
@@ -45,7 +43,7 @@ Edit `pack/styles/paper.css`, `pack/data/` and `pack/manifest.json` directly; th
 T3CODE_WORKTREE_PATH=<worktree> wt-exec bash -lc "pnpm exec vitest run --project @pdf-generator/paper"
 ```
 
-- `build.test.ts`: the generated files are current, every formula option fills with its exact LaTeX, the shipped faces cover what KaTeX prints, the paint-order and U+200B fixes, and the size budget.
+- `build.test.ts`: the generated files are current, every formula option fills with its exact LaTeX, the shipped faces cover what KaTeX prints, the stylesheet is KaTeX's own (no pack overrides), and the size budget.
 - `pack.test.ts`: `checkPack` on the pack and on 100 generated records, reading order of every block, reference numbering and language branches, footnotes, and the 64 KiB template limit.
 - `compare.test.ts`: the acceptance's per-fixture check, against a real printed fixture (`src/fixtures/`) and mutations of it.
 

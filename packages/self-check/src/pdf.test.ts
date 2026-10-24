@@ -136,8 +136,8 @@ test.each(['Uint8Array', 'Buffer'] as const)(
   },
 );
 
-test('normaliseText folds compatibility glyphs, Unicode whitespace and case for comparison', () => {
-  expect(normaliseText(' Ａ\tＢ\nＣ\r\n\u00a0\u3000K ﬁ MiXeD ')).toBe(
-    'abckfimixed',
-  );
+test('normaliseText folds compatibility glyphs, whitespace, KaTeX zero-width struts and case for comparison', () => {
+  expect(
+    normaliseText(' Ａ\tＢ\nＣ\r\n\u00a0\u3000K ﬁ Mi\u200bXeD \u200b'),
+  ).toBe('abckfimixed');
 });

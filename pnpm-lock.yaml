@@ -418,6 +418,9 @@ importers:
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
+      katex:
+        specifier: ~0.16.47
+        version: 0.16.47
       pagedjs:
         specifier: 0.4.3
         version: 0.4.3

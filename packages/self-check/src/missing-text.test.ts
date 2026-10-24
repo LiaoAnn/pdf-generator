@@ -26,6 +26,22 @@ const block = (texts: string[], bounds = box): ExpectedBlock => ({
   texts: texts.map(text => ({ text, boxes: [bounds] })),
 });
 
+test('KaTeX zero-width-only struts need no PDF item or geometry', async () => {
+  printed([]);
+  expect(
+    await missingText(new Uint8Array(), [
+      [{ texts: [{ text: '\u200b', boxes: [] }] }],
+    ]),
+  ).toEqual([]);
+});
+
+test('zero-width struts in expected or printed text do not make a visible word missing', async () => {
+  printed([{ ...item, text: 'ra\u200bdius' }]);
+  expect(
+    await missingText(new Uint8Array(), [[block(['r\u200badius\u200b'])]]),
+  ).toEqual([]);
+});
+
 test('numeric cells cannot consume a cross-cell occurrence before their own printed occurrences', async () => {
   const values = ['3.19', '3.01', '3.01', '93.01'];
   printed(

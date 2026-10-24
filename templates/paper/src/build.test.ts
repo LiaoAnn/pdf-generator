@@ -416,23 +416,22 @@ describe('paper formula build', () => {
     }
   });
 
-  it('preserves positioned KaTeX spans, positions ordinary spans with zero specificity, and hides vlist-s', () => {
-    // Regression: PDF paint order diverges from DOM text order, a broad rule
-    // overrides absolute tags/accents, or U+200B remains in the GT DOM text.
+  it('preserves upstream KaTeX rules outside the trimmed font faces without appending pack overrides', () => {
+    // Regression: a pack workaround changes KaTeX layout, including vlist-t2's
+    // margin, after the platform no longer needs paint-order or U+200B fixes.
+    const layoutRules = (css: string) =>
+      rules(css).filter(rule => rule.selector !== '@font-face');
+    expect(layoutRules(katexStylesheet())).toEqual(layoutRules(upstreamCss));
+  });
+
+  it('keeps upstream span positioning and vlist-s display for every formula option', () => {
+    // Regression: ordinary spans are forced to position:relative, absolute
+    // spans lose their positioning, or vlist-s is hidden to alter GT text.
     const css = katexStylesheet();
-    const fixes = rules(css).filter(
-      r =>
-        r.declarations.position === 'relative' &&
-        r.selector.includes(':where('),
-    );
-    expect(fixes.length).toBeGreaterThan(0);
-    for (const rule of fixes)
-      for (const selector of rule.selector.split(','))
-        expect(specificity(selector)).toBe(0);
     let ordinary = 0;
     let absolute = 0;
-    let hidden = 0;
-    for (const { latex } of cases) {
+    let fillers = 0;
+    for (const { slot, index, latex } of cases) {
       const spans = elements(parseFragment(render(latex))).filter(
         n => n.tagName === 'span',
       );
@@ -444,24 +443,23 @@ describe('paper formula build', () => {
           parent = parent.parentNode;
         }
         if (!inHtml) continue;
-        const before = computed(node, upstreamCss).position;
+        const before = computed(node, upstreamCss);
         const after = computed(node, css);
-        if (before === 'absolute') {
-          expect(after.position).toBe('absolute');
-          absolute++;
-        } else {
-          expect(after.position).toBe('relative');
-          ordinary++;
-        }
-        if (classes(node).includes('vlist-s')) {
-          expect(after.display).toBe('none');
-          hidden++;
-        }
+        const context = `${slot}[${index}]: ${attr(node, 'class') ?? 'span'}`;
+        expect(after.position ?? 'static', context).toBe(
+          before.position ?? 'static',
+        );
+        expect(after.display ?? 'inline', context).toBe(
+          before.display ?? 'inline',
+        );
+        if (before.position === 'absolute') absolute++;
+        if (before.position === undefined) ordinary++;
+        if (classes(node).includes('vlist-s')) fillers++;
       }
     }
     expect(ordinary).toBeGreaterThan(0);
     expect(absolute).toBeGreaterThan(0);
-    expect(hidden).toBeGreaterThan(0);
+    expect(fillers).toBeGreaterThan(0);
   });
 
   it('leaves room for the paper body within the platform text-file limit', () => {

@@ -188,6 +188,43 @@ function findRun(items: readonly Item[], wanted: string): Item[] | undefined {
   return undefined;
 }
 
+/**
+ * Whether `pieces` (comparable form), each used once and whole, in any order,
+ * spell `wanted` exactly. A formula's text items: Chrome paints the spans
+ * KaTeX positions (sub/superscripts, fraction parts, delimiters, `\tag`)
+ * after the rest of the line, so the PDF's order isn't gt.json's DOM order,
+ * and the PDF has nothing to restore it from (KaTeX's HTML is aria-hidden,
+ * so a tagged PDF leaves it out of the structure tree). Characters within an
+ * item still count in order; two whole items swapped go unnoticed (T14-3).
+ */
+function covers(pieces: readonly string[], wanted: string): boolean {
+  const counts = new Map<string, number>();
+  let length = 0;
+  for (const piece of pieces) {
+    if (piece === '') continue;
+    counts.set(piece, (counts.get(piece) ?? 0) + 1);
+    length += piece.length;
+  }
+  if (length !== wanted.length) return false;
+  // Positions known not to lead to a cover, with the pieces left then.
+  const dead = new Set<string>();
+  const from = (at: number): boolean => {
+    if (at === wanted.length) return true;
+    const key = `${at}:${[...counts.values()].join()}`;
+    if (dead.has(key)) return false;
+    for (const [piece, count] of counts) {
+      if (count === 0 || !wanted.startsWith(piece, at)) continue;
+      counts.set(piece, count - 1);
+      const found = from(at + piece.length);
+      counts.set(piece, count);
+      if (found) return true;
+    }
+    dead.add(key);
+    return false;
+  };
+  return from(0);
+}
+
 /** Compares a printed PDF with its gt.json and lists every difference. */
 export async function checkPdf(
   pdf: Uint8Array,
@@ -275,9 +312,14 @@ export async function checkPdf(
     const printed = comparable(joined(own));
     if (
       printed === wanted ||
-      // KaTeX's hidden MathML copy comes before the visible rendering, and
-      // may be painted into the text layer (PR #10).
-      (block.type === 'formula' && wanted !== '' && printed.endsWith(wanted))
+      (block.type === 'formula' &&
+        // KaTeX's hidden MathML copy comes before the visible rendering, and
+        // may be painted into the text layer (PR #10).
+        ((wanted !== '' && printed.endsWith(wanted)) ||
+          covers(
+            own.map(item => comparable(item.text)),
+            wanted,
+          )))
     ) {
       if (own.some(item => outside(item, block.bbox))) {
         report(block.page, boxDifference(block, own));
