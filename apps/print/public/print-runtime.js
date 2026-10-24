@@ -240,8 +240,9 @@
     return rows;
   }
 
-  // Per page, the text of every visible text node inside a [data-gt] element,
-  // as the PDF's text layer should contain it (T03 Must 4, PDF part).
+  // Per page, the text of every visible text node inside a [data-gt] element
+  // but outside KaTeX's MathML copy, as the PDF's text layer should contain
+  // it (T03 Must 4, PDF part).
   function expectedText() {
     return pagedPages().map(page => {
       /** @type {string[]} */
@@ -249,6 +250,9 @@
       const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         if (!node.parentElement?.closest('[data-gt]')) continue;
+        // KaTeX's MathML copy is clipped to 1px for screen readers; only its
+        // visible .katex-html is printed, which is also what T13 reads.
+        if (node.parentElement.closest('.katex-mathml')) continue;
         const text = (node.textContent ?? '')
           .normalize('NFKC')
           .replace(/\s/g, '');

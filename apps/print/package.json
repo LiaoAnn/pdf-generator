@@ -15,6 +15,7 @@
     "fonts": "node src/fonts/build.ts"
   },
   "devDependencies": {
+    "katex": "~0.16.47",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"
