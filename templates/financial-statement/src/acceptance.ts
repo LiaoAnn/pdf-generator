@@ -2,7 +2,8 @@
 // and checks it. Passes when every fixture's self-check passes, its pages are
 // landscape, every page has the running header and footer in gt.json, every
 // fragment of the split statement table starts with the same three header
-// rows, and the table rows in gt.json are the ones its data.json asks for.
+// rows with the first page's column x ranges, and the table rows in gt.json
+// are the ones its data.json asks for.
 //   pnpm --filter @pdf-generator/financial-statement acceptance -- \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t24]
 // Signs in with the local Access stand-in's service token (vite dev only).
@@ -186,6 +187,17 @@ function bodyRows(part: TableBlock): string[][] {
     );
 }
 
+/** Each column's x range in a fragment, from its first one-column cell. */
+function columnRanges(part: TableBlock): Map<number, [number, number]> {
+  const ranges = new Map<number, [number, number]>();
+  for (const cell of part.table.cells) {
+    if (cell.colSpan === 1 && !ranges.has(cell.col)) {
+      ranges.set(cell.col, [cell.bbox[0], cell.bbox[2]]);
+    }
+  }
+  return ranges;
+}
+
 /** What is wrong with one fixture's gt.json against its data.json. */
 function compare(gt: GroundTruth, record: Statement): string[] {
   const problems: string[] = [];
@@ -246,6 +258,26 @@ function compare(gt: GroundTruth, record: Statement): string[] {
       header.map(squash),
     );
     same(`columns on page ${part.page}`, part.table.cols, 11);
+  }
+  // 欄寬: every fragment's columns span the x ranges they do on the first
+  // page, within a point.
+  const firstRanges = columnRanges(statement);
+  for (const part of parts.slice(1)) {
+    const ranges = columnRanges(part);
+    for (let col = 0; col < 11; col++) {
+      const want = firstRanges.get(col);
+      const got = ranges.get(col);
+      if (
+        want === undefined ||
+        got === undefined ||
+        Math.abs(got[0] - want[0]) > 1 ||
+        Math.abs(got[1] - want[1]) > 1
+      ) {
+        problems.push(
+          `column ${col} on page ${part.page}: x ${JSON.stringify(got)}, page ${statement.page} ${JSON.stringify(want)}`,
+        );
+      }
+    }
   }
   same('statement rows', parts.flatMap(bodyRows), expectedRows(record));
   same('signer rows', fragments(signers, tables).flatMap(bodyRows), [

@@ -250,7 +250,7 @@ A `checkbox` block states whether it is checked, either with `data-gt-checked` o
 </table>
 ```
 
-A table that breaks across pages becomes one `table` block per page; each later fragment has `continues` pointing at the fragment on the page before it, and its grid is the rows printed on that page. The platform repeats the `<thead>` rows on every page and keeps each row whole (a row taller than a page can't print). Give tables fixed column widths (`table-layout: fixed` with `<col>` widths, as `word.css` does), or Paged.js lays each fragment out with different widths.
+A table that breaks across pages becomes one `table` block per page; each later fragment has `continues` pointing at the fragment on the page before it, and its grid is the rows printed on that page. The platform repeats the `<thead>` rows and the `<colgroup>` column widths on every page and keeps each row whole (a row taller than a page can't print). Give tables fixed column widths (`table-layout: fixed` with `<col>` widths, as `word.css` does), or Paged.js lays each fragment out with different widths.
 
 ### 4.3 Formulas and images
 
