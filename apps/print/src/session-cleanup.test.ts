@@ -5,7 +5,7 @@ import worker from './index.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 vi.mock('@cloudflare/puppeteer', () => ({
-  default: { launch: vi.fn(), connect: vi.fn() },
+  default: { launch: vi.fn(), connect: vi.fn(), sessions: vi.fn() },
 }));
 vi.mock('./lib.ts', async importOriginal => ({
   ...(await importOriginal<typeof import('./lib.ts')>()),
@@ -14,6 +14,8 @@ vi.mock('./lib.ts', async importOriginal => ({
 
 const token = 'session-cleanup-token';
 const env = { BROWSER: {}, PRINT_TOKEN: token, PACK_FILES: {} } as never;
+// The Worker registers its idle sweep with ctx.waitUntil.
+const ctx = { waitUntil: vi.fn(), passThroughOnException: vi.fn() } as never;
 
 function browser(id: string) {
   return {
@@ -38,6 +40,7 @@ function print(session?: string) {
       }),
     }) as never,
     env,
+    ctx,
   );
 }
 
@@ -57,11 +60,13 @@ function close(id: string, authorization = `Bearer ${token}`) {
       headers: { Authorization: authorization },
     }) as never,
     env,
+    ctx,
   );
 }
 
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(puppeteer.sessions).mockResolvedValue([]);
 });
 
 afterEach(() => {

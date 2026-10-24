@@ -6,6 +6,7 @@ import { Buffer } from 'node:buffer';
 import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
 import {
+  closeIdleSessions,
   connectSession,
   openBrowser,
   packLimits,
@@ -93,7 +94,11 @@ async function readBody(
   return Buffer.concat(chunks).toString('utf8');
 }
 
-async function print(request: Request, env: PrintEnv): Promise<Response> {
+async function print(
+  request: Request,
+  env: PrintEnv,
+  ctx: ExecutionContext,
+): Promise<Response> {
   const body = await readBody(request, packLimits.bodyBytes);
   if (body === undefined) {
     return tooLarge([
@@ -129,6 +134,8 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
     env.BROWSER,
     { session },
   );
+  // After this print claimed its session, so the sweep leaves that one be.
+  ctx.waitUntil(closeIdleSessions(env.BROWSER));
   const sessionHeader: Record<string, string> = sessionId
     ? { 'X-Browser-Session': sessionId }
     : {};
@@ -212,7 +219,7 @@ async function closeSession(env: PrintEnv, id: string): Promise<Response> {
 }
 
 export default {
-  async fetch(request, env: PrintEnv) {
+  async fetch(request, env: PrintEnv, ctx) {
     const url = new URL(request.url);
     const { pathname } = url;
     if (pathname.startsWith('/pack/') && request.method === 'GET') {
@@ -223,7 +230,7 @@ export default {
     }
     const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
     if (pathname === '/print' && request.method === 'POST') {
-      return (await denied(request, env)) ?? print(request, env);
+      return (await denied(request, env)) ?? print(request, env, ctx);
     }
     if (session && request.method === 'DELETE') {
       return (
