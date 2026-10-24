@@ -28,7 +28,7 @@ function batch(patch: Record<string, unknown> = {}) {
     ...request(),
     id: 'Batch_01-a',
     status: 'running',
-    progress: { completed: 1, failed: 0 },
+    progress: { completed: 1, failed: 0, checkPassed: 0, checkFailed: 0 },
     createdAt: timestamp,
     ...patch,
   };
@@ -178,11 +178,77 @@ describe('actionable upload error locations', () => {
 });
 
 describe('batch lifecycle invariants', () => {
+  test('rejects self-check totals above completed even when print totals fit count', () => {
+    // Regression: bounding checks by count (or failed + completed), or only
+    // when the batch status is completed, accepts checks for fixtures that
+    // never produced a completed PDF.
+    const values = [
+      ...[
+        [2, 0],
+        [0, 2],
+        [1, 1],
+      ].map(([checkPassed, checkFailed]) =>
+        batch({
+          progress: { completed: 1, failed: 1, checkPassed, checkFailed },
+        }),
+      ),
+      batch({
+        status: 'completed',
+        finishedAt: timestamp,
+        progress: { completed: 1, failed: 1, checkPassed: 1, checkFailed: 1 },
+      }),
+    ];
+    for (const value of values) {
+      for (const [schema, input, path] of [
+        [batchSchema, value, ['progress']],
+        [batchListSchema, { batches: [value] }, ['batches', 0, 'progress']],
+      ] as const) {
+        const result = schema.safeParse(input);
+        expect.soft(result.success).toBe(false);
+        if (!result.success)
+          expect
+            .soft(result.error.issues)
+            .toContainEqual(expect.objectContaining({ code: 'custom', path }));
+      }
+    }
+  });
+
+  test('allows checks to cover some or all completed fixtures without requiring every PDF to have a check', () => {
+    // Regression: treating missing legacy checks as invalid, using < instead
+    // of <=, or copying the "done === count when completed" rule onto
+    // self-check totals, rejects a partially checked batch.
+    const values = [
+      ...[
+        [0, 0],
+        [1, 0],
+        [0, 1],
+        [1, 1],
+        [2, 0],
+        [0, 2],
+      ].map(([checkPassed, checkFailed]) =>
+        batch({
+          progress: { completed: 2, failed: 0, checkPassed, checkFailed },
+        }),
+      ),
+      batch({
+        status: 'completed',
+        finishedAt: timestamp,
+        progress: { completed: 1, failed: 1, checkPassed: 0, checkFailed: 0 },
+      }),
+    ];
+    for (const value of values) {
+      expect.soft(batchSchema.safeParse(value).success).toBe(true);
+      expect
+        .soft(batchListSchema.safeParse({ batches: [value] }).success)
+        .toBe(true);
+    }
+  });
+
   test.each([
-    ['queued', { completed: 2, failed: 1 }],
-    ['running', { completed: 1, failed: 2 }],
-    ['completed', { completed: 1, failed: 0 }],
-    ['failed', { completed: 3, failed: 0 }],
+    ['queued', { completed: 2, failed: 1, checkPassed: 0, checkFailed: 0 }],
+    ['running', { completed: 1, failed: 2, checkPassed: 0, checkFailed: 0 }],
+    ['completed', { completed: 1, failed: 0, checkPassed: 0, checkFailed: 0 }],
+    ['failed', { completed: 3, failed: 0, checkPassed: 0, checkFailed: 0 }],
   ])(
     'reports impossible %s progress on the batch and inside a batch list',
     (status, progress) => {
@@ -206,15 +272,17 @@ describe('batch lifecycle invariants', () => {
     for (const value of [
       batch({
         status: 'completed',
-        progress: { completed: 1, failed: 1 },
+        progress: { completed: 1, failed: 1, checkPassed: 0, checkFailed: 0 },
         finishedAt: timestamp,
       }),
       batch({
         status: 'failed',
-        progress: { completed: 0, failed: 0 },
+        progress: { completed: 0, failed: 0, checkPassed: 0, checkFailed: 0 },
         finishedAt: timestamp,
       }),
-      batch({ progress: { completed: 1, failed: 1 } }),
+      batch({
+        progress: { completed: 1, failed: 1, checkPassed: 0, checkFailed: 0 },
+      }),
     ])
       expect(batchSchema.parse(value)).toEqual(value);
   });
@@ -223,7 +291,10 @@ describe('batch lifecycle invariants', () => {
     'requires finishedAt exactly for terminal status %s',
     status => {
       const terminal = status === 'completed' || status === 'failed';
-      const base = batch({ status, progress: { completed: 1, failed: 1 } });
+      const base = batch({
+        status,
+        progress: { completed: 1, failed: 1, checkPassed: 0, checkFailed: 0 },
+      });
       const valid = { ...base, ...(terminal ? { finishedAt: timestamp } : {}) };
       const invalid = {
         ...base,

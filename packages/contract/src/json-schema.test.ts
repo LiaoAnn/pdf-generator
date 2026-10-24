@@ -110,6 +110,57 @@ describe('published JSON Schema contract', () => {
           }
         });
       }
+
+      if (name === 'batch' || name === 'batch-list') {
+        test.each(['checkPassed', 'checkFailed'])(
+          'requires a non-negative integer %s for runtime and published-schema consumers',
+          field => {
+            // Regression: older local consumers accept an omitted check count,
+            // or runtime and published decoders disagree on its numeric domain.
+            const validate = new Ajv2020({ strict: true }).compile(
+              readJson(`../schemas/${name}.schema.json`) as object,
+            );
+            for (const value of [undefined, -1, 0.5, '1', null, 0, 1]) {
+              const progress = {
+                completed: 1,
+                failed: 0,
+                checkPassed: 0,
+                checkFailed: 0,
+                [field]: value,
+              };
+              if (value === undefined) Reflect.deleteProperty(progress, field);
+              const batch = {
+                id: 'Batch_01-a',
+                templateId: 'monthly-report',
+                templateVersion: 1,
+                count: 2,
+                seed: 'Seed_01-a',
+                status: 'running',
+                progress,
+                createdAt: '2026-10-23T15:46:22.998Z',
+              };
+              const input = name === 'batch' ? batch : { batches: [batch] };
+              const accepted = value === 0 || value === 1;
+              const context = `${field}=${JSON.stringify(value)}`;
+              expect
+                .soft(schema.safeParse(input).success, `Zod: ${context}`)
+                .toBe(accepted);
+              expect.soft(validate(input), `Ajv: ${context}`).toBe(accepted);
+            }
+          },
+        );
+
+        test('documents the self-check total constraint that JSON Schema cannot enforce', () => {
+          // Regression: exported schemas silently omit the cross-field rule,
+          // so local consumers cannot discover the extra runtime requirement.
+          expect(readJson(`../schemas/${name}.schema.json`)).toHaveProperty(
+            'description',
+            expect.stringMatching(
+              /Not expressible.*checkPassed\s*\+\s*(?:progress\.)?checkFailed\s*≤\s*(?:progress\.)?completed/,
+            ),
+          );
+        });
+      }
     });
   }
 });

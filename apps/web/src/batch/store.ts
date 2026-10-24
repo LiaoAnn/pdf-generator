@@ -1,6 +1,7 @@
 // Batches and their fixtures in D1, shared by the API routes, the Workflow
 // and the queue consumer. A batch's progress is counted from its fixture
-// rows; a fixture without a row is pending.
+// rows; a fixture without a row is pending, a completed one without a check
+// counts in neither check total.
 import type { Batch } from '@pdf-generator/contract';
 import { desc, eq, type SQL, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
@@ -13,12 +14,19 @@ export type BatchRow = typeof batches.$inferSelect;
 const counted = (status: 'completed' | 'failed') =>
   sql<number>`coalesce(sum(${fixtures.status} = ${status}), 0)`.mapWith(Number);
 
+const checked = (passed: boolean) =>
+  sql<number>`coalesce(sum(${fixtures.checkPassed} = ${passed ? 1 : 0}), 0)`.mapWith(
+    Number,
+  );
+
 function selectBatches(db: Db, where?: SQL) {
   return db
     .select({
       batch: batches,
       completed: counted('completed'),
       failed: counted('failed'),
+      checkPassed: checked(true),
+      checkFailed: checked(false),
     })
     .from(batches)
     .leftJoin(fixtures, eq(fixtures.batchId, batches.id))
@@ -29,7 +37,12 @@ function selectBatches(db: Db, where?: SQL) {
 /** The contract's Batch for a row and its progress. */
 export function toBatch(
   row: BatchRow,
-  progress: Batch['progress'] = { completed: 0, failed: 0 },
+  progress: Batch['progress'] = {
+    completed: 0,
+    failed: 0,
+    checkPassed: 0,
+    checkFailed: 0,
+  },
 ): Batch {
   return {
     id: row.id,
@@ -45,11 +58,12 @@ export function toBatch(
   };
 }
 
-const fromSelected = (row: {
+const fromSelected = ({
+  batch,
+  ...progress
+}: {
   batch: BatchRow;
-  completed: number;
-  failed: number;
-}) => toBatch(row.batch, { completed: row.completed, failed: row.failed });
+} & Batch['progress']) => toBatch(batch, progress);
 
 export async function readBatch(
   db: Db,

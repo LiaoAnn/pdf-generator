@@ -190,7 +190,12 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   const first = message(id, 0, 2);
   await handleFixtureMessages([first], deps());
   acknowledged(first);
-  expect(await progress(id)).toEqual({ completed: 1, failed: 0 });
+  expect(await progress(id)).toEqual({
+    completed: 1,
+    failed: 0,
+    checkPassed: 1,
+    checkFailed: 0,
+  });
   expect(await statuses(id)).toEqual([
     {
       index: 0,
@@ -228,13 +233,23 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   const transient = message(id, 1);
   await handleFixtureMessages([transient], deps());
   retried(transient);
-  expect(await progress(id)).toEqual({ completed: 1, failed: 0 });
+  expect(await progress(id)).toEqual({
+    completed: 1,
+    failed: 0,
+    checkPassed: 1,
+    checkFailed: 0,
+  });
   expect((await rows(id)).map(row => row.index)).toEqual([0]);
   expect(get).not.toHaveBeenCalled();
   const recovered = message(id, 1, 2);
   await handleFixtureMessages([recovered], deps());
   acknowledged(recovered);
-  expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
+  expect(await progress(id)).toEqual({
+    completed: 2,
+    failed: 0,
+    checkPassed: 2,
+    checkFailed: 0,
+  });
   expect(get).not.toHaveBeenCalled();
   for (const attempt of [1, 2, 3]) {
     print.mockRejectedValueOnce(
@@ -248,12 +263,22 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
     await handleFixtureMessages([failing], deps());
     if (attempt < 3) {
       retried(failing);
-      expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
+      expect(await progress(id)).toEqual({
+        completed: 2,
+        failed: 0,
+        checkPassed: 2,
+        checkFailed: 0,
+      });
       expect((await statuses(id))[2]).toEqual({ index: 2, status: 'pending' });
       expect(get).not.toHaveBeenCalled();
     } else acknowledged(failing);
   }
-  expect(await progress(id)).toEqual({ completed: 2, failed: 1 });
+  expect(await progress(id)).toEqual({
+    completed: 2,
+    failed: 1,
+    checkPassed: 2,
+    checkFailed: 0,
+  });
   expect(await statuses(id)).toEqual([
     {
       index: 0,
@@ -370,7 +395,12 @@ test.each(['get', 'sendEvent'] as const)(
     const msg = message(id, 0);
     await handleFixtureMessages([msg], deps());
     acknowledged(msg);
-    expect(await progress(id)).toEqual({ completed: 1, failed: 0 });
+    expect(await progress(id)).toEqual({
+      completed: 1,
+      failed: 0,
+      checkPassed: 1,
+      checkFailed: 0,
+    });
     expect(await rows(id)).toEqual([
       expect.objectContaining({ status: 'completed' }),
     ]);
@@ -394,7 +424,12 @@ test('one failing message does not prevent later messages in the delivery from c
   retried(first);
   acknowledged(second);
   acknowledged(third);
-  expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
+  expect(await progress(id)).toEqual({
+    completed: 2,
+    failed: 0,
+    checkPassed: 2,
+    checkFailed: 0,
+  });
   expect(await statuses(id)).toEqual([
     { index: 0, status: 'pending' },
     {
@@ -475,7 +510,12 @@ test('records each fixture self-check in R2 and D1, including a mismatch that st
     expect(inspect).toHaveBeenCalledWith(value.pdf, value.gt, []);
   }
   for (const msg of messages) acknowledged(msg);
-  expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
+  expect(await progress(id)).toEqual({
+    completed: 2,
+    failed: 0,
+    checkPassed: 1,
+    checkFailed: 1,
+  });
   expect(get).toHaveBeenCalledWith(id);
   expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
 });
@@ -517,7 +557,12 @@ test('retries a throwing checker, then fails the fixture with null check columns
   expect(row?.checkPassed, 'failed checkPassed').toBeNull();
   expect(row?.checkDifferences, 'failed checkDifferences').toBeNull();
   expect(await storedText(id, 0, 'check.json')).toBeNull();
-  expect(await progress(id)).toEqual({ completed: 0, failed: 1 });
+  expect(await progress(id)).toEqual({
+    completed: 0,
+    failed: 1,
+    checkPassed: 0,
+    checkFailed: 0,
+  });
   expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
 });
 

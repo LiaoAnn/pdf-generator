@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import {
   apiErrorSchema,
+  batchListSchema,
   batchSchema,
   fixtureListSchema,
   type GroundTruth,
@@ -231,6 +232,58 @@ test('lists stored self-check results and omits check when none was stored', asy
         check: { passed: false, differences: 4 },
       },
     ],
+  });
+});
+
+test("reports self-check totals from the batch's own fixtures on GET /api/batches/:id and GET /api/batches", async () => {
+  // Regression: checkPassed/checkFailed are missing, conflate a print failure
+  // with a failed check, count a completed fixture without a stored check as
+  // a pass, or include another batch's fixtures.
+  const id = await start(4);
+  print.mockImplementation(async job => {
+    if (job.source.index === 2) {
+      throw new PrintFailure(
+        422,
+        'invalid_layout',
+        'invalid_layout: overlapping blocks',
+      );
+    }
+    return printed(job);
+  });
+  check.mockImplementation(async (_pdf, gt) =>
+    gt.source.index === 1 ? mismatchReport : passingReport,
+  );
+  await handleFixtureMessages(
+    [message(id, 0), message(id, 1), message(id, 2, 3)],
+    deps(),
+  );
+  await db().insert(schema.fixtures).values({
+    batchId: id,
+    index: 3,
+    status: 'completed',
+    attempts: 1,
+    pageCount: 1,
+  });
+  const otherId = await start(1);
+  await handleFixtureMessages([message(otherId, 0)], deps());
+  const expected = {
+    completed: 3,
+    failed: 1,
+    checkPassed: 1,
+    checkFailed: 1,
+  };
+  const detail = await request(`/api/batches/${id}`);
+  expect(detail.status).toBe(200);
+  expect(batchSchema.parse(await detail.json()).progress).toEqual(expected);
+  const list = await request('/api/batches');
+  expect(list.status).toBe(200);
+  const batches = batchListSchema.parse(await list.json()).batches;
+  expect(batches.find(batch => batch.id === id)?.progress).toEqual(expected);
+  expect(batches.find(batch => batch.id === otherId)?.progress).toEqual({
+    completed: 1,
+    failed: 0,
+    checkPassed: 1,
+    checkFailed: 0,
   });
 });
 

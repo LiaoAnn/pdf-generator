@@ -7,7 +7,12 @@
       "count": 2,
       "seed": "Seed_01-a",
       "status": "queued",
-      "progress": { "completed": 0, "failed": 0 },
+      "progress": {
+        "completed": 0,
+        "failed": 0,
+        "checkPassed": 0,
+        "checkFailed": 0
+      },
       "createdAt": "2026-10-23T15:46:22.998Z"
     }
   ]

@@ -49,11 +49,25 @@
           "type": "integer",
           "minimum": 0,
           "maximum": 9007199254740991
+        },
+        "checkPassed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Completed fixtures whose self-check passed."
+        },
+        "checkFailed": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Completed fixtures whose self-check failed."
         }
       },
       "required": [
         "completed",
-        "failed"
+        "failed",
+        "checkPassed",
+        "checkFailed"
       ],
       "additionalProperties": false,
       "description": "Fixtures finished so far, by outcome."
@@ -86,5 +100,5 @@
   ],
   "additionalProperties": false,
   "title": "Batch",
-  "description": "A batch and its progress. Not expressible in JSON Schema: progress.completed + progress.failed ≤ count, and = count when completed; finishedAt is present exactly when status is completed or failed; rerunOf differs from id."
+  "description": "A batch and its progress. Not expressible in JSON Schema: progress.completed + progress.failed ≤ count, and = count when completed; progress.checkPassed + progress.checkFailed ≤ progress.completed; finishedAt is present exactly when status is completed or failed; rerunOf differs from id."
 }

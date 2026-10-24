@@ -116,7 +116,18 @@ const batchObject = batchRequestSchema.extend({
   id: batchId,
   status: batchStatus,
   progress: z
-    .strictObject({ completed: z.int().min(0), failed: z.int().min(0) })
+    .strictObject({
+      completed: z.int().min(0),
+      failed: z.int().min(0),
+      checkPassed: z
+        .int()
+        .min(0)
+        .describe('Completed fixtures whose self-check passed.'),
+      checkFailed: z
+        .int()
+        .min(0)
+        .describe('Completed fixtures whose self-check failed.'),
+    })
     .describe('Fixtures finished so far, by outcome.'),
   createdAt: timestamp,
   finishedAt: timestamp
@@ -126,7 +137,7 @@ const batchObject = batchRequestSchema.extend({
 });
 
 const batchRules =
-  'progress.completed + progress.failed ≤ count, and = count when completed; finishedAt is present exactly when status is completed or failed; rerunOf differs from id.';
+  'progress.completed + progress.failed ≤ count, and = count when completed; progress.checkPassed + progress.checkFailed ≤ progress.completed; finishedAt is present exactly when status is completed or failed; rerunOf differs from id.';
 
 export const batchSchema = batchObject
   .superRefine((batch, ctx) => {
@@ -138,6 +149,16 @@ export const batchSchema = batchObject
       ctx.addIssue({
         code: 'custom',
         message: 'progress does not fit count and status',
+        path: ['progress'],
+      });
+    }
+    if (
+      batch.progress.checkPassed + batch.progress.checkFailed >
+      batch.progress.completed
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'more self-checks than completed fixtures',
         path: ['progress'],
       });
     }
