@@ -156,7 +156,9 @@ td {
 /* Code 39 mailing barcode: one svg per character, 16 units wide
    (15 of bars and spaces, 1 of inter-character gap), 0.25 mm per unit. */
 .barcode {
+  /* The block's box is the bars and their quiet zone, not the column. */
   display: flex;
+  width: fit-content;
   margin-top: 3mm;
   padding: 0 2.5mm;
 }
