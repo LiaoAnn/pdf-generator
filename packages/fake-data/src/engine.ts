@@ -4,6 +4,7 @@ import {
   rulesSchema,
   seedSchema,
 } from '@pdf-generator/contract';
+import { derivedOrder, fillDerived } from './derived.ts';
 import {
   InvalidRecordError,
   InvalidRulesError,
@@ -66,18 +67,17 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
   checkbox: (field, rng) => rng.chance(field.probability ?? 0.5),
   text: (field, rng) =>
     fillerText(rng, field.lang, rng.int(field.minLength, field.maxLength)),
-  sum: notYet,
+  // Placeholders: fillDerived computes them once every drawn value exists.
+  sum: () => 0,
   runningBalance: notYet,
-  percentage: notYet,
+  percentage: () => 0,
 };
 
 /** Features of `field` itself that the engine cannot generate yet (T12). */
 function unsupported(field: RuleField): string[] {
   const features: string[] = [];
   switch (field.type) {
-    case 'sum':
     case 'runningBalance':
-    case 'percentage':
       features.push('derived field');
       break;
   }
@@ -207,7 +207,10 @@ export function generate(rules: unknown, seed: string): FakeRecord {
   }
   const { features, issues } = check(parsedRules.data);
   if (features.length > 0) throw new UnsupportedRuleError(features);
-  if (issues.length > 0) throw new InvalidRulesError(issues);
+  const { order, issues: cycles } = derivedOrder(parsedRules.data);
+  if (issues.length + cycles.length > 0) {
+    throw new InvalidRulesError([...issues, ...cycles]);
+  }
 
   const childAt =
     (path: string): Child =>
@@ -224,6 +227,8 @@ export function generate(rules: unknown, seed: string): FakeRecord {
       return generator(field, createRng(seed, at), childAt(at));
     };
   const record = generateFields(parsedRules.data.fields, childAt(''));
+  const unprintable = fillDerived(record, order);
+  if (unprintable.length > 0) throw new InvalidRulesError(unprintable);
 
   const checked = recordSchema(parsedRules.data).safeParse(record);
   if (!checked.success) throw new InvalidRecordError(issuesOf(checked.error));

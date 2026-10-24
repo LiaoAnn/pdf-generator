@@ -180,25 +180,19 @@ describe('public fake-data engine', () => {
     expect(generate({ ...rules, fields: remaining }, seed)).toEqual(expected);
   });
 
-  it('reports only derived fields as unsupported in the contract example', () => {
+  it('reports only runningBalance as unsupported in the contract example', () => {
     const error = caught(() => generate(example('valid'), seed));
     expect(error).toBeInstanceOf(UnsupportedRuleError);
     expect(error).toMatchObject({
       ticket: 'T12',
       unsupported: [
         { path: 'transactions[].balance', feature: 'derived field' },
-        { path: 'totalDeposits', feature: 'derived field' },
-        { path: 'utilization', feature: 'derived field' },
       ],
     });
     expect(error.message).toContain('not supported yet (T12)');
-    for (const path of [
-      'transactions[].balance',
-      'totalDeposits',
-      'utilization',
-    ]) {
-      expect(error.message).toContain(path);
-    }
+    expect(error.message).toContain('transactions[].balance');
+    expect(error.message).not.toContain('totalDeposits');
+    expect(error.message).not.toContain('utilization');
     expect(error.message).not.toContain('memo');
   });
 
