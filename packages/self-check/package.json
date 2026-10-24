@@ -12,12 +12,14 @@
   },
   "devDependencies": {
     "@types/node": "^24.13.6",
+    "pagedjs": "0.4.3",
     "playwright-core": "1.63.0",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"
   },
   "dependencies": {
+    "@pdf-generator/contract": "workspace:*",
     "unpdf": "^1.9.1"
   }
 }

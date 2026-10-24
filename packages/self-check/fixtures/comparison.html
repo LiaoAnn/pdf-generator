@@ -1,0 +1,28 @@
+<!doctype html>
+<!-- Hand oracle: A4, 54pt margins; page 1 Alpha at y=54, two lines
+at y=102/126 and a blank at y=174. Page 2 Beta starts at y=54.
+All blocks are 300pt wide; 12pt monospace, 24pt line boxes.
+Zero-height inline markers expose baselines independently of PDF extraction. -->
+<html lang="en">
+<head><meta charset="utf-8"><title>Comparison oracle</title>
+<style>
+@page { size: A4; margin: 54pt; }
+html, body, p { margin: 0; padding: 0; }
+body { font: 12pt/24pt monospace; }
+section { break-before: page; }
+section:first-child { break-before: auto; }
+p { width: 300pt; height: 24pt; }
+.gap { height: 24pt; }
+#multi { height: 48pt; }
+.baseline { display: inline-block; width: 0; height: 0; }
+</style></head>
+<body>
+<section>
+<p id="alpha" data-gt="paragraph"><span class="ink">Alpha ONE</span><i class="baseline"></i></p>
+<div class="gap"></div>
+<p id="multi" data-gt="paragraph"><span class="ink">LEFT</span><i class="baseline"></i><br><span class="ink">RIGHT</span><i class="baseline"></i></p>
+<div class="gap"></div>
+<p id="blank" data-gt="field"></p>
+</section>
+<section><p id="beta" data-gt="paragraph"><span class="ink">Beta TWO</span><i class="baseline"></i></p></section>
+</body></html>
