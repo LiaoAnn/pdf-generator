@@ -36,8 +36,8 @@ function invalid(details: Detail[]): Explanation {
 }
 
 function fallback(): string | undefined {
-  return invalid([{ message: 'future-code: Unknown problem' }]).issues[0]
-    ?.explanation;
+  return invalid([{ code: 'future-code', message: 'Unknown problem' }])
+    .issues[0]?.explanation;
 }
 
 async function readPack(root: URL): Promise<Record<string, Uint8Array>> {
@@ -114,7 +114,9 @@ describe('template author error explanations', () => {
         ).toEqual(details.map(detail => detail.message));
         for (const [index, detail] of details.entries()) {
           const issue = result.issues[index];
-          expect(issue?.code, name).toBe(detail.message.split(': ')[0]);
+          expect(detail.code, name).toEqual(expect.any(String));
+          expect(detail.message, name).not.toMatch(/^[a-z][a-z0-9_-]*: /);
+          expect(issue?.code, name).toBe(detail.code);
           expect(issue?.explanation, name).toMatch(cjk);
           expect(issue?.explanation, name).not.toBe(fallback());
           if (detail.file) expect(issue?.location, name).toContain(detail.file);
@@ -180,8 +182,8 @@ describe('template author error explanations', () => {
   test.each([...uploadCodes, ...printCodes])(
     '%s has an actionable Chinese explanation instead of the unknown-code fallback',
     code => {
-      const raw = `${code}: Original diagnostic: keep punctuation.\n  More detail`;
-      const result = invalid([{ message: raw }]);
+      const raw = 'Original diagnostic: keep punctuation.\n  More detail';
+      const result = invalid([{ code, message: raw }]);
       expect(result.issues).toHaveLength(1);
       expect(result.issues[0]?.code).toBe(code);
       expect(result.issues[0]?.raw).toBe(raw);
@@ -196,8 +198,7 @@ describe('template author error explanations', () => {
   test('different known causes do not collapse to the same generic Chinese sentence', () => {
     const codes = [...uploadCodes, ...printCodes];
     const explanations = codes.map(
-      code =>
-        invalid([{ message: `${code}: Diagnostic` }]).issues[0]?.explanation,
+      code => invalid([{ code, message: 'Diagnostic' }]).issues[0]?.explanation,
     );
     expect(new Set(explanations).size).toBe(codes.length);
   });
@@ -238,43 +239,70 @@ describe('template author error explanations', () => {
     'formats %s so authors can find the problem without reading an object dump',
     (_name, detail, expected) => {
       expect(
-        invalid([{ ...detail, message: 'json-syntax: Bad JSON' }]).issues[0]
-          ?.location,
+        invalid([{ ...detail, code: 'json-syntax', message: 'Bad JSON' }])
+          .issues[0]?.location,
       ).toBe(expected);
     },
   );
 
   test.each<[string, string | undefined]>([
-    ['next-code: new diagnostic', 'next-code'],
-    ['next_code2: new diagnostic', 'next_code2'],
+    ['next-code: new diagnostic', undefined],
+    ['next_code2: new diagnostic', undefined],
+    ['file-missing: Missing stylesheet', undefined],
     ['Plain diagnostic without a code', undefined],
     ['UPPER: not a valid code', undefined],
     ['2code: not a valid code', undefined],
     ['bad.code: not a valid code', undefined],
     ['file-missing:no separating space', undefined],
     [' file-missing: leading space', undefined],
-  ])(
-    'preserves unknown or uncoded diagnostic %s without inventing a known explanation',
-    (raw, code) => {
-      const issue = invalid([{ message: raw }]).issues[0];
-      expect(issue?.code).toBe(code);
-      expect(issue?.raw).toBe(raw);
-      expect(issue?.explanation).toBe(fallback());
-      expect(issue?.explanation).toMatch(cjk);
-      if (code === undefined) expect(issue?.location).toBeUndefined();
-    },
-  );
+  ])('does not infer an issue code from message text %s', (raw, code) => {
+    const issue = invalid([{ message: raw }]).issues[0];
+    expect(issue?.code).toBe(code);
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toBe(fallback());
+    expect(issue?.explanation).toMatch(cjk);
+    if (code === undefined) expect(issue?.location).toBeUndefined();
+  });
+
+  test('an explicit code overrides a misleading message prefix without rewriting the raw diagnostic', () => {
+    const raw = 'file-missing: This text is only a diagnostic';
+    const issue = invalid([{ code: 'manifest-missing', message: raw }])
+      .issues[0];
+    const expected = invalid([
+      { code: 'manifest-missing', message: 'Missing manifest' },
+    ]).issues[0];
+    expect(issue?.code).toBe('manifest-missing');
+    expect(issue?.explanation).toBe(expected?.explanation);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.location).toBe('整個樣板包');
+    expect(issue?.raw).toBe(raw);
+  });
+
+  test('an unknown explicit code keeps its identity and fallback without borrowing the message code', () => {
+    const issue = invalid([
+      { code: 'future-code', message: 'file-missing: Missing stylesheet' },
+    ]).issues[0];
+    expect(issue?.code).toBe('future-code');
+    expect(issue?.explanation).toBe(fallback());
+    expect(issue?.location).toBeUndefined();
+    expect(issue?.raw).toBe('file-missing: Missing stylesheet');
+  });
 
   test('mixed preview diagnostics keep their order and do not inherit the previous code or location', () => {
     const raw = [
-      'font_not_loaded: Some font faces did not load',
+      'Some font faces did not load',
       'Font ReportSans failed',
-      'text_missing: Missing text',
+      'Missing text',
     ];
     const result = explain({
       code: 'preview_failed',
       message: 'Printing failed',
-      details: raw.map(message => ({ message })),
+      details: raw.map((message, index) => ({
+        message,
+        ...([0, 2].includes(index)
+          ? { code: index === 0 ? 'font_not_loaded' : 'text_missing' }
+          : {}),
+      })),
     });
     expect(result.issues.map(issue => issue.raw)).toEqual(raw);
     expect(result.issues.map(issue => issue.code)).toEqual([
@@ -294,7 +322,8 @@ describe('template author error explanations', () => {
     for (const count of [1, 3, 12]) {
       const result = invalid(
         Array.from({ length: count }, () => ({
-          message: 'file-missing: Missing stylesheet',
+          code: 'file-missing',
+          message: 'Missing stylesheet',
         })),
       );
       expect(result.title).toMatch(cjk);

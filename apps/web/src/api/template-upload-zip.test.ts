@@ -246,6 +246,11 @@ async function refused(zip: Uint8Array) {
   expect(response.status).toBe(400);
   expect(body).toMatchObject({ error: { code: 'invalid_template_pack' } });
   const error = apiErrorSchema.parse(body).error;
+  expect(error.details?.length).toBeGreaterThan(0);
+  for (const detail of error.details ?? []) {
+    expect(detail.code).toEqual(expect.any(String));
+    expect(detail.message).not.toMatch(/^[a-z][a-z0-9_-]*: /);
+  }
   expect(await listed()).toEqual([]);
   expect((await platform.env.FILES.list()).objects).toEqual([]);
   return error;

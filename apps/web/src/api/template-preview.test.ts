@@ -291,7 +291,7 @@ test.each([
       'preview_failed',
     );
     expect(failure.details).toEqual([
-      { message: `${code}: ${message}` },
+      { code, message },
       ...details.map(message => ({ message })),
     ]);
     expect(printFetch).toHaveBeenCalledOnce();

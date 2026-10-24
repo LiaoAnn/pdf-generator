@@ -1,15 +1,14 @@
-// API refusals in plain Traditional Chinese for the template pages. The upload
-// and preview APIs lead each detail message with its issue code
-// (`file-missing: …`, `font_not_loaded: …`); the code picks the explanation,
-// the detail's file, line, column and JSON path say where, and the raw
-// message stays visible for debugging.
+// API refusals in plain Traditional Chinese for the template pages. Each
+// detail's code (`file-missing`, `font_not_loaded`) picks the explanation, its
+// file, line, column and JSON path say where, and the raw message stays
+// visible for debugging.
 import type { ApiError } from '@pdf-generator/contract';
 
 type ErrorBody = ApiError['error'];
 type Detail = NonNullable<ErrorBody['details']>[number];
 
 export interface ExplainedIssue {
-  /** The code leading the detail message, if it has one. */
+  /** The detail's code, if it has one. */
   code: string | undefined;
   /** What is wrong and what to do, in plain words. */
   explanation: string;
@@ -153,7 +152,7 @@ function location(detail: Detail, code: string | undefined) {
 }
 
 function explainDetail(detail: Detail): ExplainedIssue {
-  const code = /^([a-z][a-z0-9_-]*): /.exec(detail.message)?.[1];
+  const { code } = detail;
   return {
     code,
     explanation:
