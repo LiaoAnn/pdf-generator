@@ -1,7 +1,8 @@
 {
   "$schema": "../../node_modules/wrangler/config-schema.json",
   // The PDF print Worker (T07): Browser Rendering + Paged.js. The browser
-  // loads fonts and Paged.js from this Worker's static assets by URL.
+  // loads fonts and Paged.js from this Worker's static assets, and the
+  // document and pack files from its /pack/ route, by URL.
   "name": "pdf-generator-print",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
@@ -12,6 +13,14 @@
   "browser": {
     "binding": "BROWSER",
   },
+  // A print's document and pack files while its browser tab loads them by
+  // URL (/pack/<id>/…); deleted when the print ends.
+  "r2_buckets": [
+    {
+      "binding": "PACK_FILES",
+      "bucket_name": "pdf-generator-print-pack-files",
+    },
+  ],
   "assets": {
     "directory": "public",
     "binding": "ASSETS",

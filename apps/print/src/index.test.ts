@@ -82,15 +82,3 @@ test('serves the Paged.js 0.4.3 polyfill as JavaScript rather than the Worker fa
   );
   expect(script).toMatch(/Paged\.js v0\.4\.3/);
 });
-
-test('serves an empty HTML document for the print browser to start from', async () => {
-  const response = await worker.fetch(
-    new URL('/blank.html', (await worker.url).href),
-  );
-  expect(response.status).toBe(200);
-  expect(response.headers.get('content-type')).toMatch(/text\/html/i);
-  const html = await response.text();
-  expect(html).toMatch(/<!doctype html>/i);
-  expect(html).toMatch(/<html[\s>]/i);
-  expect(html).toMatch(/<body(?:\s[^>]*)?>\s*<\/body>/i);
-});

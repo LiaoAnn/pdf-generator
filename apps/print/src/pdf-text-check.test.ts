@@ -65,6 +65,8 @@ const request = {
 function fakeBrowser(expectedText?: string[][], bytes = fixturePdf()) {
   const calls: string[] = [];
   const page = {
+    setRequestInterception: vi.fn(async () => {}),
+    on: vi.fn(),
     goto: vi.fn(async () => {}),
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
@@ -120,6 +122,7 @@ test.each([
       return 'boxes';
     });
     const outcome = await renderPdf(fake.browser, request, {
+      store: { put: async () => {}, delete: async () => {} },
       assetOrigin: 'https://print-assets.example.test',
       inspect,
     }).then(
@@ -139,6 +142,7 @@ test.each([
 test('PDF normalization tolerates compatibility glyphs and whitespace while consuming repeated text once per occurrence', async () => {
   const fake = fakeBrowser([['ABC', 'TOKEN', 'TOKEN'], ['SECOND']]);
   const result = await renderPdf(fake.browser, request, {
+    store: { put: async () => {}, delete: async () => {} },
     assetOrigin: 'https://print-assets.example.test',
   });
   expect(result.pdf).toEqual(fixturePdf());
@@ -157,6 +161,7 @@ test.each([
     const fake = fakeBrowser(expectedText, bytes);
     await expect(
       renderPdf(fake.browser, request, {
+        store: { put: async () => {}, delete: async () => {} },
         assetOrigin: 'https://print-assets.example.test',
       }),
     ).resolves.toMatchObject({ pdf: bytes });

@@ -3,7 +3,3 @@
   Cache-Control: public, max-age=604800
 /paged.polyfill.js
   Cache-Control: public, max-age=604800
-# The print page: only the Worker's own scripts run, whatever the template
-# contains (src/prepare.ts). page.setContent keeps this document's policy.
-/blank
-  Content-Security-Policy: script-src 'self'
