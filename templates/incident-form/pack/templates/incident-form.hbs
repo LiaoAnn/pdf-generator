@@ -7,7 +7,7 @@
 <body>
   <h1 data-gt="title">{{company}}　職業災害事故通報單</h1>
   <p class="meta" data-gt="field">通報編號：IR{{reportNo}}</p>
-  <p class="meta" data-gt="field">通報日期：{{reportDate}}</p>
+  <p class="meta" data-gt="field">通報日期：{{rocDate reportDate format="full"}}</p>
 
   <table class="form" data-gt="table">
     <colgroup>
@@ -47,7 +47,7 @@
       <tr><td class="section" colspan="5">二、事故概況</td></tr>
       <tr>
         <td class="label">發生日期</td>
-        <td colspan="2">{{incident.date}}</td>
+        <td colspan="2">{{rocDate incident.date}}</td>
         <td class="label">發生時間</td>
         <td>{{incident.time}}</td>
       </tr>
@@ -119,7 +119,7 @@
         <td class="label">主管簽章</td>
         <td colspan="2"></td>
         <td class="label">簽核日期</td>
-        <td>{{approval.date}}</td>
+        <td>{{rocDate approval.date}}</td>
       </tr>
     </tbody>
   </table>

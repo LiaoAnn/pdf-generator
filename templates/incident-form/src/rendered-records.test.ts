@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 type Node = DefaultTreeAdapterMap['node'];
 type Element = DefaultTreeAdapterMap['element'];
 type IncidentRecord = {
+  reportDate: string;
   company: string;
   businessId: string;
   reporter: {
@@ -58,6 +59,11 @@ const template = read(manifest.files.template);
 const normalize = (value: string) => value.replace(/\s+/gu, ' ').trim();
 const printed = (value: string | number | null) =>
   normalize(value === null ? '' : String(value));
+const rocText = (iso: string | null): string => {
+  if (iso === null) return '';
+  const [year = 0, month = 0, day = 0] = iso.split('-').map(Number);
+  return `民國${year - 1911}年${month}月${day}日`;
+};
 
 function rawText(node: Node): string {
   if ('value' in node && node.nodeName === '#text') return node.value;
@@ -118,7 +124,13 @@ const fixtures = Array.from({ length: 100 }, (_, index) => {
   const form = tables.find(table => attr(table, 'class') === 'form');
   const list = tables.find(table => attr(table, 'class') === 'list');
   if (!form || !list) throw new Error(`Missing form/list table for ${seed}`);
-  return { seed, record: data as unknown as IncidentRecord, form, list };
+  return {
+    seed,
+    record: data as unknown as IncidentRecord,
+    document,
+    form,
+    list,
+  };
 });
 
 function groups(record: IncidentRecord): [string, [string, boolean][]][] {
@@ -176,7 +188,7 @@ function formValues(
     ['職稱', record.reporter.jobTitle],
     ['聯絡電話', record.reporter.phone],
     ['分機', record.reporter.extension],
-    ['發生日期', record.incident.date],
+    ['發生日期', rocText(record.incident.date)],
     ['發生時間', record.incident.time],
     ['地址', record.incident.address],
     ['場所', record.incident.place],
@@ -184,7 +196,7 @@ function formValues(
     ['目擊者', record.witness.name],
     ['目擊者電話', record.witness.phone],
     ['備註', record.remarks],
-    ['簽核日期', record.approval.date],
+    ['簽核日期', rocText(record.approval.date)],
     ['主管簽章', null],
   ];
 }
@@ -211,6 +223,76 @@ function expectCheckboxes(cell: Element, options: [string, boolean][]) {
     ).toBe(label);
   });
 }
+
+describe('incident form ROC dates', () => {
+  const sample = JSON.parse(read('data/sample.json')) as IncidentRecord;
+  const render = (record: IncidentRecord) =>
+    parse(fill(template, record, { file: manifest.files.template }));
+  const formIn = (document: Node) => {
+    const form = elements(
+      document,
+      element =>
+        element.tagName === 'table' && attr(element, 'class') === 'form',
+    )[0];
+    if (!form) throw new Error('Missing form table');
+    return form;
+  };
+  const reportText = (document: Node) =>
+    elements(
+      document,
+      element =>
+        element.tagName === 'p' &&
+        attr(element, 'data-gt') === 'field' &&
+        text(element).startsWith('通報日期：'),
+    ).map(text);
+
+  it.each([
+    ['2026-07-09', '民國115年7月9日'],
+    ['2025-11-23', '民國114年11月23日'],
+  ])(
+    'prints full ROC report date for %s without changing ISO input',
+    (iso, expected) => {
+      const record = { ...sample, reportDate: iso };
+      const before = structuredClone(record);
+      const document = render(record);
+      expect(record).toEqual(before);
+      expect(reportText(document)).toEqual([`通報日期：中華${expected}`]);
+    },
+  );
+
+  it.each([
+    ['發生日期', '2026-07-09', '民國115年7月9日'],
+    ['發生日期', '2025-11-23', '民國114年11月23日'],
+    ['簽核日期', '2026-07-09', '民國115年7月9日'],
+    ['簽核日期', '2025-11-23', '民國114年11月23日'],
+  ])(
+    'prints text ROC %s for %s without changing ISO input',
+    (label, iso, expected) => {
+      const record = {
+        ...sample,
+        incident: { ...sample.incident, date: iso },
+        approval: { date: iso },
+      };
+      const before = structuredClone(record);
+      const document = render(record);
+      expect(record).toEqual(before);
+      expect(text(valueCell(formIn(document), label))).toBe(expected);
+    },
+  );
+
+  it('leaves a null approval date cell empty instead of printing a ROC prefix or null', () => {
+    const record = { ...sample, approval: { date: null } };
+    expect(text(valueCell(formIn(render(record)), '簽核日期'))).toBe('');
+  });
+
+  it('prints each generated report date as full ROC text in its ground-truth header', () => {
+    for (const { seed, record, document } of fixtures) {
+      expect(reportText(document), seed).toEqual([
+        `通報日期：中華${rocText(record.reportDate)}`,
+      ]);
+    }
+  });
+});
 
 describe('incident form generated records, slice 2', () => {
   it('does not collapse a 100-seed batch to a fixed injured-row count', () => {
