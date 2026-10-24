@@ -34,7 +34,7 @@ styles/word.css        (a copy of word.css, first)
 styles/<pack>.css      (the pack's own rules)
 data/rules.json
 data/sample.json
-assets/…               (images; fonts once pack fonts print, §6)
+assets/…               (images and fonts, once pack files print: §3)
 ```
 
 ### manifest.json
@@ -82,7 +82,7 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 
 Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after an array field, and must name a numeric field: `transactions[].amount`. Every `min` is ≤ its `max`; `weights` has one entry per option and a positive sum.
 
-`sample.json` is one record of exactly that shape, written by hand: the check validates it against the rules (`sample-invalid`) and fills the template with it (`template-render`). It must be a record the rules could produce: lengths within `minLength`/`maxLength`, dates within range, identifiers with valid check digits, `null` only where `blankProbability` allows it.
+`sample.json` is one record of exactly that shape, written by hand: the check validates it against the rules (`sample-invalid`) and fills the template with it (`template-render`). It must be a record the rules could produce: lengths within `minLength`/`maxLength`, dates within range, identifiers with valid check digits, `null` only where `blankProbability` allows it, or for a `percentage` whose `whole` is 0 (it is then `null`, printed blank, §5).
 
 The engine draws only characters the platform fonts cover. Text you write yourself (labels, headings, sample values) must stay inside them too (§6).
 
@@ -130,7 +130,9 @@ A pack may use only what a printed document needs, so it prints the same way eve
 <p data-gt="paragraph" onclick="alert(1)">{{summary}}</p>
 ```
 
-The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted.
+The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`).
+
+**Pack files don't print yet.** A pack's own images, fonts and `<link>`ed files pass the check, but the web app doesn't send them to the print service until ticket T15-2: until then a preview or batch that loads one fails (`request_blocked`). Until T15-2 merges, inline a small image as a `data:` URL (it counts toward the 64 KiB text-file limit, §8), or draw it with inline SVG.
 
 ```html pack-error asset-external
 <img data-gt="image" src="https://example.com/logo.png" alt="logo">
@@ -229,13 +231,13 @@ A `checkbox` block states whether it is checked, either with `data-gt-checked` o
 </table>
 ```
 
-A table that breaks across pages becomes one `table` block per page; each later fragment has `continues` pointing at the first, and its grid is the rows printed on that page. The platform repeats the `<thead>` rows on every page and keeps each row whole (a row taller than a page can't print). Give tables fixed column widths (`table-layout: fixed` with `<col>` widths, as `word.css` does), or Paged.js lays each fragment out with different widths.
+A table that breaks across pages becomes one `table` block per page; each later fragment has `continues` pointing at the fragment on the page before it, and its grid is the rows printed on that page. The platform repeats the `<thead>` rows on every page and keeps each row whole (a row taller than a page can't print). Give tables fixed column widths (`table-layout: fixed` with `<col>` widths, as `word.css` does), or Paged.js lays each fragment out with different widths.
 
 ### 4.3 Formulas and images
 
 A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding="application/x-tex">` KaTeX puts inside its MathML (`gt-formula` otherwise). The block's text is what KaTeX visibly renders; the hidden MathML copy doesn't count. KaTeX's HTML must be pre-rendered into the template (no scripts run), and its fonts are pack fonts (§6).
 
-An `image` block's text is `data-gt-text` if present, else the text rendered inside it (an `<svg>` with `<text>`), else empty.
+An `image` block's text is `data-gt-text` if present, else the rendered text of an HTML element inside it, else empty. **Text drawn by inline SVG (`<text>`) is not read**: the block's text is empty, the PDF still prints the text, and the self-check fails. Keep text out of inline SVG: put it in HTML next to the drawing, in its own mark.
 
 ### Reading order
 
@@ -248,7 +250,7 @@ An `image` block's text is `data-gt-text` if present, else the text rendered ins
 - **Headers and footers** are running elements: an element with `position: running(<name>)` that `@page { @top-center { content: element(<name>) } }` (or another margin box) shows on every page from the one where it appears. Put it first in `<body>` and mark it `page_header` or `page_footer`. `word.css` provides `.word-header` and `.word-footer`.
 - **Only marked text may print.** CSS generated content prints text that is in no element, so the self-check reports it as unmarked text: no `content: "…"`, `counter()` or `counter(page)` in `::before`/`::after` or in margin boxes. Page numbers must be DOM text inside a `page_number` mark; a number that depends on how many pages the record fills can't be known at fill time, so number pages only where the page count is fixed by the layout.
 - **List markers** are generated content too, outside the box (`list-style-position: outside`) or inside it: either way the self-check reports them. Use `list-style: none` and write the marker into the item's text (`・{{this}}`, or `（一）` in a fixed list). A list from an array can't number itself: there is no helper that adds 1 to `@index`.
-- **Blank fields**: a field that can be `null` (`blankProbability`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
+- **Blank fields**: a field that can be `null` (`blankProbability`, or a `percentage` of a zero `whole`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
 
@@ -267,7 +269,7 @@ Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't decla
 
 **Missing glyphs are errors.** A character no listed font has (for example 㵾, or 𩸽 outside WenKai) falls back to a system font, and the self-check fails on any font but the pack's: keep fixed text and `choice` options within these fonts.
 
-**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) pass the check today, but print only once the web app sends pack files to the print service (ticket T15-2). Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
+**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) pass the check today, but print only once the web app sends pack files to the print service (ticket T15-2, §3). Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
 
 ```css pack-error font-unused
 @font-face {

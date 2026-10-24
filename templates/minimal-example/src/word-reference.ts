@@ -29,21 +29,20 @@ const escapeXml = (text: string) =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** Runs of `text`, with ☑ ☐ in Noto Sans Symbols 2 as the pack prints them. */
-function runs(text: string, properties = ''): string {
+function runs(text: string): string {
   return (text.match(/[☐☑]+|[^☐☑]+/gu) ?? [])
     .map(part => {
       const font = symbols.test(part)
         ? '<w:rFonts w:ascii="Noto Sans Symbols 2" w:hAnsi="Noto Sans Symbols 2" w:eastAsia="Noto Sans Symbols 2"/>'
         : '';
-      const rPr = font + properties;
-      return `<w:r>${rPr ? `<w:rPr>${rPr}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(part)}</w:t></w:r>`;
+      return `<w:r>${font ? `<w:rPr>${font}</w:rPr>` : ''}<w:t xml:space="preserve">${escapeXml(part)}</w:t></w:r>`;
     })
     .join('');
 }
 
-function paragraph(text: string, style?: string, properties = ''): string {
+function paragraph(text: string, style?: string): string {
   const pPr = style ? `<w:pPr><w:pStyle w:val="${style}"/></w:pPr>` : '';
-  return `<w:p>${pPr}${runs(text, properties)}</w:p>`;
+  return `<w:p>${pPr}${runs(text)}</w:p>`;
 }
 
 const children = (node: Html.ParentNode): Html.Element[] =>
