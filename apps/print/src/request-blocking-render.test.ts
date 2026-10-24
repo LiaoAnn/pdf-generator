@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Browser } from '@cloudflare/puppeteer';
 import { expect, test, vi } from 'vitest';
-import { fakeFetch } from './fake-fetch.ts';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { type PrintReadyState, RenderError, renderPdf } from './lib.ts';
 
 const origin = 'https://print-assets.example.test';
@@ -33,9 +32,7 @@ function fakeTab(
   } = {},
 ) {
   const fetch = fakeFetch();
-  const backstop = fakeFetch();
   const requests: Record<string, string> = {};
-  const work: string[] = [];
   let documentUrl = '';
   const fire = (stage: Stage) => {
     for (const template of options.fire?.[stage] ?? []) {
@@ -55,17 +52,14 @@ function fakeTab(
     setCacheEnabled: fetch.setCacheEnabled,
     goto: vi.fn(async (url: string) => {
       documentUrl = url;
-      work.push('goto');
       fire('goto');
     }),
     evaluate: vi.fn(async () => {
-      work.push('ready');
       fire('ready');
       if (options.hangs) return new Promise<never>(() => {});
       return { ...ready, ...options.state };
     }),
     pdf: vi.fn(async () => {
-      work.push('pdf');
       fire('pdf');
       return new Uint8Array(
         readFileSync(
@@ -73,21 +67,16 @@ function fakeTab(
         ),
       );
     }),
-    close: vi.fn(async () => {
-      work.push('close');
-    }),
+    close: vi.fn(async () => {}),
   };
-  const newPage = vi.fn(async () => page);
+  const context = fakeBrowserContext(page);
   return {
-    backstop,
-    newPage,
+    ...context,
+    newPage: context.context.newPage,
     page,
     fetch,
     requests,
-    work,
-    browser: { target: () => backstop, newPage } as unknown as Browser,
     inspect: async () => {
-      work.push('inspect');
       fire('inspect');
       return 'ground truth';
     },
@@ -285,6 +274,7 @@ test.each([
         expect(tab.page.evaluate).toHaveBeenCalled();
       });
       expect(tab.page.close).not.toHaveBeenCalled();
+      expect(tab.context.close).not.toHaveBeenCalled();
     } finally {
       held.resolve();
     }
@@ -312,6 +302,7 @@ test('fails late requests paused while draining before closing', async () => {
   try {
     await vi.waitFor(() => expectResolution(tab, late, false));
     expect(tab.page.close).not.toHaveBeenCalled();
+    expect(tab.context.close).not.toHaveBeenCalled();
     const secondId = tab.fetch.pause('https://outside.test/another-import.css');
     await vi.waitFor(() =>
       expect(tab.fetch.send).toHaveBeenCalledWith(
@@ -327,6 +318,7 @@ test('fails late requests paused while draining before closing', async () => {
     // request must still prevent close, independently of the first one.
     await new Promise(resolve => setTimeout(resolve, 0));
     expect(tab.page.close).not.toHaveBeenCalled();
+    expect(tab.context.close).not.toHaveBeenCalled();
   } finally {
     first.resolve();
     second.resolve();
@@ -348,6 +340,7 @@ test('a rejected fail acknowledgement is settled and preserves request_blocked',
   try {
     await vi.waitFor(() => expectResolution(tab, url, false));
     expect(tab.page.close).not.toHaveBeenCalled();
+    expect(tab.context.close).not.toHaveBeenCalled();
   } finally {
     held.reject(new Error('Invalid InterceptionId'));
   }
@@ -360,113 +353,50 @@ test('a rejected fail acknowledgement is settled and preserves request_blocked',
   expect(tab.page.close).toHaveBeenCalledTimes(1);
 });
 
-// Regression: the first request, or one released by an older tab, can arrive
-// before this print navigates. The browser guard must already be active.
-test('enables the browser backstop before newPage and document navigation', async () => {
-  const tab = fakeTab();
-  const enabled = deferred();
-  tab.backstop.send.mockImplementation(async method =>
-    method === 'Fetch.enable' ? enabled.promise : {},
-  );
-  const rendering = run(tab);
-  try {
-    await vi.waitFor(() =>
-      expect(tab.backstop.send).toHaveBeenCalledWith('Fetch.enable', {
-        patterns: [{ urlPattern: '*' }],
-      }),
-    );
-    expect(tab.backstop.on).toHaveBeenCalledWith(
-      'Fetch.requestPaused',
-      expect.any(Function),
-    );
-    expect(tab.backstop.on.mock.invocationCallOrder[0]).toBeLessThan(
-      tab.backstop.send.mock.invocationCallOrder[0] ?? 0,
-    );
-    expect(tab.newPage).not.toHaveBeenCalled();
-    expect(tab.page.goto).not.toHaveBeenCalled();
-  } finally {
-    enabled.resolve();
-    await rendering;
-  }
-  expect(tab.backstop.send.mock.invocationCallOrder[0]).toBeLessThan(
-    tab.newPage.mock.invocationCallOrder[0] ?? 0,
-  );
-});
-
-// Regression: released requests must not reach outside hosts; using the tab's
-// pack allow-list here would break other prints sharing the browser.
-test('the browser backstop fails outside URLs and continues data and any own-origin path without reporting request_blocked', async () => {
-  const tab = fakeTab();
-  const urls = [
-    ['https://outside.test/import.css', false],
-    ['http://127.0.0.1:9/leaked.png', false],
-    ['https://print-assets.example.test.evil.test/a', false],
-    ['http://print-assets.example.test/print-runtime.js', false],
-    [`${origin}:8443/print-runtime.js`, false],
-    [`${origin}/pack/another-print/assets/logo.svg`, true],
-    [`${origin}/unlisted-path`, true],
-    [`${origin}/favicon.ico`, true],
-    ['data:text/css,p%7Bcolor:red%7D', true],
-  ] as const;
-  const paused: { requestId: string; allowed: boolean }[] = [];
-  tab.page.close.mockImplementation(async () => {
-    for (const [url, allowed] of urls) {
-      paused.push({ requestId: tab.backstop.pause(url), allowed });
-    }
-  });
-  expect(await run(tab)).toHaveProperty('result');
-  expect(paused).toHaveLength(urls.length);
-  for (const { requestId, allowed } of paused) {
-    expect(tab.backstop.send).toHaveBeenCalledWith(
-      allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest',
-      allowed ? { requestId } : { requestId, errorReason: 'BlockedByClient' },
-    );
-  }
-});
-
-// Regression: detaching before close, or before an answer settles, releases
-// the very request that the backstop was meant to catch.
-test.each([
-  [
-    'continue',
-    `${origin}/pack/another-print/file.css`,
-    'Fetch.continueRequest',
-  ],
-  ['fail', 'https://outside.test/released.css', 'Fetch.failRequest'],
-] as const)(
-  'the browser backstop stays attached through close and its pending %s answer',
-  async (_name, url, method) => {
+// Regression: Fetch cannot intercept preconnect, and detaching resumes paused
+// requests. The network guard must exist before a context-owned tab is opened.
+test.each(['https://print-assets.example.test', 'http://127.0.0.1:8788'])(
+  'creates a proxy context bypassing only the Worker host for %s',
+  async assetOrigin => {
     const tab = fakeTab();
-    const closed = deferred();
-    const answer = deferred();
-    tab.backstop.send.mockImplementation(async command =>
-      command === method ? answer.promise : {},
+    const outcome = await renderPdf(tab.browser, request, {
+      assetOrigin,
+      store: { put: async () => {}, delete: async () => {} },
+    }).then(
+      result => ({ result }),
+      (error: unknown) => ({ error }),
     );
-    tab.page.close.mockImplementation(async () => {
-      tab.backstop.pause(url);
-      await closed.promise;
-    });
-    const rendering = run(tab);
-    try {
-      await vi.waitFor(() => expect(tab.page.close).toHaveBeenCalled());
-      expect(tab.backstop.detach).not.toHaveBeenCalled();
-      closed.resolve();
-      await new Promise(resolve => setTimeout(resolve, 0));
-      expect(tab.backstop.detach).not.toHaveBeenCalled();
-    } finally {
-      closed.resolve();
-      answer.resolve();
-      await rendering;
-    }
-    expect(tab.backstop.detach).toHaveBeenCalledTimes(1);
-    expect(tab.page.close.mock.invocationCallOrder[0]).toBeLessThan(
-      tab.backstop.detach.mock.invocationCallOrder[0] ?? 0,
+    expect(tab.createBrowserContext).toHaveBeenCalledTimes(1);
+    const config = tab.createBrowserContext.mock.calls[0]?.[0];
+    expect(config?.proxyServer).toEqual(expect.any(String));
+    expect(config?.proxyServer?.length).toBeGreaterThan(0);
+    expect(config?.proxyBypassList?.slice().sort()).toEqual(
+      ['<-loopback>', new URL(assetOrigin).host].sort(),
     );
+    expect(outcome).toHaveProperty('result');
+    expect(tab.newPage).toHaveBeenCalledTimes(1);
+    expect(tab.createBrowserContext.mock.invocationCallOrder[0]).toBeLessThan(
+      tab.newPage.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(tab.target).not.toHaveBeenCalled();
+    expect(tab.defaultNewPage).not.toHaveBeenCalled();
   },
 );
 
-// Regression: a kept-alive browser accumulates interceptors unless every
-// render exit, including failing to create a tab, detaches its guard.
+test('a createBrowserContext rejection propagates without opening any page', async () => {
+  const tab = fakeTab();
+  const failure = new Error('proxy context unavailable');
+  tab.createBrowserContext.mockRejectedValueOnce(failure);
+  const outcome = await run(tab);
+  expect((outcome as { error: unknown }).error).toBe(failure);
+  expect(tab.newPage).not.toHaveBeenCalled();
+  expect(tab.defaultNewPage).not.toHaveBeenCalled();
+  expect(tab.target).not.toHaveBeenCalled();
+  expect(tab.context.close).not.toHaveBeenCalled();
+});
+
+// Regression: contexts accumulate on kept-alive browsers unless every exit
+// closes them, after the tab and its published files have finished cleanup.
 test.each([
   'success',
   'request_blocked',
@@ -480,55 +410,130 @@ test.each([
   'pdf',
   'inspect',
   'newPage',
-] as const)('detaches the browser backstop on %s', async exit => {
-  const tab = fakeTab({
-    hangs: exit === 'pagination_timeout',
-    fire:
-      exit === 'request_blocked' ? { ready: ['https://outside.test/a'] } : {},
-    state: {
-      ...(exit === 'font_not_loaded'
-        ? { unloadedFaces: ['Missing font'] }
-        : {}),
-      ...(exit === 'row_fragmented' ? { fragmentedRows: ['row 1'] } : {}),
-      ...(exit === 'page_count_mismatch' ? { pageCount: 2 } : {}),
-      ...(exit === 'text_missing'
-        ? {
-            expectedText: [
-              [
-                {
-                  texts: [
-                    {
-                      text: 'MISSING FROM BLANK PDF',
-                      boxes: [{ x0: 0, y0: 0, x1: 100, y1: 100 }],
-                    },
-                  ],
-                },
+] as const)(
+  'closes the proxy context after page and file cleanup on %s',
+  async exit => {
+    const tab = fakeTab({
+      hangs: exit === 'pagination_timeout',
+      fire:
+        exit === 'request_blocked' ? { ready: ['https://outside.test/a'] } : {},
+      state: {
+        ...(exit === 'font_not_loaded'
+          ? { unloadedFaces: ['Missing font'] }
+          : {}),
+        ...(exit === 'row_fragmented' ? { fragmentedRows: ['row 1'] } : {}),
+        ...(exit === 'page_count_mismatch' ? { pageCount: 2 } : {}),
+        ...(exit === 'text_missing'
+          ? {
+              expectedText: [
+                [
+                  {
+                    texts: [
+                      {
+                        text: 'MISSING FROM BLANK PDF',
+                        boxes: [{ x0: 0, y0: 0, x1: 100, y1: 100 }],
+                      },
+                    ],
+                  },
+                ],
               ],
-            ],
-          }
-        : {}),
-    },
-  });
-  const failure = new Error(`${exit} failed`);
-  if (exit === 'newPage') tab.newPage.mockRejectedValueOnce(failure);
-  if (exit === 'goto' || exit === 'evaluate' || exit === 'pdf')
-    tab.page[exit].mockRejectedValueOnce(failure);
-  if (exit === 'inspect')
-    tab.inspect = async () => {
-      throw failure;
-    };
-  const outcome = await run(tab, 10);
-  if (exit === 'success') expect(outcome).toHaveProperty('result');
-  else if (['newPage', 'goto', 'evaluate', 'pdf', 'inspect'].includes(exit))
-    expect((outcome as { error: unknown }).error).toBe(failure);
-  else
-    expect((outcome as { error: unknown }).error).toMatchObject({ code: exit });
-  expect(tab.backstop.detach).toHaveBeenCalledTimes(1);
-  if (exit === 'newPage') expect(tab.page.close).not.toHaveBeenCalled();
-  else {
-    expect(tab.page.close).toHaveBeenCalledTimes(1);
-    expect(tab.page.close.mock.invocationCallOrder[0]).toBeLessThan(
-      tab.backstop.detach.mock.invocationCallOrder[0] ?? 0,
+            }
+          : {}),
+      },
+    });
+    const failure = new Error(`${exit} failed`);
+    if (exit === 'newPage') tab.newPage.mockRejectedValueOnce(failure);
+    if (exit === 'goto' || exit === 'evaluate' || exit === 'pdf')
+      tab.page[exit].mockRejectedValueOnce(failure);
+    if (exit === 'inspect')
+      tab.inspect = async () => {
+        throw failure;
+      };
+    const stored = new Set<string>();
+    const cleanup: string[] = [];
+    tab.page.close.mockImplementation(async () => {
+      await Promise.resolve();
+      cleanup.push('page closed');
+    });
+    tab.context.close.mockImplementation(async () => {
+      expect(stored.size).toBe(0);
+      cleanup.push('context closed');
+    });
+    const outcome = await renderPdf(tab.browser, request, {
+      assetOrigin: origin,
+      timeoutMs: 10,
+      inspect: tab.inspect,
+      store: {
+        put: async (key: string) => {
+          stored.add(key);
+        },
+        delete: async (keys: string[]) => {
+          await Promise.resolve();
+          for (const key of keys) stored.delete(key);
+          cleanup.push('files removed');
+        },
+      },
+    }).then(
+      result => ({ result }),
+      (error: unknown) => ({ error }),
     );
-  }
-});
+    if (exit === 'success') expect(outcome).toHaveProperty('result');
+    else if (['newPage', 'goto', 'evaluate', 'pdf', 'inspect'].includes(exit))
+      expect((outcome as { error: unknown }).error).toBe(failure);
+    else
+      expect((outcome as { error: unknown }).error).toMatchObject({
+        code: exit,
+      });
+    expect(tab.context.close).toHaveBeenCalledTimes(1);
+    expect(tab.target).not.toHaveBeenCalled();
+    expect(tab.defaultNewPage).not.toHaveBeenCalled();
+    if (exit === 'newPage') {
+      expect(tab.page.close).not.toHaveBeenCalled();
+      expect(cleanup).toEqual(['context closed']);
+    } else {
+      expect(tab.page.close).toHaveBeenCalledTimes(1);
+      expect(cleanup).toEqual([
+        'page closed',
+        'files removed',
+        'context closed',
+      ]);
+    }
+  },
+);
+
+// Regression: starting cleanup in order is insufficient if close/removal are
+// not awaited; a context may still hold requests while its tab is closing.
+test.each(['page close', 'file removal'] as const)(
+  'keeps the proxy context alive until %s finishes',
+  async stage => {
+    const tab = fakeTab();
+    const held = deferred();
+    const remove = vi.fn(async (_keys: string[]) => {
+      if (stage === 'file removal') await held.promise;
+    });
+    if (stage === 'page close')
+      tab.page.close.mockImplementation(async () => {
+        await held.promise;
+      });
+    const rendering = renderPdf(tab.browser, request, {
+      assetOrigin: origin,
+      store: { put: async () => {}, delete: remove },
+    }).then(
+      result => ({ result }),
+      (error: unknown) => ({ error }),
+    );
+    try {
+      await vi.waitFor(() =>
+        expect(
+          stage === 'page close' ? tab.page.close : remove,
+        ).toHaveBeenCalled(),
+      );
+      expect(tab.context.close).not.toHaveBeenCalled();
+      if (stage === 'page close') expect(remove).not.toHaveBeenCalled();
+    } finally {
+      held.resolve();
+      await rendering;
+    }
+    expect(tab.context.close).toHaveBeenCalledTimes(1);
+  },
+);

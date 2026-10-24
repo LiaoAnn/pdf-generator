@@ -1,6 +1,5 @@
-import type { Browser } from '@cloudflare/puppeteer';
 import { expect, test, vi } from 'vitest';
-import { fakeFetch } from './fake-fetch.ts';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -45,12 +44,9 @@ test.each([
     pdf: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
     close: vi.fn(async () => {}),
   };
-  const browser = {
-    target: () => fakeFetch(),
-    newPage: vi.fn(async () => page),
-  };
+  const browser = fakeBrowserContext(page).browser;
   const inspect = vi.fn(async () => 'ground truth');
-  const outcome = await renderPdf(browser as unknown as Browser, request, {
+  const outcome = await renderPdf(browser, request, {
     store: { put: async () => {}, delete: async () => {} },
     assetOrigin: 'https://print-assets.example.test',
     inspect,

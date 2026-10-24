@@ -22,6 +22,7 @@ let logo: Buffer;
 let font: Buffer;
 // Every request the "outside" server receives: path and query.
 const hits: string[] = [];
+let connections = 0;
 
 beforeAll(async () => {
   logo = await readFile(
@@ -49,6 +50,9 @@ beforeAll(async () => {
     });
     res.end(body);
   });
+  server.on('connection', () => {
+    connections += 1;
+  });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   outside = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
   worker = await startPrintWorker(token);
@@ -66,6 +70,8 @@ afterAll(async () => {
 
 beforeEach(() => {
   hits.length = 0;
+  connections = 0;
+  server.closeAllConnections();
 });
 
 async function post(body: unknown) {
@@ -89,6 +95,7 @@ test('the outside server records a request that is made to it', async () => {
   expect(response.status).toBe(200);
   await response.arrayBuffer();
   expect(hits).toEqual(['/control.png']);
+  expect(connections).toBeGreaterThan(0);
 });
 
 const unusedUuid = '11111111-2222-4333-8444-555555555555';
@@ -195,5 +202,19 @@ test.each(cases)(
     expect(parsed.code).toBe('request_blocked');
     expect(JSON.stringify(parsed.details)).toContain(blocked);
     expect(hits).toEqual([]);
+    expect(connections).toBe(0);
   },
 );
+
+// Regression: preconnect bypasses Fetch entirely: a 200 print and zero HTTP
+// hits used to hide an outside TCP connection, including to another loopback port.
+test('a preconnect document opens zero TCP connections to the outside server', async () => {
+  const response = await post({
+    html: document('', `<link rel="preconnect" href="${outside}">`),
+    page,
+  });
+  expect(response.status).toBe(200);
+  await response.arrayBuffer();
+  expect(hits).toEqual([]);
+  expect(connections).toBe(0);
+});

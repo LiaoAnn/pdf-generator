@@ -1,7 +1,7 @@
 // Printing a document on a Browser Rendering tab. Exported for the print
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect` before the PDF is printed (T03 Must 3).
-import type { Browser, CDPSession, Page } from '@cloudflare/puppeteer';
+import type { Browser, Page } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
 import { getDocumentProxy } from 'unpdf';
 import {
@@ -145,16 +145,39 @@ const runtimePaths = new Set(['/print-runtime.js', '/paged.polyfill.js']);
 const isFavicon = (url: URL) => url.pathname === '/favicon.ico';
 
 /**
- * Answers every request `cdp` pauses: continues it when `allow` says so,
- * fails it otherwise. Returns `settle`, which resolves once every answer sent
- * so far is acknowledged (or refused). Chrome continues each request that is
- * still paused when the session detaches, so a session must settle before it
- * goes (T07-8).
+ * Lets the tab load only the print's files and the platform's, and fails
+ * everything else, reporting it to `onBlocked`. Interception only continues
+ * or fails: the browser loads every file by URL itself (T03 Must not 3).
+ * data: URLs can't be intercepted; what they load in turn can.
+ *
+ * Returns `settle`, which resolves once every answer sent so far is
+ * acknowledged (or refused): Chrome continues each request still paused
+ * when the session detaches, so the tab must settle before it closes. The
+ * session is our own rather than puppeteer's interception, which holds back
+ * paused requests it can't yet pair with their network event. Settling
+ * can't cover requests still on their way to the session as the tab closes
+ * (Paged.js fetches an @import'ed sheet a second time); the print's proxy
+ * keeps those from leaving (see `printContext`).
  */
-async function answerRequests(
-  cdp: CDPSession,
-  allow: (url: string) => boolean,
+async function blockOtherRequests(
+  page: Page,
+  origin: string,
+  files: PublishedFiles,
+  onBlocked: (url: string) => void,
 ): Promise<() => Promise<void>> {
+  const allow = (url: string) => {
+    const parsed = URL.parse(url);
+    const platform =
+      parsed?.origin === origin &&
+      (runtimePaths.has(parsed.pathname) ||
+        parsed.pathname.startsWith('/fonts/'));
+    if (url.startsWith('data:') || platform || files.serves(url)) return true;
+    if (!(parsed?.origin === origin && isFavicon(parsed))) onBlocked(url);
+    return false;
+  };
+  // As puppeteer's interception did: a cached response skips Fetch.
+  await page.setCacheEnabled(false);
+  const cdp = await page.createCDPSession();
   const answering = new Set<Promise<unknown>>();
   cdp.on('Fetch.requestPaused', event => {
     const { requestId } = event;
@@ -175,62 +198,30 @@ async function answerRequests(
   };
 }
 
+// Nothing listens on the discard port, so a connection to it is refused.
+const refusingProxy = 'http://127.0.0.1:9';
+
 /**
- * Lets the tab load only the print's files and the platform's, and fails
- * everything else, reporting it to `onBlocked`. Interception only continues
- * or fails: the browser loads every file by URL itself (T03 Must not 3).
- * data: URLs can't be intercepted; what they load in turn can. The session
- * is our own rather than puppeteer's interception, so `settle` knows every
- * paused request, including those puppeteer holds back until it can pair
- * them with their network event. Await `settle` before closing the tab.
+ * A browser context for one print whose connections all go to a proxy that
+ * refuses them, except those to the print Worker. Interception decides what
+ * the tab may load; this makes sure nothing else leaves, whatever the timing:
+ * Chrome continues requests still paused when a DevTools session detaches,
+ * and under load about 1 print in 150 sent a blocked request to the outside
+ * server that way, even with a browser-level session as a backstop, which
+ * could detach before the released request reached it (T07-8). It also
+ * covers connections without a request, such as <link rel=preconnect>.
+ * `<-loopback>` stops Chrome from bypassing the proxy for loopback hosts.
  */
-async function blockOtherRequests(
-  page: Page,
-  origin: string,
-  files: PublishedFiles,
-  onBlocked: (url: string) => void,
-): Promise<() => Promise<void>> {
-  // As puppeteer's interception did: a cached response skips Fetch.
-  await page.setCacheEnabled(false);
-  return answerRequests(await page.createCDPSession(), url => {
-    const parsed = URL.parse(url);
-    const platform =
-      parsed?.origin === origin &&
-      (runtimePaths.has(parsed.pathname) ||
-        parsed.pathname.startsWith('/fonts/'));
-    if (url.startsWith('data:') || platform || files.serves(url)) return true;
-    if (!(parsed?.origin === origin && isFavicon(parsed))) onBlocked(url);
-    return false;
+function printContext(browser: Browser, origin: string) {
+  return browser.createBrowserContext({
+    proxyServer: refusingProxy,
+    proxyBypassList: ['<-loopback>', new URL(origin).host],
   });
 }
 
 /**
- * Fails, for every tab of `browser`, each request that leaves the print
- * Worker's origin, until the returned function detaches it. Settling the tab
- * is not enough: under load, requests the document started before the
- * render ended (Paged.js fetches an @import'ed sheet a second time) still
- * reached the tab's interception as it closed, and Chrome let them out. This
- * session outlives the tab and catches them (T07-8). It allows the whole
- * origin, not this print's files: other prints may share the browser.
- */
-async function guardBrowser(
-  browser: Browser,
-  origin: string,
-): Promise<() => Promise<void>> {
-  const cdp = await browser.target().createCDPSession();
-  const settle = await answerRequests(
-    cdp,
-    url => url.startsWith('data:') || URL.parse(url)?.origin === origin,
-  );
-  return async () => {
-    await settle();
-    await cdp.detach().catch(() => undefined);
-  };
-}
-
-/**
- * Prints one document on a new tab of `browser`, then closes the tab and
- * deletes the print's files from the store. A tab that requested anything
+ * Prints one document on a new tab of `browser`, in a context of its own,
+ * then closes both and deletes the print's files from the store. A tab that requested anything
  * but its files fails with `request_blocked`, whatever else happened.
  */
 export async function renderPdf<T = undefined>(
@@ -238,9 +229,9 @@ export async function renderPdf<T = undefined>(
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
-  const unguard = await guardBrowser(browser, options.assetOrigin);
-  const page = await browser.newPage().catch(async (error: unknown) => {
-    await unguard();
+  const context = await printContext(browser, options.assetOrigin);
+  const page = await context.newPage().catch(async (error: unknown) => {
+    await context.close().catch(() => undefined);
     throw error;
   });
   let files: PublishedFiles | undefined;
@@ -283,7 +274,7 @@ export async function renderPdf<T = undefined>(
     await settle?.();
     await page.close().catch(() => undefined);
     await files?.remove();
-    await unguard();
+    await context.close().catch(() => undefined);
   }
 }
 

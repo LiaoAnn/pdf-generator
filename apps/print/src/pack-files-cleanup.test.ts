@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
-import { fakeFetch } from './fake-fetch.ts';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -80,10 +79,7 @@ test.each([
       }),
       close: vi.fn(async () => {}),
     };
-    const browser = {
-      target: () => fakeFetch(),
-      newPage: async () => page,
-    } as unknown as Browser;
+    const browser = fakeBrowserContext(page).browser;
     const rendering = renderPdf(browser, request, {
       assetOrigin: 'https://print-assets.example.test',
       store,

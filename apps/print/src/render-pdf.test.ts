@@ -1,7 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
-import { fakeFetch } from './fake-fetch.ts';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -35,19 +34,17 @@ function fakeBrowser() {
       calls.push('close');
     }),
   };
-  const browser = {
-    target: () => fakeFetch(),
-    newPage: vi.fn(async () => {
-      calls.push('newPage');
-      return page;
-    }),
-  };
+  const fake = fakeBrowserContext(page);
+  fake.context.newPage.mockImplementation(async () => {
+    calls.push('newPage');
+    return page as unknown as Awaited<ReturnType<typeof fake.context.newPage>>;
+  });
   return {
-    browser: browser as unknown as Browser,
+    browser: fake.browser,
     page,
     calls,
     bytes,
-    newPage: browser.newPage,
+    newPage: fake.context.newPage,
   };
 }
 
