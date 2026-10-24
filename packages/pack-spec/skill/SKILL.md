@@ -69,7 +69,7 @@ These are the ones agents get wrong; the spec has the rest.
 
 - **Every printed character is inside exactly one `data-gt` element**, including fixed labels, punctuation (`：` goes in the label), table text (the `<table>` is the block; its cells carry no `data-gt`), list markers (write `・` into the item) and the footer. No marks inside marks.
 - **No generated text**: no `content: "…"`, `counter()`, `counter(page)` or list markers (`list-style: none`). They print text no block holds.
-- **No `<script>`, no URLs that leave the pack, no `{{{raw}}}`, no helpers but `eq`, `lookup`, `number`** (and the built-in `if`/`unless`/`each`/`with`).
+- **No `<script>`, no URLs that leave the pack, no `{{{raw}}}`, no helpers but `eq`, `lookup`, `number`, `rocDate`** (and the built-in `if`/`unless`/`each`/`with`).
 - **Handlebars only in text or in quoted attribute values**, and an element opens and closes in the same `{{#if}}` branch: to switch an attribute, duplicate the whole element in each branch.
 - **Fonts**: only the platform families (`"Noto Serif TC"`, `"Noto Sans TC"`, `"LXGW WenKai TC"`, `"Noto Sans Symbols 2"`), named in the `font-family` of the printed elements in your stylesheet; `"Noto Sans Symbols 2"` first wherever ☑ ☐ print. No `@font-face` for them, no `@import`. Fixed text uses common Traditional Chinese characters only.
 - **Blank-able fields** (`blankProbability`) get a size: `display: inline-block; min-width: 6em; min-height: 1lh`, or sit in a table cell.

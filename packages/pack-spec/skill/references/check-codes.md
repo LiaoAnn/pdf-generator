@@ -17,9 +17,9 @@
 | `rules-invalid` | Unknown `type`, missing `min`/`max`/`lang`, `min > max`, a path in `of`/`part`/`whole` that names no numeric field | Compare with §2's table; paths go from the root with `[]` after arrays |
 | `sample-invalid` | `sample.json` doesn't match the rules (length, range, check digit, `null` without `blankProbability`, missing or extra key) | Regenerate it with the engine (SKILL.md, step 4) after every rules change |
 | `template-syntax` | Unclosed `{{#if}}`/`{{#each}}`, a stray `}}` | Balance the blocks |
-| `template-unsupported` | `{{{raw}}}`, `{{> partial}}`, a helper other than `eq`, `lookup`, `number` (`formatDate`, `add`, `inc`) | Use the subset (§3); derive values in the rules, write fixed numbering as text |
+| `template-unsupported` | `{{{raw}}}`, `{{> partial}}`, a helper other than `eq`, `lookup`, `number`, `rocDate` (`formatDate`, `add`, `inc`), a `rocDate` `format=` not in §3's list | Use the subset (§3); derive values in the rules, write fixed numbering as text |
 | `template-unknown-field` | `{{field}}` that the rules don't define (typo, wrong scope inside `{{#each}}`: use `{{../x}}` or `@root.x`) | Match the rules' keys |
-| `template-render` | Filling the sample failed (e.g. `{{#each}}` over a non-array) | Fix the template or the rule type |
+| `template-render` | Filling the sample failed (e.g. `{{#each}}` over a non-array, `rocDate` of a date before 1912 or of a non-date) | Fix the template or the rule type |
 | `template-structure` | `{{…}}` inside a tag but outside a quoted value, in CSS, in a comment, after `<` | Put statements in text or quoted values; duplicate whole elements per branch (§3) |
 | `html-active` | `<script>`, `on*=` handlers | Remove them; nothing runs |
 | `html-unsupported` | An element or attribute outside the allowlist (`<form>`, `<button>`, `<select>`, `<iframe>`, `<canvas>`) | Use the look-alikes: text, borders, ☐ glyphs, tables |
