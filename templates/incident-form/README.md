@@ -47,4 +47,6 @@ flock /tmp/pdf-generator-heavy.lock env T3CODE_WORKTREE_PATH=<worktree> wt-exec 
   "pnpm --filter @pdf-generator/incident-form acceptance --url https://app-<wt>.pdf-generator.liaoann.net --count 10"
 ```
 
-It uploads `pack/` as a new version, prints a batch, and prints one line per fixture. It exits 0 only when every fixture completed, passed self-check, and its gt.json has the checkbox states, blank cells and injured notes its data.json asks for.
+It uploads `pack/` as a new version, prints a batch, and prints one line per fixture. It exits 0 only when every fixture completed, passed self-check, and its gt.json has the merged cells the form prints and the checkbox states, blank cells and injured notes its data.json asks for.
+
+Each batch leaves a local Chrome running (backlog T16-3): after a run, stop the dev servers with the stop recipe in `AGENTS.md` ("Commands"), and start them again for the next one.

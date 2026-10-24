@@ -1,6 +1,7 @@
 // T23 acceptance on a running stack: zips pack/, uploads it, prints a batch
 // and checks it. Passes when every fixture's self-check passes and every
-// gt.json records the checkboxes and blanks its data.json asks for.
+// gt.json records the merged cells, and the checkboxes and blanks its
+// data.json asks for.
 //   pnpm --filter @pdf-generator/incident-form acceptance -- \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t23]
 // Signs in with the local Access stand-in's service token (vite dev only).
@@ -134,6 +135,24 @@ function compare(gt: GroundTruth, record: IncidentRecord): string[] {
     );
   }
   const form = tables[0]?.table.cells ?? [];
+  // The merged cells: three section rows across all five columns, and
+  // 事故地點 over its 地址 and 場所 rows.
+  const spans = (text: string) =>
+    form
+      .filter(cell => cell.text.replace(/\s/g, '') === text)
+      .map(cell => [cell.rowSpan, cell.colSpan]);
+  for (const [text, span] of [
+    ['一、事業單位及通報人資料', [1, 5]],
+    ['二、事故概況', [1, 5]],
+    ['三、處置情形', [1, 5]],
+    ['事故地點', [2, 1]],
+  ] as const) {
+    if (JSON.stringify(spans(text)) !== JSON.stringify([span])) {
+      problems.push(
+        `${text}: [rowSpan, colSpan] ${JSON.stringify(spans(text))}, expected ${JSON.stringify([span])}`,
+      );
+    }
+  }
   const injuredRows = tables
     .slice(1)
     .flatMap(table => table.table.cells.filter(cell => !cell.header));
@@ -245,7 +264,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and record checkboxes and blanks as their data asks`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and record merged cells, checkboxes and blanks as expected`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,
