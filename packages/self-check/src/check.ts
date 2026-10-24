@@ -38,6 +38,44 @@ export type Difference = { message: string } & (
   | { kind: 'unmarked_text'; page: number; text: string; textBox: Box }
   /** The block's order does not fit the page it is printed on. */
   | { kind: 'order'; page: number; blockId: string; order: number }
+  /** The PDF's text inside a table cell's box is not the cell's text. */
+  | {
+      kind: 'cell_text';
+      page: number;
+      blockId: string;
+      row: number;
+      col: number;
+      expected: string;
+      actual: string;
+    }
+  /**
+   * The PDF prints a checkbox's mark (☑ or ☐) with the other state. `row`,
+   * `col` and `checkbox` (its index in the cell) are set for a checkbox in a
+   * table cell.
+   */
+  | {
+      kind: 'checkbox';
+      page: number;
+      blockId: string;
+      row?: number;
+      col?: number;
+      checkbox?: number;
+      expected: boolean;
+      actual: boolean;
+    }
+  /** The PDF's label after a table cell's checkbox is not its `text`. */
+  | {
+      kind: 'checkbox_label';
+      page: number;
+      blockId: string;
+      row: number;
+      col: number;
+      checkbox: number;
+      expected: string;
+      actual: string;
+    }
+  /** Text printed in a font that is not one of `CheckOptions.fonts`. */
+  | { kind: 'font'; page: number; font: string; text: string }
 );
 
 export interface SelfCheckReport {
@@ -137,9 +175,10 @@ function findRun(items: readonly Item[], wanted: string): Item[] | undefined {
 export async function checkPdf(
   pdf: Uint8Array,
   gt: GroundTruth,
-  _options: CheckOptions = {},
+  options: CheckOptions = {},
 ): Promise<SelfCheckReport> {
   const { pages } = await readPdf(pdf);
+  const allowedFonts = options.fonts ? new Set(options.fonts) : undefined;
   const differences: Difference[] = [];
 
   if (pages.length !== gt.pages.length) {
@@ -216,10 +255,18 @@ export async function checkPdf(
     shownOn.set(block, block.page);
     const own = ownedBy(block, block.page);
     const wanted = comparable(block.text);
-    if (comparable(joined(own)) === wanted) {
+    const printed = comparable(joined(own));
+    if (
+      printed === wanted ||
+      // KaTeX's hidden MathML copy comes before the visible rendering, and
+      // may be painted into the text layer (PR #10).
+      (block.type === 'formula' && wanted !== '' && printed.endsWith(wanted))
+    ) {
       if (own.some(item => outside(item, block.bbox))) {
         report(block.page, boxDifference(block, own));
       }
+      for (const difference of details(block, own))
+        report(block.page, difference);
       continue;
     }
     // The PDF can't show an image's text unless it is printed as text.
@@ -263,14 +310,19 @@ export async function checkPdf(
       });
       continue;
     }
-    report(block.page, {
-      kind: 'text',
-      page: block.page,
-      blockId: block.id,
-      expected: block.text,
-      actual: joined(own),
-      message: `Block ${block.id} on page ${block.page}: the PDF has ${JSON.stringify(joined(own))}, gt.json ${JSON.stringify(block.text)}`,
-    });
+    // A table's text is compared cell by cell where cells differ.
+    const found = details(block, own);
+    if (!found.some(difference => difference.kind === 'cell_text')) {
+      report(block.page, {
+        kind: 'text',
+        page: block.page,
+        blockId: block.id,
+        expected: block.text,
+        actual: joined(own),
+        message: `Block ${block.id} on page ${block.page}: the PDF has ${JSON.stringify(joined(own))}, gt.json ${JSON.stringify(block.text)}`,
+      });
+    }
+    for (const difference of found) report(block.page, difference);
   }
 
   // Reading order: the blocks a page shows hold the next run of orders.
@@ -322,6 +374,24 @@ export async function checkPdf(
       else flush();
     });
     flush();
+    // Any other font means a glyph fell back to a system font (T03 Must 6).
+    if (allowedFonts) {
+      const other = new Map<string, string>();
+      for (const item of items[i] ?? []) {
+        if (!allowedFonts.has(item.font)) {
+          other.set(item.font, (other.get(item.font) ?? '') + item.text);
+        }
+      }
+      for (const [font, text] of other) {
+        differences.push({
+          kind: 'font',
+          page,
+          font,
+          text: text.slice(0, 40),
+          message: `Page ${page} prints ${JSON.stringify(text.slice(0, 40))} in ${font}, which is not one of the pack's fonts`,
+        });
+      }
+    }
   }
 
   return { ok: differences.length === 0, differences };
@@ -337,4 +407,143 @@ function boxDifference(block: GtBlock, items: readonly Item[]): Difference {
     textBox,
     message: `Block ${block.id} on page ${block.page}: its text is printed at [${textBox.join(', ')}], outside its box [${block.bbox.join(', ')}]`,
   };
+}
+
+// Glyphs that print a checkbox's state.
+const checkedMarks = new Set(['☑', '☒', '✓', '✔', '✅']);
+const uncheckedMarks = new Set(['☐', '□']);
+
+/** The state the first mark glyph in `text` prints, if there is one. */
+function markState(text: string): boolean | undefined {
+  for (const char of text) {
+    if (checkedMarks.has(char)) return true;
+    if (uncheckedMarks.has(char)) return false;
+  }
+  return undefined;
+}
+
+const anchorOf = (item: PdfTextItem): [number, number] => [
+  (item.x0 + item.x1) / 2,
+  item.baseline - anchorEm * item.size,
+];
+
+/**
+ * The differences in a block's type-specific fields that the PDF can show:
+ * a checkbox's printed state; a table's cells, their checkboxes' states and
+ * labels.
+ */
+function details(block: GtBlock, own: readonly Item[]): Difference[] {
+  if (block.type === 'checkbox') {
+    const actual = markState(joined(own));
+    // Without a mark glyph (a native input, a CSS-drawn box) the state is
+    // vector graphics, which the text layer doesn't show.
+    if (actual === undefined || actual === block.checked) return [];
+    return [
+      {
+        kind: 'checkbox',
+        page: block.page,
+        blockId: block.id,
+        expected: block.checked,
+        actual,
+        message: `Checkbox ${block.id} on page ${block.page} is printed ${actual ? 'checked' : 'unchecked'}`,
+      },
+    ];
+  }
+  if (block.type !== 'table') return [];
+  const { cells } = block.table;
+  // Each item belongs to the smallest cell whose box contains its anchor.
+  const cellItems = cells.map((): Item[] => []);
+  for (const item of own) {
+    const [x, y] = anchorOf(item);
+    let best = -1;
+    cells.forEach((cell, i) => {
+      if (!contains(cell.bbox, x, y)) return;
+      const current = cells[best];
+      if (current === undefined || area(cell.bbox) < area(current.bbox)) {
+        best = i;
+      }
+    });
+    cellItems[best]?.push(item);
+  }
+  const at = `${block.id} on page ${block.page}`;
+  return cells.flatMap((cell, i) => {
+    const found: Difference[] = [];
+    const where = {
+      page: block.page,
+      blockId: block.id,
+      row: cell.row,
+      col: cell.col,
+    };
+    const inCell = cellItems[i] ?? [];
+    const textMatches = comparable(joined(inCell)) === comparable(cell.text);
+    if (!textMatches) {
+      found.push({
+        kind: 'cell_text',
+        ...where,
+        expected: cell.text,
+        actual: joined(inCell),
+        message: `Table ${at}, cell ${cell.row},${cell.col}: the PDF has ${JSON.stringify(joined(inCell))}, gt.json ${JSON.stringify(cell.text)}`,
+      });
+    }
+    const checkboxes = cell.checkboxes ?? [];
+    // A checkbox's mark: an item starting inside its box with a mark glyph
+    // (Chrome merges the mark with its label when they share a font).
+    const marks = checkboxes.map(checkbox =>
+      inCell.find(item => {
+        const [x0, y0, x1, y1] = checkbox.bbox;
+        const [, y] = anchorOf(item);
+        return (
+          item.x0 >= x0 - boxTolerancePt &&
+          item.x0 < x1 &&
+          y >= y0 &&
+          y <= y1 &&
+          markState([...item.text.trim()][0] ?? '') !== undefined
+        );
+      }),
+    );
+    const labels = checkboxes.map(() => '');
+    for (const item of inCell) {
+      const mark = marks.indexOf(item);
+      // The label of checkbox k: what follows its box, before the next one.
+      const [x, y] = anchorOf(item);
+      let k = -1;
+      checkboxes.forEach((checkbox, j) => {
+        const [x0, y0, , y1] = checkbox.bbox;
+        // On an earlier line, or on this line and starting left of it.
+        if (y >= y0 && (y > y1 || x0 <= x)) k = j;
+      });
+      if (k === -1) continue;
+      const text =
+        mark === -1 ? item.text : [...item.text.trim()].slice(1).join('');
+      labels[k] += text;
+    }
+    checkboxes.forEach((checkbox, k) => {
+      const mark = marks[k];
+      const actual = mark
+        ? markState([...mark.text.trim()][0] ?? '')
+        : undefined;
+      if (actual !== undefined && actual !== checkbox.checked) {
+        found.push({
+          kind: 'checkbox',
+          ...where,
+          checkbox: k,
+          expected: checkbox.checked,
+          actual,
+          message: `Table ${at}, cell ${cell.row},${cell.col}: checkbox ${k + 1} is printed ${actual ? 'checked' : 'unchecked'}`,
+        });
+      }
+      const label = labels[k] ?? '';
+      if (textMatches && comparable(label) !== comparable(checkbox.text)) {
+        found.push({
+          kind: 'checkbox_label',
+          ...where,
+          checkbox: k,
+          expected: checkbox.text,
+          actual: label,
+          message: `Table ${at}, cell ${cell.row},${cell.col}: checkbox ${k + 1}'s label is ${JSON.stringify(label)}, gt.json ${JSON.stringify(checkbox.text)}`,
+        });
+      }
+    });
+    return found;
+  });
 }

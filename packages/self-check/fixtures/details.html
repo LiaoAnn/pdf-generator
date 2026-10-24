@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- Independent geometry oracle: A4, 54pt margin; every row is 36pt.
+     Table columns are 120pt and 240pt. Marks and labels are separate runs.
+     Page two tests font grouping independently of the system font installed. -->
+<html lang="en">
+<meta charset="utf-8">
+<title>Self-check details</title>
+<style>
+@font-face { font-family: Symbols; src: url('../../../apps/print/public/fonts/NotoSansSymbols2-Regular.ttf'); }
+@page { size: A4; margin: 54pt; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { font: 12pt/18pt sans-serif; }
+.block { width: 360pt; height: 36pt; margin: 0; }
+.mark { display: inline-block; width: 18pt; height: 18pt; font-family: Symbols, sans-serif; }
+table { table-layout: fixed; width: 360pt; border-spacing: 0; }
+td { padding: 0; border: 0; vertical-align: top; height: 36pt; }
+.choice { display: inline-block; width: 90pt; }
+.vector { display: inline-block; width: 12pt; height: 12pt; border: 1pt solid; }
+input { width: 12pt; height: 12pt; margin: 0; }
+.formula { position: relative; }
+.katex-mathml { position: absolute; left: 0; top: 0; color: transparent; }
+.page-two { break-before: page; }
+.known { font-family: Symbols, sans-serif; }
+.other { font-family: serif; }
+</style>
+<div class="block"><span class="mark">☑</span>Agree</div>
+<div class="block"><span class="mark">☐</span>Decline</div>
+<table><colgroup><col style="width:120pt"><col style="width:240pt"></colgroup><tbody>
+<tr><td>Options</td><td><span class="choice"><span class="mark">☑</span>Yes</span><span class="choice"><span class="mark">☐</span>No</span><br><span class="choice"><span class="mark">☑</span>Later</span></td></tr>
+<tr><td>Graphics</td><td><span class="choice"><input type="checkbox" checked>Native</span><span class="choice"><span class="vector"></span>Drawn</span></td></tr>
+</tbody></table>
+<div class="block formula">x + y</div>
+<section class="page-two">
+<div class="block known">☑☐</div>
+<div class="block other">ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghij</div>
+<div class="block known">☑</div>
+<div class="block other">TAIL</div>
+</section>
+</html>
