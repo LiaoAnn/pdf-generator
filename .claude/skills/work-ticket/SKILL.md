@@ -104,3 +104,4 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 - Call the real Cloudflare account without an answered `ASK`.
 - Report a step as passed when its evidence is weaker than it needs; say inconclusive.
 - End a turn waiting on a background shell command. Its completion notice can fail to wake your thread (T15-2 sat idle for 10 minutes after its acceptance run had finished). Run long commands in the foreground with a timeout, or poll the background one until it exits before you end the turn. Waiting on a `delegate_task` child or a coordinator answer is fine: those do wake you.
+- Leave dev servers running while you wait on a subagent, the coordinator or the user. Stop them first with the stop recipe in `AGENTS.md` and start them again when you need them. On 2026-10-24 a worker kept wrangler and vite (about 2.2 GB) running while it waited on its test author, and the VM ran out of memory: the OOM killer took down the shared Codex process.
