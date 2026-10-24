@@ -84,10 +84,22 @@ const contentType = (path: string) =>
 export interface PublishedFiles {
   /** URL of the document, which the tab navigates to. */
   documentUrl: string;
-  /** Every URL of the print's files, the document's included. */
-  urls: Set<string>;
+  /** Whether `url` is one of the print's files, the document included. */
+  serves: (url: string) => boolean;
   /** Deletes the files; never rejects. */
   remove: () => Promise<void>;
+}
+
+/** The pack path of a `/pack/<id>/<path>` URL path, if it is one. */
+function packFile(pathname: string): { id: string; path: string } | undefined {
+  const match = /^\/pack\/([0-9a-f-]{36})\/(.+)$/.exec(pathname);
+  if (!match) return undefined;
+  const [, id = '', encoded = ''] = match;
+  try {
+    return { id, path: encoded.split('/').map(decodeURIComponent).join('/') };
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -133,9 +145,15 @@ export async function publishFiles(
     await remove();
     throw error;
   }
+  const paths = new Set([documentPath, ...files.map(([path]) => path)]);
   return {
     documentUrl: url(documentPath),
-    urls: new Set([documentPath, ...files.map(([path]) => path)].map(url)),
+    serves: candidate => {
+      const parsed = URL.parse(candidate);
+      if (parsed?.origin !== origin) return false;
+      const file = packFile(parsed.pathname);
+      return file?.id === id && paths.has(file.path);
+    },
     remove,
   };
 }
@@ -155,8 +173,6 @@ function printPolicy(origin: string): string {
   ].join('; ');
 }
 
-const packPath = /^\/pack\/([0-9a-f-]{36})\/(.+)$/;
-
 /**
  * `GET /pack/<id>/<path>`: a file of a print in progress, or undefined when
  * the URL is not of that form. No bearer token: the browser can't send one,
@@ -166,17 +182,11 @@ export async function servePackFile(
   bucket: R2Bucket,
   url: URL,
 ): Promise<Response | undefined> {
-  const match = packPath.exec(url.pathname);
-  if (!match) return undefined;
-  const [, id, encoded = ''] = match;
-  let path: string;
-  try {
-    path = encoded.split('/').map(decodeURIComponent).join('/');
-  } catch {
+  const file = packFile(url.pathname);
+  if (!file || !relativePathSchema.safeParse(file.path).success) {
     return undefined;
   }
-  if (!relativePathSchema.safeParse(path).success) return undefined;
-  const object = await bucket.get(`${id}/${path}`);
+  const object = await bucket.get(`${file.id}/${file.path}`);
   if (!object) return undefined;
   const headers = new Headers();
   object.writeHttpMetadata(headers);

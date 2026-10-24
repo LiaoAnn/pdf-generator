@@ -12,6 +12,8 @@ function fakeBrowser() {
   const calls: string[] = [];
   const bytes = new Uint8Array([37, 80, 68, 70]);
   const page = {
+    setRequestInterception: vi.fn(async () => {}),
+    on: vi.fn(),
     goto: vi.fn(async (_url: string, _options?: unknown) => {
       calls.push('goto');
     }),

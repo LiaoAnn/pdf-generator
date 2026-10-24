@@ -65,6 +65,8 @@ const request = {
 function fakeBrowser(expectedText?: string[][], bytes = fixturePdf()) {
   const calls: string[] = [];
   const page = {
+    setRequestInterception: vi.fn(async () => {}),
+    on: vi.fn(),
     goto: vi.fn(async () => {}),
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({

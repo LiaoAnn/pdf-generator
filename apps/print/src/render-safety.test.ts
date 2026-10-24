@@ -33,6 +33,8 @@ test.each([
   // Regression: forwarding a bad ready state to inspect/pdf can create ground
   // truth for fallback glyphs or for rows that disappear from the PDF.
   const page = {
+    setRequestInterception: vi.fn(async () => {}),
+    on: vi.fn(),
     goto: vi.fn(async () => {}),
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({

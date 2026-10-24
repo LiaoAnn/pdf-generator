@@ -53,6 +53,8 @@ test.each([
     const failure = new Error(`${stage} failed`);
     let availableAtNavigation = 0;
     const page = {
+      setRequestInterception: vi.fn(async () => {}),
+      on: vi.fn(),
       goto: vi.fn(async (_url: string) => {
         availableAtNavigation = stored.size;
         if (stage === 'goto') throw failure;
