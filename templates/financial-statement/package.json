@@ -1,0 +1,17 @@
+{
+  "name": "@pdf-generator/financial-statement",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@pdf-generator/contract": "workspace:*",
+    "@pdf-generator/fake-data": "workspace:*",
+    "@types/node": "^24.13.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

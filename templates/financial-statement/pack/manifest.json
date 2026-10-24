@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "financial-statement",
+  "name": "客戶別銷貨明細表",
+  "description": "財務明細：橫向 A4，三層表頭（年度、半年、季）的客戶別銷貨明細，依地區分組小計，表格跨頁時每頁重複表頭。",
+  "page": { "size": "A4", "orientation": "landscape" },
+  "files": {
+    "template": "templates/financial-statement.hbs",
+    "styles": ["styles/financial-statement.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": []
+  }
+}
