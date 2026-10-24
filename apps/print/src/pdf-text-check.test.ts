@@ -173,9 +173,9 @@ test.each([
   { name: 'empty page list', expectedText: [] },
   { name: 'pages with no blocks', expectedText: [[], []] },
 ])(
-  '$name expectations skip extraction of legacy fake PDF bytes',
+  '$name text expectations still allow a valid PDF with matching page count',
   async ({ expectedText }) => {
-    const bytes = new Uint8Array([37, 80, 68, 70]);
+    const bytes = fixturePdf();
     const fake = fakeBrowser(expectedText, bytes);
     await expect(
       renderPdf(fake.browser, request, {

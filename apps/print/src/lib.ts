@@ -3,6 +3,7 @@
 // tab through `inspect` before the PDF is printed (T03 Must 3).
 import type { Browser, Page } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
+import { getDocumentProxy } from 'unpdf';
 import {
   type PrintStore,
   type PublishedFiles,
@@ -62,6 +63,7 @@ export type RenderErrorCode =
   | 'font_not_loaded'
   | 'row_fragmented'
   | 'text_missing'
+  | 'page_count_mismatch'
   | 'request_blocked';
 
 /** A render that must not produce a PDF. */
@@ -251,6 +253,17 @@ async function print<T>(
     printBackground: true,
   });
   // The PDF is the authority on what was printed (T03 Must 4, PDF part).
+  // Content Paged.js didn't lay out (a pack's own pagedjs-content template
+  // leaves the rest of <body> live) or CSS on its page boxes can add sheets
+  // that no gt.json page describes (T08-1).
+  const { numPages } = await getDocumentProxy(new Uint8Array(pdf));
+  if (numPages !== ready.pageCount) {
+    throw new RenderError(
+      'page_count_mismatch',
+      'The PDF has a different number of pages than Paged.js made',
+      [`PDF pages: ${numPages}; Paged.js pages: ${ready.pageCount}`],
+    );
+  }
   if (
     ready.expectedText?.some(blocks =>
       blocks.some(block => block.texts.length > 0),
