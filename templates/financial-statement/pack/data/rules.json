@@ -1,0 +1,600 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "company": {
+      "type": "company"
+    },
+    "businessId": {
+      "type": "businessId"
+    },
+    "fiscalYear": {
+      "type": "integer",
+      "min": 110,
+      "max": 114,
+      "description": "民國年度"
+    },
+    "signers": {
+      "type": "object",
+      "fields": {
+        "chairman": {
+          "type": "name"
+        },
+        "manager": {
+          "type": "name"
+        },
+        "accountant": {
+          "type": "name"
+        },
+        "preparer": {
+          "type": "name"
+        }
+      }
+    },
+    "regions": {
+      "type": "object",
+      "fields": {
+        "north": {
+          "type": "object",
+          "fields": {
+            "name": {
+              "type": "constant",
+              "value": "北區"
+            },
+            "customers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "fields": {
+                  "name": {
+                    "type": "company"
+                  },
+                  "businessId": {
+                    "type": "businessId"
+                  },
+                  "q1": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q2": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q3": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q4": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "year": {
+                    "type": "sum",
+                    "of": [
+                      "regions.north.customers[].q1",
+                      "regions.north.customers[].q2",
+                      "regions.north.customers[].q3",
+                      "regions.north.customers[].q4"
+                    ]
+                  },
+                  "share": {
+                    "type": "percentage",
+                    "part": "regions.north.customers[].year",
+                    "whole": "total.year",
+                    "decimals": 2
+                  },
+                  "prior": {
+                    "type": "money",
+                    "min": 2500000,
+                    "max": 4500000
+                  },
+                  "priorShare": {
+                    "type": "percentage",
+                    "part": "regions.north.customers[].prior",
+                    "whole": "total.prior",
+                    "decimals": 2
+                  },
+                  "ratio": {
+                    "type": "percentage",
+                    "part": "regions.north.customers[].year",
+                    "whole": "regions.north.customers[].prior",
+                    "decimals": 2
+                  }
+                }
+              }
+            },
+            "subtotal": {
+              "type": "object",
+              "fields": {
+                "q1": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].q1"]
+                },
+                "q2": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].q2"]
+                },
+                "q3": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].q3"]
+                },
+                "q4": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].q4"]
+                },
+                "year": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].year"]
+                },
+                "prior": {
+                  "type": "sum",
+                  "of": ["regions.north.customers[].prior"]
+                },
+                "share": {
+                  "type": "percentage",
+                  "part": "regions.north.subtotal.year",
+                  "whole": "total.year",
+                  "decimals": 2
+                },
+                "priorShare": {
+                  "type": "percentage",
+                  "part": "regions.north.subtotal.prior",
+                  "whole": "total.prior",
+                  "decimals": 2
+                },
+                "ratio": {
+                  "type": "percentage",
+                  "part": "regions.north.subtotal.year",
+                  "whole": "regions.north.subtotal.prior",
+                  "decimals": 2
+                }
+              }
+            }
+          }
+        },
+        "central": {
+          "type": "object",
+          "fields": {
+            "name": {
+              "type": "constant",
+              "value": "中區"
+            },
+            "customers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "fields": {
+                  "name": {
+                    "type": "company"
+                  },
+                  "businessId": {
+                    "type": "businessId"
+                  },
+                  "q1": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q2": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q3": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q4": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "year": {
+                    "type": "sum",
+                    "of": [
+                      "regions.central.customers[].q1",
+                      "regions.central.customers[].q2",
+                      "regions.central.customers[].q3",
+                      "regions.central.customers[].q4"
+                    ]
+                  },
+                  "share": {
+                    "type": "percentage",
+                    "part": "regions.central.customers[].year",
+                    "whole": "total.year",
+                    "decimals": 2
+                  },
+                  "prior": {
+                    "type": "money",
+                    "min": 2500000,
+                    "max": 4500000
+                  },
+                  "priorShare": {
+                    "type": "percentage",
+                    "part": "regions.central.customers[].prior",
+                    "whole": "total.prior",
+                    "decimals": 2
+                  },
+                  "ratio": {
+                    "type": "percentage",
+                    "part": "regions.central.customers[].year",
+                    "whole": "regions.central.customers[].prior",
+                    "decimals": 2
+                  }
+                }
+              }
+            },
+            "subtotal": {
+              "type": "object",
+              "fields": {
+                "q1": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].q1"]
+                },
+                "q2": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].q2"]
+                },
+                "q3": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].q3"]
+                },
+                "q4": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].q4"]
+                },
+                "year": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].year"]
+                },
+                "prior": {
+                  "type": "sum",
+                  "of": ["regions.central.customers[].prior"]
+                },
+                "share": {
+                  "type": "percentage",
+                  "part": "regions.central.subtotal.year",
+                  "whole": "total.year",
+                  "decimals": 2
+                },
+                "priorShare": {
+                  "type": "percentage",
+                  "part": "regions.central.subtotal.prior",
+                  "whole": "total.prior",
+                  "decimals": 2
+                },
+                "ratio": {
+                  "type": "percentage",
+                  "part": "regions.central.subtotal.year",
+                  "whole": "regions.central.subtotal.prior",
+                  "decimals": 2
+                }
+              }
+            }
+          }
+        },
+        "south": {
+          "type": "object",
+          "fields": {
+            "name": {
+              "type": "constant",
+              "value": "南區"
+            },
+            "customers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "fields": {
+                  "name": {
+                    "type": "company"
+                  },
+                  "businessId": {
+                    "type": "businessId"
+                  },
+                  "q1": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q2": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q3": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q4": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "year": {
+                    "type": "sum",
+                    "of": [
+                      "regions.south.customers[].q1",
+                      "regions.south.customers[].q2",
+                      "regions.south.customers[].q3",
+                      "regions.south.customers[].q4"
+                    ]
+                  },
+                  "share": {
+                    "type": "percentage",
+                    "part": "regions.south.customers[].year",
+                    "whole": "total.year",
+                    "decimals": 2
+                  },
+                  "prior": {
+                    "type": "money",
+                    "min": 2500000,
+                    "max": 4500000
+                  },
+                  "priorShare": {
+                    "type": "percentage",
+                    "part": "regions.south.customers[].prior",
+                    "whole": "total.prior",
+                    "decimals": 2
+                  },
+                  "ratio": {
+                    "type": "percentage",
+                    "part": "regions.south.customers[].year",
+                    "whole": "regions.south.customers[].prior",
+                    "decimals": 2
+                  }
+                }
+              }
+            },
+            "subtotal": {
+              "type": "object",
+              "fields": {
+                "q1": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].q1"]
+                },
+                "q2": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].q2"]
+                },
+                "q3": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].q3"]
+                },
+                "q4": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].q4"]
+                },
+                "year": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].year"]
+                },
+                "prior": {
+                  "type": "sum",
+                  "of": ["regions.south.customers[].prior"]
+                },
+                "share": {
+                  "type": "percentage",
+                  "part": "regions.south.subtotal.year",
+                  "whole": "total.year",
+                  "decimals": 2
+                },
+                "priorShare": {
+                  "type": "percentage",
+                  "part": "regions.south.subtotal.prior",
+                  "whole": "total.prior",
+                  "decimals": 2
+                },
+                "ratio": {
+                  "type": "percentage",
+                  "part": "regions.south.subtotal.year",
+                  "whole": "regions.south.subtotal.prior",
+                  "decimals": 2
+                }
+              }
+            }
+          }
+        },
+        "east": {
+          "type": "object",
+          "fields": {
+            "name": {
+              "type": "constant",
+              "value": "東區及離島"
+            },
+            "customers": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 12,
+              "items": {
+                "type": "object",
+                "fields": {
+                  "name": {
+                    "type": "company"
+                  },
+                  "businessId": {
+                    "type": "businessId"
+                  },
+                  "q1": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q2": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q3": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "q4": {
+                    "type": "money",
+                    "min": 500000,
+                    "max": 1250000
+                  },
+                  "year": {
+                    "type": "sum",
+                    "of": [
+                      "regions.east.customers[].q1",
+                      "regions.east.customers[].q2",
+                      "regions.east.customers[].q3",
+                      "regions.east.customers[].q4"
+                    ]
+                  },
+                  "share": {
+                    "type": "percentage",
+                    "part": "regions.east.customers[].year",
+                    "whole": "total.year",
+                    "decimals": 2
+                  },
+                  "prior": {
+                    "type": "money",
+                    "min": 2500000,
+                    "max": 4500000
+                  },
+                  "priorShare": {
+                    "type": "percentage",
+                    "part": "regions.east.customers[].prior",
+                    "whole": "total.prior",
+                    "decimals": 2
+                  },
+                  "ratio": {
+                    "type": "percentage",
+                    "part": "regions.east.customers[].year",
+                    "whole": "regions.east.customers[].prior",
+                    "decimals": 2
+                  }
+                }
+              }
+            },
+            "subtotal": {
+              "type": "object",
+              "fields": {
+                "q1": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].q1"]
+                },
+                "q2": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].q2"]
+                },
+                "q3": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].q3"]
+                },
+                "q4": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].q4"]
+                },
+                "year": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].year"]
+                },
+                "prior": {
+                  "type": "sum",
+                  "of": ["regions.east.customers[].prior"]
+                },
+                "share": {
+                  "type": "percentage",
+                  "part": "regions.east.subtotal.year",
+                  "whole": "total.year",
+                  "decimals": 2
+                },
+                "priorShare": {
+                  "type": "percentage",
+                  "part": "regions.east.subtotal.prior",
+                  "whole": "total.prior",
+                  "decimals": 2
+                },
+                "ratio": {
+                  "type": "percentage",
+                  "part": "regions.east.subtotal.year",
+                  "whole": "regions.east.subtotal.prior",
+                  "decimals": 2
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "total": {
+      "type": "object",
+      "fields": {
+        "q1": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.q1",
+            "regions.central.subtotal.q1",
+            "regions.south.subtotal.q1",
+            "regions.east.subtotal.q1"
+          ]
+        },
+        "q2": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.q2",
+            "regions.central.subtotal.q2",
+            "regions.south.subtotal.q2",
+            "regions.east.subtotal.q2"
+          ]
+        },
+        "q3": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.q3",
+            "regions.central.subtotal.q3",
+            "regions.south.subtotal.q3",
+            "regions.east.subtotal.q3"
+          ]
+        },
+        "q4": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.q4",
+            "regions.central.subtotal.q4",
+            "regions.south.subtotal.q4",
+            "regions.east.subtotal.q4"
+          ]
+        },
+        "year": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.year",
+            "regions.central.subtotal.year",
+            "regions.south.subtotal.year",
+            "regions.east.subtotal.year"
+          ]
+        },
+        "prior": {
+          "type": "sum",
+          "of": [
+            "regions.north.subtotal.prior",
+            "regions.central.subtotal.prior",
+            "regions.south.subtotal.prior",
+            "regions.east.subtotal.prior"
+          ]
+        },
+        "ratio": {
+          "type": "percentage",
+          "part": "total.year",
+          "whole": "total.prior",
+          "decimals": 2
+        }
+      }
+    }
+  }
+}

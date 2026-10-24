@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>{{company}} 客戶別銷貨明細表</title>
+</head>
+<body>
+<div class="running-header" data-gt="page_header">{{company}}　客戶別銷貨明細表</div>
+<div class="running-footer" data-gt="page_footer">{{company}}　統一編號：{{businessId}}</div>
+
+<h1 data-gt="title">客戶別銷貨明細表</h1>
+<p class="company" data-gt="paragraph">{{company}}</p>
+<p class="period" data-gt="paragraph">中華民國 {{fiscalYear}} 年 1 月 1 日至 12 月 31 日</p>
+<p class="unit" data-gt="paragraph">單位：新臺幣元</p>
+
+<table class="statement" data-gt="table">
+<colgroup>
+<col width="18%"><col width="8%"><col width="8.5%"><col width="8.5%"><col width="8.5%"><col width="8.5%"><col width="9.5%"><col width="6.5%"><col width="9.5%"><col width="6%"><col width="8.5%">
+</colgroup>
+<!-- 本年/上年 has an ASCII slash: a full-width ／ (U+FF0F) is missing from the PDF text the print guard reads (T07-13). Use ／ again once T07-13 merges. -->
+<thead>
+<tr><th rowspan="3">客戶名稱</th><th rowspan="3">統一編號</th><th colspan="6">本年度</th><th colspan="2" rowspan="2">上年度</th><th rowspan="2">比較</th></tr>
+<tr><th colspan="2">上半年</th><th colspan="2">下半年</th><th colspan="2">全年</th></tr>
+<tr><th>第一季</th><th>第二季</th><th>第三季</th><th>第四季</th><th>金額</th><th>占比（%）</th><th>金額</th><th>占比（%）</th><th>本年/上年（%）</th></tr>
+</thead>
+<tbody>
+{{#each regions}}
+<tr class="region"><td colspan="11">{{name}}</td></tr>
+{{#each customers}}
+<tr><td>{{name}}</td><td>{{businessId}}</td><td class="num">{{number q1}}</td><td class="num">{{number q2}}</td><td class="num">{{number q3}}</td><td class="num">{{number q4}}</td><td class="num">{{number year}}</td><td class="num">{{number share decimals=2}}</td><td class="num">{{number prior}}</td><td class="num">{{number priorShare decimals=2}}</td><td class="num">{{number ratio decimals=2}}</td></tr>
+{{/each}}
+{{#with subtotal}}
+<tr class="subtotal"><td colspan="2">{{../name}}小計</td><td class="num">{{number q1}}</td><td class="num">{{number q2}}</td><td class="num">{{number q3}}</td><td class="num">{{number q4}}</td><td class="num">{{number year}}</td><td class="num">{{number share decimals=2}}</td><td class="num">{{number prior}}</td><td class="num">{{number priorShare decimals=2}}</td><td class="num">{{number ratio decimals=2}}</td></tr>
+{{/with}}
+{{/each}}
+{{#with total}}
+<tr class="total"><td colspan="2">總計</td><td class="num">{{number q1}}</td><td class="num">{{number q2}}</td><td class="num">{{number q3}}</td><td class="num">{{number q4}}</td><td class="num">{{number year}}</td><td class="num">100.00</td><td class="num">{{number prior}}</td><td class="num">100.00</td><td class="num">{{number ratio decimals=2}}</td></tr>
+{{/with}}
+</tbody>
+</table>
+
+<table class="signers" data-gt="table">
+<colgroup><col width="25%"><col width="25%"><col width="25%"><col width="25%"></colgroup>
+<thead>
+<tr><th>負責人</th><th>經理人</th><th>會計主管</th><th>製表人</th></tr>
+</thead>
+<tbody>
+<tr><td>{{signers.chairman}}</td><td>{{signers.manager}}</td><td>{{signers.accountant}}</td><td>{{signers.preparer}}</td></tr>
+</tbody>
+</table>
+</body>
+</html>
