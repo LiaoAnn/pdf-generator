@@ -200,6 +200,117 @@ test('derived budget accepts exactly one million balance steps and deduplicates 
   `);
 }, 15_000);
 
+// rows[] holds `lines` (a chain of nested arrays, one count per level) and
+// `balances` running balances that each add the given leaf names below it.
+const fanOutBudgetSetup = `
+  const fanOutFields = (rowCount, lineCounts, balanceCount, leaves = ['amount']) => {
+    const leafObject = object(Object.fromEntries(leaves.map(leaf => [leaf, constant(1)])));
+    let lines = leafObject;
+    for (let i = lineCounts.length - 1; i >= 0; i--) {
+      lines = array(lineCounts[i], i === lineCounts.length - 1
+        ? lines : object({ items: lines }));
+    }
+    const infix = lineCounts.map((_, i) => (i === 0 ? 'lines[]' : 'items[]')).join('.');
+    const paths = leaves.map(leaf => 'rows[].' + infix + '.' + leaf);
+    return {
+      opening: constant(0),
+      rows: array(rowCount, object({
+        lines,
+        ...Object.fromEntries(Array.from({ length: balanceCount }, (_, i) => [
+          'b' + i,
+          { type: 'runningBalance', opening: 'opening', add: paths, subtract: [] },
+        ])),
+      })),
+    };
+  };
+`;
+
+test('derived budget charges a balance for every line it re-sums: 1 row × 500 balances × 50,000 lines is rejected promptly', () => {
+  guardedDerivedBudget(
+    `
+    ${fanOutBudgetSetup}
+    // 1 × 500 × 50,000 = 25,000,000 steps; only ~50,500 values.
+    assertBudgetRejected(fanOutFields(1, [50_000], 500));
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test('derived budget accepts exactly one million steps from 1,000 balances over 1,000 lines', () => {
+  guardedDerivedBudget(`
+    ${fanOutBudgetSetup}
+    const start = performance.now();
+    const record = generate(rulesFor(fanOutFields(1, [1_000], 1_000)), 'fan-out-boundary');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 3_000, 'fan-out boundary took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 1);
+    for (let b = 0; b < 1_000; b++) assert.equal(record.rows[0]['b' + b], 1_000, 'balance ' + b);
+  `);
+}, 15_000);
+
+test('derived budget rejects one step above the limit when a sum adds to a fan-out boundary', () => {
+  guardedDerivedBudget(
+    `
+    ${fanOutBudgetSetup}
+    assertBudgetRejected({
+      ...fanOutFields(1, [1_000], 1_000),
+      extra: { type: 'sum', of: ['opening'] },
+    });
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test.each([
+  ['accepts exactly one million steps', 100, false],
+  ['rejects 1,010,000 steps', 101, true],
+])(
+  'derived budget multiplies fan-out through nested arrays: 100 × 100 lines, %s',
+  (_regression, balances, rejected) => {
+    guardedDerivedBudget(
+      `
+      ${fanOutBudgetSetup}
+      const fields = fanOutFields(1, [100, 100], ${balances});
+      if (${rejected}) {
+        assertBudgetRejected(fields);
+      } else {
+        const record = generate(rulesFor(fields), 'nested-fan-out-boundary');
+        assert.equal(record.rows.length, 1);
+        for (const b of [0, 50, 99]) assert.equal(record.rows[0]['b' + b], 10_000);
+      }
+    `,
+      rejected ? 3_000 : 10_000,
+    );
+  },
+  15_000,
+);
+
+test.each([
+  ['accepts exactly one million steps', false],
+  ['rejects one step above the limit', true],
+])(
+  'derived budget multiplies instances, balances and the fan-out of every distinct path: 10 rows × 1,000 balances × 2 × 50 lines %s',
+  (_regression, rejected) => {
+    guardedDerivedBudget(
+      `
+      ${fanOutBudgetSetup}
+      const fields = fanOutFields(10, [50], 1_000, ['amount', 'fee']);
+      if (${rejected}) {
+        assertBudgetRejected({ ...fields, extra: { type: 'sum', of: ['opening'] } });
+      } else {
+        const record = generate(rulesFor(fields), 'instances-fan-out-boundary');
+        assert.equal(record.rows.length, 10);
+        for (const i of [0, 4, 9]) {
+          for (const b of [0, 500, 999]) assert.equal(record.rows[i]['b' + b], 100 * (i + 1));
+        }
+      }
+    `,
+      rejected ? 3_000 : 10_000,
+    );
+  },
+  15_000,
+);
+
 test.each([
   [
     'accepts exactly one million steps with repeated sum paths and identical percentage paths',

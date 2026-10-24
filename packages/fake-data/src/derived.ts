@@ -176,10 +176,28 @@ export function derivedOrder(rules: Rules): {
   issues: Issue[];
 } {
   const fields = new Map<string, DerivedField>();
-  // Worst-case evaluation steps: each instance of a running balance looks up
-  // its distinct paths (path totals themselves are memoized); a sum or
-  // percentage is computed once.
+  // Worst-case evaluation steps: each instance of a running balance reads
+  // each of its distinct paths below its row, as many values as the path
+  // fans out there (at least one lookup); a sum or percentage is computed
+  // once (path totals are memoized).
   let steps = 0;
+  // The product of maxItems of the arrays on `path` after its first `skip`.
+  const fanOut = (path: string, skip: number) => {
+    let fields: Rules['fields'] | undefined = rules.fields;
+    let product = 1;
+    let arrays = 0;
+    for (const segment of path.split('.')) {
+      const name = segment.replace(/(\[\])+$/, '');
+      let field: RuleField | undefined = fields?.[name];
+      for (let i = name.length; i < segment.length; i += 2) {
+        if (field?.type !== 'array') return product;
+        if (arrays++ >= skip) product *= field.maxItems;
+        field = field.items;
+      }
+      fields = field?.type === 'object' ? field.fields : undefined;
+    }
+    return product;
+  };
   const visit = (
     field: RuleField,
     path: string,
@@ -188,12 +206,12 @@ export function derivedOrder(rules: Rules): {
   ) => {
     if (isDerived(field)) {
       fields.set(path, { path, rulePath, field });
-      const distinct =
-        field.type === 'runningBalance'
-          ? new Set([...field.add, ...field.subtract]).size
-          : new Set(references(field)).size;
-      steps +=
-        field.type === 'runningBalance' ? instances * distinct : distinct;
+      if (field.type === 'runningBalance') {
+        const skip = (rowsOf(path) ?? '').split('[]').length - 1;
+        for (const each of new Set([...field.add, ...field.subtract])) {
+          steps += instances * Math.max(1, fanOut(each, skip));
+        }
+      } else steps += new Set(references(field)).size;
     }
     if (field.type === 'object') {
       for (const [key, child] of Object.entries(field.fields)) {
