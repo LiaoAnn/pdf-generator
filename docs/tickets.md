@@ -706,3 +706,12 @@
 - **驗收測試**：文件內容與 `templates/paper` 一致；skill 的範例片段能通過 check-pack
 - **不做**：改平台程式
 - **來源**：PR #38（T25）
+
+### T14-4 自我檢查：沒有文字的區塊也要核對框的位置
+- **目標**：樣板的 CSS 動到 Paged.js 的頁面框或 html／body 的盒模型時（例如 `@page { margin: 20mm }` 加上 `.pagedjs_page { margin-top: -20mm !important }`，或 `body { padding-left: 10mm }`），頁數不變，但 PDF 印出的位置和 gt 的框對不上（T08-1 的 Security review 重現：圖片 gt `[56.68, 56.68, 86.68, 86.68]`，PDF 實際約 `[57, 0, 87, 30]`）。有文字的區塊會被自我檢查抓到，沒有文字的區塊不會：`packages/self-check/src/check.ts` 約 272 行跳過無文字的圖片（空勾選框、空白欄位是否也跳過，見 T08-1 PR）。(1) 自我檢查用 PDF 的幾何資訊核對無文字區塊的框：圖片看 content stream 的變換矩陣，向量圖形看路徑，逐頁比對；(2) 另加一道便宜的防線：checkPack 或列印時拒絕作用在 `.pagedjs_*` 或 html／body 盒模型上的樣板 CSS
+- **Blocked by**：T14、T08-1
+- **Blocks**：—
+- **撞車風險**：`packages/self-check`；(2) 若放在 `packages/template-tools`，與正在改它的票不要同時派
+- **驗收測試**：上述兩種位移的 fixture 被自我檢查判為框不符；5 個既有樣板各一批 10 份仍全過；空勾選框與圖片各至少一個案例
+- **不做**：改區塊讀取規則
+- **來源**：T08-1 的 Security review（第 2 輪）
