@@ -345,6 +345,56 @@ function copyCff(cff: Uint8Array, sources: number[]): Uint8Array {
   ]);
 }
 
+// --- TrueType ---------------------------------------------------------------
+
+function copyGlyf(
+  glyf: Uint8Array,
+  loca: Uint8Array,
+  long: boolean,
+  glyphs: number,
+  sources: number[],
+): { glyf: Uint8Array; loca: Uint8Array } {
+  const v = view(loca);
+  const offset = (g: number) =>
+    long ? v.getUint32(4 * g) : 2 * v.getUint16(2 * g);
+  const outlines = Array.from({ length: glyphs }, (_, g) =>
+    glyf.subarray(offset(g), offset(g + 1)),
+  );
+  for (const source of sources)
+    outlines.push(outlines[source] ?? new Uint8Array());
+  const align = long ? 4 : 2;
+  const padded = (n: number) => Math.ceil(n / align) * align;
+  const newLoca = new Uint8Array((outlines.length + 1) * (long ? 4 : 2));
+  const lv = view(newLoca);
+  let at = 0;
+  const parts: Uint8Array[] = [];
+  outlines.forEach((outline, g) => {
+    if (long) lv.setUint32(4 * g, at);
+    else lv.setUint16(2 * g, at / 2);
+    const part = new Uint8Array(padded(outline.length));
+    part.set(outline);
+    parts.push(part);
+    at += part.length;
+  });
+  if (long) lv.setUint32(4 * outlines.length, at);
+  else if (at / 2 > 0xffff) throw new Error('glyf: too large for short loca');
+  else lv.setUint16(2 * outlines.length, at / 2);
+  return { glyf: concat(parts), loca: newLoca };
+}
+
+/** post version 2: the copies are named after glyph 0. */
+function copyPost(post: Uint8Array, glyphs: number, sources: number[]) {
+  if (view(post).getUint32(0) !== 0x20000) return post;
+  const names = 34 + 2 * glyphs;
+  const out = concat([
+    post.subarray(0, names),
+    new Uint8Array(2 * sources.length),
+    post.subarray(names),
+  ]);
+  view(out).setUint16(32, glyphs + sources.length);
+  return out;
+}
+
 // --- Metrics ----------------------------------------------------------------
 
 /** hmtx or vmtx, written with a full metric for every glyph. */
@@ -410,7 +460,12 @@ export function copyGlyphs(
     throw new Error(`can't copy glyphs of a font with ${found.join(', ')}`);
   }
   const cff = get('CFF ');
-  if (!cff) throw new Error('font has no CFF table to copy glyphs in');
+  const glyf = get('glyf');
+  const loca = get('loca');
+  const head = get('head');
+  if (!cff && !(glyf && loca && head)) {
+    throw new Error('font has no CFF or glyf table to copy glyphs in');
+  }
   const maxp = get('maxp');
   if (!maxp) throw new Error('font has no maxp table');
   const glyphs = view(maxp).getUint16(4);
@@ -420,7 +475,16 @@ export function copyGlyphs(
   view(newMaxp).setUint16(4, glyphs + sources.length);
   replaced.set('maxp', newMaxp);
 
-  replaced.set('CFF ', copyCff(cff, sources));
+  if (cff) {
+    replaced.set('CFF ', copyCff(cff, sources));
+  } else if (glyf && loca && head) {
+    const long = view(head).getInt16(50) === 1;
+    const copied = copyGlyf(glyf, loca, long, glyphs, sources);
+    replaced.set('glyf', copied.glyf);
+    replaced.set('loca', copied.loca);
+  }
+  const post = get('post');
+  if (post) replaced.set('post', copyPost(post, glyphs, sources));
   for (const [headerTag, metricsTag] of [
     ['hhea', 'hmtx'],
     ['vhea', 'vmtx'],

@@ -15,6 +15,7 @@ afterAll(async () => {
 });
 
 test.each([
+  'LXGWWenKaiTC-Regular.ttf',
   'NotoSansTC-Regular.otf',
   'NotoSansTC-Bold.otf',
   'NotoSerifTC-Regular.otf',
@@ -26,13 +27,20 @@ test.each([
       new URL(`../public/fonts/${name}`, import.meta.url),
     );
     const { font } = patchCmap(original);
-    const source = '／∕・·•‧…⋯–‒';
+    const trueType = name.endsWith('.ttf');
+    // Include both surviving members: testing only the higher code point can
+    // miss a ToUnicode collision when Chrome subsets the font.
+    const source = trueType
+      ? '清淸青靑真眞教敎值値溫温刪删宮宫鄉郷尚尙告吿侶侣〈～∙·∼~'
+      : '／∕・·•‧…⋯–‒';
+    const file = trueType ? 'fixture.ttf' : 'fixture.otf';
+    const format = trueType ? 'truetype' : 'opentype';
     const weight = name.includes('Bold') ? 700 : 400;
     // Only one face per request: a pair of full CJK fonts exceeds pack limits.
     // Wrapping at every character exercises extraction across PDF text items.
     const html = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">
 <style>
-@font-face { font-family: "Unique Cmap"; src: url("./fixture.otf") format("opentype"); font-weight: ${weight}; }
+@font-face { font-family: "Unique Cmap"; src: url("./${file}") format("${format}"); font-weight: ${weight}; }
 @page { margin: 20mm; }
 body { margin: 0; font: ${weight} 24px/32px "Unique Cmap"; }
 p { white-space: nowrap; } p.wrapped { white-space: normal; word-break: break-all; width: 48px; }
@@ -49,7 +57,7 @@ p { white-space: nowrap; } p.wrapped { white-space: normal; word-break: break-al
         page: { size: 'A4', orientation: 'portrait' },
         pack: {
           template: 'index.html',
-          files: { 'fixture.otf': Buffer.from(font).toString('base64') },
+          files: { [file]: Buffer.from(font).toString('base64') },
         },
       }),
     });
