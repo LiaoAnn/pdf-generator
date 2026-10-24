@@ -171,6 +171,88 @@ describe('table cell checkbox metadata (T13 parity)', () => {
   });
 });
 
+describe('page-number slots', () => {
+  it('accepts the running page-number example without rejecting its runtime slots', () => {
+    accepts(
+      pack(
+        '<div class="running-page-number" data-gt="page_number">第 <span data-gt-page-number></span> 頁，共 <span data-gt-page-count></span> 頁</div>',
+      ),
+    );
+  });
+  it('accepts empty-valued slots through unmarked wrappers inside a page-number block', () => {
+    accepts(
+      pack(
+        '<div data-gt="page_number"><div><span data-gt-page-number=""></span> / <span data-gt-page-count=""></span></div></div>',
+      ),
+    );
+  });
+
+  describe.each(['data-gt-page-number', 'data-gt-page-count'])(
+    '%s',
+    attribute => {
+      const slot = (content = '', value = '') =>
+        `<span\n ${attribute}${value}>${content}</span>`;
+      const pageNumber = (content: string) =>
+        `<div data-gt="page_number">${content}</div>`;
+
+      it.each([
+        ['outside any mark', slot()],
+        ['inside a footer mark', `<div data-gt="page_footer">${slot()}</div>`],
+        [
+          'on the page-number mark itself',
+          `<div data-gt="page_number"\n ${attribute}></div>`,
+        ],
+        [
+          'on another block type',
+          `<div data-gt="page_footer"\n ${attribute}></div>`,
+        ],
+        [
+          'on a marked descendant',
+          pageNumber(`<span data-gt="paragraph"\n ${attribute}></span>`),
+        ],
+      ])('rejects a slot %s at the slot attribute', (_name, template) => {
+        const result = checkPack(pack(template));
+        expect(result.ok).toBe(false);
+        expect(result).not.toHaveProperty('pack');
+        expect(result.issues).toContainEqual({
+          code: 'gt-attribute',
+          file: templateFile,
+          ...at(template, attribute),
+          message: expect.stringMatching(/page_number/),
+        });
+      });
+
+      it.each([
+        ['literal text', '2'],
+        ['whitespace', ' \n '],
+        ['a field', '{{holder}}'],
+        ['an empty child element', '<b></b>'],
+        ['a comment node', '<!-- reserved -->'],
+      ])(
+        'rejects slot content containing %s before the runtime overwrites it',
+        (_name, content) => {
+          const template = pageNumber(slot(content));
+          rejects(pack(template), 'gt-attribute', attribute);
+          expect(checkPack(pack(template)).issues[0]?.message).toMatch(
+            /empty|child|content/i,
+          );
+        },
+      );
+
+      it.each(['2', ' ', '{{holder}}'])(
+        'rejects slot attribute value %j instead of treating it as runtime input',
+        value => {
+          const template = pageNumber(slot('', `="${value}"`));
+          rejects(pack(template), 'gt-attribute', attribute);
+          expect(checkPack(pack(template)).issues[0]?.message).toMatch(
+            /empty|value/i,
+          );
+        },
+      );
+    },
+  );
+});
+
 describe('review regressions: ground truth metadata', () => {
   it.each(['bad.id', '臺灣', 'x'.repeat(61), 'row.{{@index}}'])(
     'rejects id literal %s that cannot survive gt id suffixing',
