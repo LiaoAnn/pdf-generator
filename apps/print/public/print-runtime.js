@@ -331,6 +331,21 @@
     });
   }
 
+  // Writes each page's number and the page count into the page-number slots
+  // (T02-5), clones of a running element included, before anything reads the
+  // text: the ground truth, the text guard and the PDF all see the digits.
+  /** @param {number} total */
+  function fillPageNumbers(total) {
+    pagedPages().forEach((page, i) => {
+      for (const slot of page.querySelectorAll('[data-gt-page-number]')) {
+        slot.textContent = String(i + 1);
+      }
+      for (const slot of page.querySelectorAll('[data-gt-page-count]')) {
+        slot.textContent = String(total);
+      }
+    });
+  }
+
   /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
@@ -346,6 +361,7 @@
       },
       /** @param {{ total: number }} flow */
       after: flow => {
+        fillPageNumbers(flow.total);
         resolveReady({
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),

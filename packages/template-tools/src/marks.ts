@@ -39,6 +39,8 @@ const known = new Set([
   'data-gt-latex',
   'data-gt-text',
 ]);
+/** Slots the print runtime fills with the page's number or the page count. */
+const slots = new Set(['data-gt-page-number', 'data-gt-page-count']);
 /** Which block type each detail attribute belongs on. */
 const detailOf: Record<string, string> = {
   'data-gt-checked': 'checkbox',
@@ -57,6 +59,28 @@ const checkedValue = (value: string) =>
 
 const isGtAttribute = (name: string) =>
   name === 'data-gt' || name.startsWith('data-gt-');
+
+/** Whether an ancestor of the element is a page_number block. */
+const inPageNumber = (element: Html.Element) => {
+  for (let node = element.parentNode; node; ) {
+    if (!('tagName' in node)) return false;
+    if (attributeOf(node, 'data-gt')?.value === 'page_number') return true;
+    node = node.parentNode;
+  }
+  return false;
+};
+
+/** What is wrong with a page-number slot, if anything. */
+const slotProblem = (element: Html.Element, name: string, value: string) => {
+  if (attributeOf(element, 'data-gt') !== undefined || !inPageNumber(element)) {
+    return `${name} goes on an unmarked element inside a data-gt="page_number" element`;
+  }
+  if (value !== '') return `${name} takes no value`;
+  if (element.childNodes.length > 0) {
+    return `an element with ${name} must be empty: the print runtime writes the number into it`;
+  }
+  return undefined;
+};
 
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
@@ -194,6 +218,11 @@ export function markIssues(
         location?.attrs?.[name]?.startOffset ?? location?.startOffset ?? 0;
 
       const gtAttrs = element.attrs.filter(attr => isGtAttribute(attr.name));
+      for (const attr of gtAttrs) {
+        if (!slots.has(attr.name)) continue;
+        const problem = slotProblem(element, attr.name, attr.value);
+        if (problem) report('gt-attribute', at(attr.name), problem);
+      }
       const isCell = table && ['td', 'th'].includes(element.tagName);
       if (isCell && gtAttrs.length) {
         for (const attr of gtAttrs) {
@@ -218,12 +247,12 @@ export function markIssues(
         continue;
       }
       for (const attr of gtAttrs) {
-        if (attr.name === 'data-gt') continue;
+        if (attr.name === 'data-gt' || slots.has(attr.name)) continue;
         if (!known.has(attr.name)) {
           report(
             'gt-attribute',
             at(attr.name),
-            `${attr.name} is not a ground-truth attribute; use data-gt, data-gt-id, data-gt-checked, data-gt-latex or data-gt-text`,
+            `${attr.name} is not a ground-truth attribute; use data-gt, data-gt-id, data-gt-checked, data-gt-latex, data-gt-text, data-gt-page-number or data-gt-page-count`,
           );
         } else if (
           mark === undefined &&

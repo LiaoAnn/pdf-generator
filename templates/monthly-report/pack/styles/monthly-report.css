@@ -1,8 +1,9 @@
 /* 公司月報 (T22). Every printed element is a data-gt block on its own line:
    no two inline blocks share a line (backlog T14-1). The page header and
    footer are Paged.js running elements, cloned into the margin boxes of
-   every page with their data-gt. No page number: counter(page) text can't
-   carry data-gt. */
+   every page with their data-gt, and so is the page number, whose slots the
+   print runtime fills on each page (T02-5). It reads 第 n 頁，共 N 頁, not
+   第 n 頁／共 N 頁: the full-width ／ doesn't reach the PDF text layer (T07-13). */
 
 @page {
   size: A4 portrait;
@@ -14,6 +15,11 @@
   }
   @bottom-center {
     content: element(pageFooter);
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+  @bottom-right {
+    content: element(pageNumber);
     vertical-align: top;
     padding-top: 4mm;
   }
@@ -42,6 +48,14 @@ body {
   position: running(pageFooter);
   font-size: 8.5pt;
   color: #777;
+}
+
+.running-page-number {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageNumber);
+  font-size: 8.5pt;
+  color: #777;
+  text-align: right;
 }
 
 h1 {

@@ -176,7 +176,7 @@ The types of `gt.json` and of the local block list (`blockTypes` in `packages/co
 | `barcode` | A barcode or QR code (as an image or SVG) | |
 | `page_header` | Text in the top page margin | A running element (§5). |
 | `page_footer` | Text in the bottom page margin | A running element (§5). |
-| `page_number` | A page number | Must be real text in the DOM; see §5 for why `counter(page)` doesn't work. |
+| `page_number` | A page number: `第 2 頁，共 3 頁` | The platform writes the numbers into its slots (§4.4); `counter(page)` doesn't work (§5). |
 | `footnote` | A footnote | |
 | `reference` | A bibliography entry | |
 
@@ -193,6 +193,7 @@ The types of `gt.json` and of the local block list (`blockTypes` in `packages/co
 | `data-gt-checked` | A `checkbox` block, or a checkbox mark inside a table cell | `true`, `false` or a single `{{field}}` holding a boolean. |
 | `data-gt-latex` | A `formula` block | The formula's LaTeX. |
 | `data-gt-text` | An `image` block | The text drawn inside the image (an image of a stamp reading 核准). The image must then contain no printed text (`gt-image-text`). |
+| `data-gt-page-number`, `data-gt-page-count` | An empty element inside a `page_number` block | A slot the platform fills with the page's number or the page count (§4.4). |
 
 Any other `data-gt-*` is a typo (`gt-attribute`), and a detail attribute on the wrong type or without `data-gt` is too.
 
@@ -239,6 +240,30 @@ A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding
 
 An `image` block's text is `data-gt-text` if present, else the rendered text of an HTML element inside it, else empty. **Text drawn by inline SVG (`<text>`) is not read**: the block's text is empty, the PDF still prints the text, and the self-check fails. Keep text out of inline SVG: put it in HTML next to the drawing, in its own mark.
 
+### 4.4 Page numbers
+
+A `page_number` block holds its fixed text and two kinds of empty slot (no value, no content, no `data-gt` of their own; `gt-attribute` otherwise): after Paged.js has paginated, and before the ground truth is read and the PDF printed, the platform writes the number of the page each `data-gt-page-number` element is printed on into it (from 1, in digits), and the page count into each `data-gt-page-count`. The block's text in `gt.json` is the filled text, `第 2 頁，共 3 頁` on page 2. Make it a running element in a margin box so every page has one (§5); a slot in the page body gets the number of the page it lands on. Write `，` or `/` between the two, not the full-width `／`, which doesn't reach the PDF's text layer yet (backlog T07-13).
+
+```html pack-ok
+<div class="page-number" data-gt="page_number">第 <span data-gt-page-number></span> 頁，共 <span data-gt-page-count></span> 頁</div>
+```
+
+```html pack-error gt-attribute
+<div data-gt="page_number">第 <span data-gt-page-number>1</span> 頁</div>
+```
+
+```css pack-ok
+.page-number {
+  position: running(pageNumber);
+}
+
+@page {
+  @bottom-right {
+    content: element(pageNumber);
+  }
+}
+```
+
 ### Reading order
 
 `gt.json` orders blocks page by page; within a page: the top margin (headers), the left margin, the page body, the right margin, the bottom margin (footers); within each, document order. So write the template in reading order: a two-column layout reads the left column first only if it comes first in the HTML.
@@ -247,8 +272,8 @@ An `image` block's text is `data-gt-text` if present, else the rendered text of 
 
 - **A4**, in the manifest's orientation. Paged.js paginates; `@page` margins and margin boxes work; `break-before`, `break-after: avoid`, `break-inside: avoid` work.
 - **No pack JavaScript** runs, and the browser loads only the pack's own files and the platform fonts.
-- **Headers and footers** are running elements: an element with `position: running(<name>)` that `@page { @top-center { content: element(<name>) } }` (or another margin box) shows on every page from the one where it appears. Put it first in `<body>` and mark it `page_header` or `page_footer`. `word.css` provides `.word-header` and `.word-footer`.
-- **Only marked text may print.** CSS generated content prints text that is in no element, so the self-check reports it as unmarked text: no `content: "…"`, `counter()` or `counter(page)` in `::before`/`::after` or in margin boxes. Page numbers must be DOM text inside a `page_number` mark; a number that depends on how many pages the record fills can't be known at fill time, so number pages only where the page count is fixed by the layout.
+- **Headers and footers** are running elements: an element with `position: running(<name>)` that `@page { @top-center { content: element(<name>) } }` (or another margin box) shows on every page from the one where it appears. Put it first in `<body>` and mark it `page_header`, `page_footer` or `page_number`. `word.css` provides `.word-header` and `.word-footer`.
+- **Only marked text may print.** CSS generated content prints text that is in no element, so the self-check reports it as unmarked text: no `content: "…"`, `counter()` or `counter(page)` in `::before`/`::after` or in margin boxes. Print page numbers with a `page_number` block and its slots (§4.4).
 - **List markers** are generated content too, outside the box (`list-style-position: outside`) or inside it: either way the self-check reports them. Use `list-style: none` and write the marker into the item's text (`・{{this}}`, or `（一）` in a fixed list). A list from an array can't number itself: there is no helper that adds 1 to `@index`.
 - **Blank fields**: a field that can be `null` (`blankProbability`, or a `percentage` of a zero `whole`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
