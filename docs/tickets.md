@@ -573,7 +573,7 @@
 - **來源**：PR #20（T10，10/30 失敗）與 T22 驗收（7/10、8/10 失敗）各自獨立發現
 
 ### T07-8 印 PDF：被擋的請求偶爾仍送出
-- **目標**：`apps/print/src/lib.ts` 的 `blockOtherRequests` 先呼叫 `onBlocked`（停止列印），`finally` 隨即 `page.close()`；推測 Chrome 在套用 `Fetch.failRequest` 之前就拆掉攔截，被暫停的請求於是被放行。回應正確回報 `422 request_blocked`，但外部伺服器已收到請求。改成等 abort 完成後再關分頁
+- **目標**：`apps/print/src/lib.ts` 的 `blockOtherRequests` 先呼叫 `onBlocked`（停止列印），`finally` 隨即 `page.close()`；推測 Chrome 在套用 `Fetch.failRequest` 之前就拆掉攔截，被暫停的請求於是被放行。回應正確回報 `422 request_blocked`，但外部伺服器已收到請求。改成等 abort 完成後再關分頁。T07-16 的分支上也看到一次：`request-blocking.test.ts`「CSS background url(http://…)… outside server gets no request」在完整 `pnpm verify` 4 次裡失敗 1 次（`expected ['/background.png'] to deeply equal []`），單獨跑 3/3 通過；先確認是不是同一個 race
 - **Blocked by**：T07-3
 - **Blocks**：—
 - **撞車風險**：`apps/print`；與 T07-7 不要同時派；T16-2 會把這個斷言的失敗記為已知問題
@@ -717,7 +717,7 @@
 - **來源**：T08-1 的 Security review（第 2 輪）
 
 ### T09-3 網站：`page_count_mismatch` 的中文說明，以及偶發逾時的測試
-- **目標**：(1) T08-1 新增的列印錯誤 `page_count_mismatch`（PDF 頁數與 Paged.js 頁數不同）在 `apps/web` 的 `explain.ts` 還沒有中文說明，補上，並指出常見原因（樣板 CSS 動到 `.pagedjs_*` 或 body 的版面）；(2) `apps/web/src/api/batch-checks.test.ts` 的「reports self-check totals…」在 CI 偶發撞到 60 秒逾時（PR #39 第一次 CI；本機 6/6 通過、重跑通過），找出原因
+- **目標**：(1) T08-1 新增的列印錯誤 `page_count_mismatch`（PDF 頁數與 Paged.js 頁數不同）在 `apps/web` 的 `explain.ts` 還沒有中文說明，補上，並指出常見原因（樣板 CSS 動到 `.pagedjs_*` 或 body 的版面）；(2) `apps/web/src/api/batch-checks.test.ts` 的「reports self-check totals…」在 CI 偶發撞到 60 秒逾時（PR #39 第一次 CI；本機 6/6 通過、重跑通過），找出原因；(3) `apps/print/src/session-idle-sweep.test.ts`「a session in use by a print is not closed even when listed without a connectionId」在完整 `pnpm verify` 負載下 120 秒逾時（T15-3 分支 3 次中 1 次，單獨跑 14/14 通過）
 - **Blocked by**：T08-1
 - **Blocks**：—
 - **撞車風險**：`apps/web`
