@@ -3,10 +3,10 @@
 // `GET /pack/<id>/<path>` serves a print's document and pack files to its
 // browser tab; `DELETE /session/<id>` closes a kept-alive browser session.
 import { Buffer } from 'node:buffer';
-import puppeteer from '@cloudflare/puppeteer';
 import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
 import {
+  connectSession,
   openBrowser,
   packLimits,
   packSizeIssues,
@@ -125,10 +125,17 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
   // X-Browser-Session: `new` or a session id keeps the browser for the next
   // request (a batch); the response names the session to send next time.
   const session = request.headers.get('x-browser-session') ?? undefined;
-  const { browser, sessionId, release } = await openBrowser(env.BROWSER, {
-    session,
-  });
+  const { browser, sessionId, release, discard } = await openBrowser(
+    env.BROWSER,
+    { session },
+  );
+  const sessionHeader: Record<string, string> = sessionId
+    ? { 'X-Browser-Session': sessionId }
+    : {};
   const { source } = parsed.data;
+  // An unexpected failure answers without the session's id, so nobody else
+  // could close its browser: close it here.
+  let close = discard;
   try {
     // With a source, the ground truth is read on the paginated tab right
     // before it is printed (T03 Must 3).
@@ -137,6 +144,7 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
       store: env.PACK_FILES,
       ...(source ? { inspect: page => readGroundTruth(page, source) } : {}),
     });
+    close = release;
     if (result.inspected) {
       return Response.json(
         {
@@ -147,7 +155,7 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
         {
           headers: {
             'X-Page-Count': String(result.pageCount),
-            ...(sessionId ? { 'X-Browser-Session': sessionId } : {}),
+            ...sessionHeader,
           },
         },
       );
@@ -156,37 +164,47 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
       headers: {
         'Content-Type': 'application/pdf',
         'X-Page-Count': String(result.pageCount),
-        ...(sessionId ? { 'X-Browser-Session': sessionId } : {}),
+        ...sessionHeader,
       },
     });
   } catch (error) {
+    // A refused document leaves the browser usable: hand the session back.
+    const refused = (response: Response) => {
+      close = release;
+      for (const [name, value] of Object.entries(sessionHeader)) {
+        response.headers.set(name, value);
+      }
+      return response;
+    };
     if (error instanceof RenderError) {
-      return apiError(
-        422,
-        error.code,
-        error.message,
-        error.details.map(message => ({ message })),
+      return refused(
+        apiError(
+          422,
+          error.code,
+          error.message,
+          error.details.map(message => ({ message })),
+        ),
       );
     }
     if (error instanceof GroundTruthError) {
-      return apiError(
-        422,
-        'ground_truth_invalid',
-        'The printed page has no valid ground truth',
-        error.issues.map(message => ({ message })),
+      return refused(
+        apiError(
+          422,
+          'ground_truth_invalid',
+          'The printed page has no valid ground truth',
+          error.issues.map(message => ({ message })),
+        ),
       );
     }
     throw error;
   } finally {
-    await release();
+    await close();
   }
 }
 
 async function closeSession(env: PrintEnv, id: string): Promise<Response> {
-  let browser: Awaited<ReturnType<typeof puppeteer.connect>>;
-  try {
-    browser = await puppeteer.connect(env.BROWSER, id);
-  } catch {
+  const browser = await connectSession(env.BROWSER, id);
+  if (!browser) {
     return apiError(404, 'session_not_found', `No browser session ${id}`);
   }
   await browser.close();

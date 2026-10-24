@@ -24,6 +24,7 @@ export {
   printRequestSchema,
 } from './request.ts';
 export {
+  connectSession,
   type OpenBrowserOptions,
   type OpenedBrowser,
   openBrowser,

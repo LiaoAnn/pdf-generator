@@ -92,9 +92,35 @@ test('a visible data-gt double em dash returns text_missing instead of a lossy P
   expect(response.status).toBe(422);
   expect(response.headers.get('content-type')).toMatch(/application\/json/i);
   expect(response.headers.has('x-page-count')).toBe(false);
+  expect(response.headers.has('x-browser-session')).toBe(false);
   const { error } = apiErrorSchema.parse(await response.json());
   expect(error.code).toBe('text_missing');
   expect(error.details).toContainEqual({ message: 'page 1: ——' });
+});
+
+// Regression: a 422 on the first print of a batch hid the kept session's id,
+// so the caller could neither reuse nor close the browser left running.
+test('a 422 on a new kept session names the session, which stays reusable and closable', async () => {
+  const lossy = `<!doctype html><html><head><style>
+    body { font-family: "Noto Sans TC"; }
+    </style></head><body><p data-gt="punctuation">——</p></body></html>`;
+  const failed = await print(lossy, 'new');
+  expect(failed.status).toBe(422);
+  const id = failed.headers.get('X-Browser-Session');
+  expect(id, 'a failed kept print must name its session').toBeTruthy();
+  try {
+    const { error } = apiErrorSchema.parse(await failed.json());
+    expect(error.code).toBe('text_missing');
+    const again = await print(
+      '<!doctype html><html><body><p>ok</p></body></html>',
+      id ?? 'missing-session',
+    );
+    expect(again.status).toBe(200);
+    expect(again.headers.get('X-Browser-Session')).toBe(id);
+  } finally {
+    const closed = id ? await close(id) : undefined;
+    expect(closed?.status).toBe(204);
+  }
 });
 
 test.each(['', 'Bearer wrong-token'])(

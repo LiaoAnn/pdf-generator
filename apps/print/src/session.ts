@@ -19,6 +19,8 @@ export interface OpenedBrowser {
   sessionId: string | undefined;
   /** Closes a one-request browser; disconnects from a kept-alive session. */
   release: () => Promise<void>;
+  /** Closes the browser, kept-alive or not. */
+  discard: () => Promise<void>;
 }
 
 const defaultKeepAliveMs = 600_000;
@@ -27,6 +29,25 @@ const defaultKeepAliveMs = 600_000;
 const reconnectDelaysMs = [1_000, 2_000];
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Reconnects to a kept-alive session, retrying while a preceding disconnect
+ * settles; undefined when the session can't be reached.
+ */
+export async function connectSession(
+  binding: Binding,
+  session: string,
+): Promise<Browser | undefined> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await puppeteer.connect(binding, session);
+    } catch {
+      const delay = reconnectDelaysMs[attempt];
+      if (delay === undefined) return undefined;
+      await sleep(delay);
+    }
+  }
+}
 
 /**
  * Launches a browser, or reconnects to a kept-alive session so a batch pays
@@ -40,23 +61,18 @@ export async function openBrowser(
   const { session, keepAliveMs = defaultKeepAliveMs } = options;
   if (session === undefined) {
     const browser = await puppeteer.launch(binding);
-    return { browser, sessionId: undefined, release: () => browser.close() };
+    const close = () => browser.close();
+    return { browser, sessionId: undefined, release: close, discard: close };
   }
   const kept = (browser: Browser): OpenedBrowser => ({
     browser,
     sessionId: browser.sessionId(),
     release: async () => browser.disconnect(),
+    discard: () => browser.close(),
   });
   if (session !== 'new') {
-    for (let attempt = 0; ; attempt++) {
-      try {
-        return kept(await puppeteer.connect(binding, session));
-      } catch {
-        const delay = reconnectDelaysMs[attempt];
-        if (delay === undefined) break;
-        await sleep(delay);
-      }
-    }
+    const connected = await connectSession(binding, session);
+    if (connected) return kept(connected);
   }
   return kept(await puppeteer.launch(binding, { keep_alive: keepAliveMs }));
 }
