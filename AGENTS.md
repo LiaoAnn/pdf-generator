@@ -53,6 +53,8 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]rangler-dist/cli.js'; pkill -f '[v]ite'; pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (wrangler first: a surviving wrangler respawns `workerd`, and the next `dev:print` fails with `Address already in use`) (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
+A fresh worktree's stack has no `node_modules`: run `T3CODE_WORKTREE_PATH=<path> wt-exec bash -lc "pnpm install --frozen-lockfile"` once before any other project command (until then `tsc` reports `Cannot find module 'zod'` and the like for every dependency). `wrangler dev` (`pnpm dev:print`) rebuilds on every save, and if it rebuilds a half-done edit it exits for good (`The Workers runtime failed to start … Uncaught ReferenceError`) instead of waiting for the next save: after multi-step edits check it still answers (`tmux capture-pane -p -t <wt>-print | tail`; a request failing with `ECONNREFUSED 127.0.0.1:8788`) and start it again.
+
 | Command | Purpose |
 | --- | --- |
 | `pnpm typecheck` | TypeScript 7 (`tsc`) in every package |
