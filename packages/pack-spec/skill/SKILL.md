@@ -45,7 +45,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
    ```
    Copy `word.css` with `cp`, never retype or edit it: `cp "$PDF_GENERATOR_REPO/packages/pack-spec/word.css" <pack>/styles/word.css`. Start `manifest.json` from the minimal example's and change `id`, `name`, `description`, `page.orientation` and the file names.
 3. **Write `rules.json`** (spec §2): one field per data value, with ranges that keep the layout intact: `maxLength` on text so a cell or line can't overflow, `maxItems` on arrays so tables stay as long as the description implies. Use the Taiwanese types (`name`, `nationalId`, `businessId`, `company`, `address`, `phone`) rather than `text` for those values.
-4. **Generate `sample.json`** with the engine instead of writing it by hand (hand-written IDs and lengths are the usual `sample-invalid`):
+4. **Generate `sample.json`** with the engine. The spec says the sample is written by hand; what the check needs is a record the rules could produce, and the engine's own output is exactly that, without the hand-written check digits and lengths that cause most `sample-invalid`:
    ```sh
    cd <pack> && node --input-type=module -e "
    import { generate } from '$PDF_GENERATOR_REPO/packages/fake-data/src/index.ts';
@@ -61,7 +61,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
    ```
    Exit 0 passes; exit 1 prints one `file:line:column: code: message` per issue (look each code up in [references/check-codes.md](references/check-codes.md)); exit 2 is a usage error. Fix causes, not symptoms: never delete a mark or a field just to silence an issue if it drops something the description asked for.
 7. **Fill a few more records** to catch what one sample hides (blank fields, longest texts, empty arrays): see "Try more records" in [references/recipes.md](references/recipes.md).
-8. **Report**: the pack path, the `check-pack` output, the block list you planned, and anything in the description you could not express (and why).
+8. **Report**: the pack path, the `check-pack` output, the block list you planned, and anything in the description you could not express (and why). Printing is not your step: the caller uploads the pack and runs the platform's preview and batch self-check (spec §9), which is why the traps in [references/recipes.md](references/recipes.md) matter.
 
 ## Rules you must not break
 
