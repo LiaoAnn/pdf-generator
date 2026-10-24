@@ -79,7 +79,10 @@ function deps() {
     db: db(),
     files: platform.env.FILES,
     templates: fixtureTemplates,
-    printer: { print },
+    printers: {
+      for: (_batchId: string) => ({ print }),
+      close: async (_batchId: string) => {},
+    },
     workflow: { get: async () => ({ sendEvent: async () => {} }) },
     checker: { check },
   };

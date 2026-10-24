@@ -39,6 +39,8 @@ const input = {
 };
 const pdf = new Uint8Array([37, 80, 68, 70, 45, 10]);
 const print = vi.fn<Printer['print']>();
+const forBatch = vi.fn((_batchId: string): Printer => ({ print }));
+const closeBatch = vi.fn<(batchId: string) => Promise<void>>();
 const sendEvent = vi.fn(
   async (_event: { type: string; payload?: unknown }) => {},
 );
@@ -62,7 +64,7 @@ function deps() {
     db: db(),
     files: platform.env.FILES,
     templates: fixtureTemplates,
-    printer: { print },
+    printers: { for: forBatch, close: closeBatch },
     workflow: { get },
     checker: { check },
   };
@@ -169,6 +171,10 @@ beforeEach(async () => {
     migrationsFolder: fileURLToPath(new URL('../../drizzle', import.meta.url)),
   });
   await storeFixturePack(platform.env);
+  forBatch.mockReset();
+  forBatch.mockImplementation(() => ({ print }));
+  closeBatch.mockReset();
+  closeBatch.mockResolvedValue(undefined);
   print.mockReset();
   print.mockImplementation(async job => ({
     pdf,
@@ -640,4 +646,135 @@ test('the queue handler fails an unreadable PDF instead of completing it', async
   expect(row?.checkDifferences, 'failed checkDifferences').toBeNull();
   expect(await storedText(id, 0, 'check.json')).toBeNull();
   acknowledged(msg);
+});
+
+test('selects each batch printer and closes only after its final successful fixture', async () => {
+  const a = await start(2);
+  const b = await start(1);
+  const printA = vi.fn<Printer['print']>(job => print(job));
+  const printB = vi.fn<Printer['print']>(job => print(job));
+  forBatch.mockImplementation(id => ({ print: id === a ? printA : printB }));
+  const first = message(a, 0);
+  await handleFixtureMessages([first], deps());
+  expect(forBatch).toHaveBeenCalledWith(a);
+  acknowledged(first);
+  expect(closeBatch).not.toHaveBeenCalled();
+  const other = message(b, 0);
+  await handleFixtureMessages([other], deps());
+  expect(forBatch).toHaveBeenCalledWith(b);
+  expect(printA).toHaveBeenCalledTimes(1);
+  expect(printB).toHaveBeenCalledTimes(1);
+  expect(closeBatch.mock.calls).toEqual([[b]]);
+  acknowledged(other);
+  const last = message(a, 1);
+  await handleFixtureMessages([last], deps());
+  acknowledged(last);
+  expect(closeBatch.mock.calls).toEqual([[b], [a]]);
+  expect(sendEvent).toHaveBeenCalledTimes(2);
+});
+
+test('keeps sessions for retries and closes when the final fixture exhausts its attempts', async () => {
+  const id = await start(1);
+  print.mockRejectedValue(
+    new PrintFailure(422, 'invalid_layout', 'bad layout'),
+  );
+  const retry = message(id, 0, 2);
+  await handleFixtureMessages([retry], deps());
+  expect(forBatch).toHaveBeenCalledWith(id);
+  retried(retry);
+  expect(closeBatch).not.toHaveBeenCalled();
+  const last = message(id, 0, 3);
+  await handleFixtureMessages([last], deps());
+  acknowledged(last);
+  expect(await rows(id)).toEqual([
+    expect.objectContaining({ status: 'failed' }),
+  ]);
+  expect(closeBatch.mock.calls).toEqual([[id]]);
+  expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
+});
+
+test.each([false, true])(
+  'closes missing batches without printing even when cleanup rejects (%s)',
+  async rejects => {
+    if (rejects)
+      closeBatch.mockRejectedValueOnce(new Error('cleanup unavailable'));
+    const msg = message('missing-batch', 0);
+    await handleFixtureMessages([msg], deps());
+    expect(closeBatch).toHaveBeenCalledWith('missing-batch');
+    acknowledged(msg);
+    expect(forBatch).not.toHaveBeenCalled();
+    expect(print).not.toHaveBeenCalled();
+    expect(get).not.toHaveBeenCalled();
+  },
+);
+
+test.each(['completed', 'failed'] as const)(
+  'cleanup rejection preserves the final %s row, one ack, and the workflow event',
+  async status => {
+    const id = await start(1);
+    if (status === 'failed') print.mockRejectedValue(new Error('print failed'));
+    closeBatch.mockRejectedValueOnce(new Error('cleanup unavailable'));
+    const msg = message(id, 0, 3);
+    await handleFixtureMessages([msg], deps());
+    expect(closeBatch).toHaveBeenCalledWith(id);
+    acknowledged(msg);
+    expect(await rows(id)).toEqual([expect.objectContaining({ status })]);
+    expect(sendEvent).toHaveBeenCalledTimes(1);
+    expect(sendEvent).toHaveBeenCalledWith({ type: 'fixtures-done' });
+  },
+);
+
+test('consumer retains sessions across deliveries but isolates batches and closes exhausted batches', async () => {
+  const a = await start(1);
+  const b = await start(1);
+  const sessions: (string | null)[] = [];
+  const deleted: string[] = [];
+  let next = 0;
+  const env = {
+    ...platform.env,
+    PRINT_TOKEN: 'consumer-session-test',
+    PRINT: {
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const sent = new Request(input, init);
+        if (sent.method === 'DELETE') {
+          deleted.push(sent.url);
+          return new Response(null, { status: 204 });
+        }
+        const session = sent.headers.get('x-browser-session');
+        sessions.push(session);
+        // Retryable print failure retains a healthy browser session.
+        return Response.json(
+          { error: { code: 'invalid_layout', message: 'bad layout' } },
+          {
+            status: 422,
+            headers: {
+              'x-browser-session':
+                session === 'new' ? `session-${next++}` : (session ?? ''),
+            },
+          },
+        );
+      },
+    } as Env['PRINT'],
+    BATCH_WORKFLOW: { get } as unknown as Env['BATCH_WORKFLOW'],
+  };
+  async function deliver(id: string, attempt: number) {
+    const msg = message(id, 0, attempt);
+    await consumeFixtures(
+      { messages: [msg] } as unknown as MessageBatch<FixtureJob>,
+      env,
+    );
+    return msg;
+  }
+  retried(await deliver(a, 1));
+  retried(await deliver(a, 2));
+  retried(await deliver(b, 1));
+  expect(sessions).toEqual(['new', 'session-0', 'new']);
+  expect(deleted).toEqual([]);
+  acknowledged(await deliver(a, 3));
+  expect(deleted).toEqual(['https://print.internal/session/session-0']);
+  acknowledged(await deliver(b, 3));
+  expect(deleted.sort()).toEqual([
+    'https://print.internal/session/session-0',
+    'https://print.internal/session/session-1',
+  ]);
 });

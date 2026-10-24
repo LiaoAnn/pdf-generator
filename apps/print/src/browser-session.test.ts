@@ -40,7 +40,7 @@ test('ordinary browser ownership launches without keep_alive and release closes 
 });
 
 test.each([
-  ['default keep alive', undefined, 600_000],
+  ['default keep alive (60 s idle cap)', undefined, 60_000],
   ['caller keep alive', 90_000, 90_000],
 ] as const)(
   'new session uses %s and release disconnects without destroying the browser',
@@ -128,7 +128,7 @@ test.each([undefined, 75_000])(
     const opened = await opening;
     expect(puppeteer.connect).toHaveBeenCalledTimes(3);
     expect(puppeteer.launch).toHaveBeenCalledExactlyOnceWith(binding, {
-      keep_alive: keepAliveMs ?? 600_000,
+      keep_alive: keepAliveMs ?? 60_000,
     });
     expect(opened.browser).toBe(replacement);
     expect(opened.sessionId).toBe('replacement');

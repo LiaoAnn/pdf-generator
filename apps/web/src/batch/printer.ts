@@ -24,6 +24,23 @@ export interface Printer {
   print(job: PrintJob): Promise<Printed>;
 }
 
+/** A printer that keeps browser sessions, until `close` ends them. */
+export interface SessionPrinter extends Printer {
+  /**
+   * Closes the sessions this printer holds, and those prints still running
+   * hand back later. Never rejects: a session it fails to close ends at the
+   * print Worker's idle cap.
+   */
+  close(): Promise<void>;
+}
+
+/** One printer per batch, so batches never share a browser session. */
+export interface BatchPrinters {
+  for(batchId: string): Printer;
+  /** Closes the batch's printer, if any; never rejects. */
+  close(batchId: string): Promise<void>;
+}
+
 /** The print Worker refused or couldn't be reached (status 0). */
 export class PrintFailure extends Error {
   readonly status: number;
@@ -126,9 +143,27 @@ function decodeBase64(text: string): Uint8Array<ArrayBuffer> {
  * a batch pays the browser launch (tens of seconds remotely, T03 §6.2) once
  * per concurrent print rather than once per fixture.
  */
-export function createPrinter(service: Service, token: string): Printer {
+export function createPrinter(service: Service, token: string): SessionPrinter {
   const idle: string[] = [];
+  let closed = false;
+  const end = async (session: string) => {
+    try {
+      const response = await service.fetch(
+        `https://print.internal/session/${encodeURIComponent(session)}`,
+        { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+      );
+      if (!response.ok) {
+        console.warn(`closing browser session ${session}: ${response.status}`);
+      }
+    } catch (error) {
+      console.warn(`closing browser session ${session} failed`, error);
+    }
+  };
   return {
+    async close() {
+      closed = true;
+      await Promise.all(idle.splice(0).map(end));
+    },
     async print(job) {
       const session = idle.pop() ?? 'new';
       let response: Response;
@@ -148,7 +183,10 @@ export function createPrinter(service: Service, token: string): Printer {
         throw unreachable(cause);
       }
       const returned = response.headers.get('x-browser-session');
-      if (returned) idle.push(returned);
+      if (returned) {
+        if (closed) await end(returned);
+        else idle.push(returned);
+      }
       if (response.status !== 200) throw await failure(response);
       try {
         const body = (await response.json()) as {
@@ -168,6 +206,28 @@ export function createPrinter(service: Service, token: string): Printer {
           `print answered an unreadable body: ${String(cause)}`,
         );
       }
+    },
+  };
+}
+
+export function createBatchPrinters(
+  service: Service,
+  token: string,
+): BatchPrinters {
+  const printers = new Map<string, SessionPrinter>();
+  return {
+    for(batchId) {
+      let printer = printers.get(batchId);
+      if (!printer) {
+        printer = createPrinter(service, token);
+        printers.set(batchId, printer);
+      }
+      return printer;
+    },
+    async close(batchId) {
+      const printer = printers.get(batchId);
+      printers.delete(batchId);
+      await printer?.close();
     },
   };
 }
