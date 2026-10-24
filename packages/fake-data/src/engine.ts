@@ -104,24 +104,30 @@ function impossible(field: RuleField): Issue[] {
 /** The most values one record may hold, so a small rule file cannot exhaust a Worker. */
 const maxValues = 100_000;
 
-/** How many values `field` generates at most: arrays multiply, objects add. */
-function valueCount(field: RuleField): number {
+/** The most filler-text characters one record may hold. */
+const maxTextCharacters = 1_000_000;
+
+/** How many of something `field` generates at most: arrays multiply, objects add. */
+function worstCase(
+  field: RuleField,
+  leaf: (field: RuleField) => number,
+): number {
   switch (field.type) {
     case 'object':
       return Object.values(field.fields).reduce(
-        (sum, child) => sum + valueCount(child),
+        (sum, child) => sum + worstCase(child, leaf),
         0,
       );
     case 'array':
       return field.maxItems === 0
         ? 0
-        : field.maxItems * valueCount(field.items);
+        : field.maxItems * worstCase(field.items, leaf);
     default:
-      return 1;
+      return leaf(field);
   }
 }
 
-/** Every impossible range in the rule file, and a record too large. */
+/** Every impossible range in the rule file, and a record too large or too long. */
 function check(rules: Rules): Issue[] {
   const issues: Issue[] = [];
   const visit = (field: RuleField, rulePath: (string | number)[]) => {
@@ -140,11 +146,21 @@ function check(rules: Rules): Issue[] {
   for (const [key, field] of Object.entries(rules.fields)) {
     visit(field, ['fields', key]);
   }
-  const count = valueCount({ type: 'object', fields: rules.fields });
+  const record: RuleField = { type: 'object', fields: rules.fields };
+  const count = worstCase(record, () => 1);
   if (count > maxValues) {
     issues.push({
       path: ['fields'],
       message: `a record would hold up to ${count} values; the limit is ${maxValues}`,
+    });
+  }
+  const characters = worstCase(record, field =>
+    field.type === 'text' ? field.maxLength : 0,
+  );
+  if (characters > maxTextCharacters) {
+    issues.push({
+      path: ['fields'],
+      message: `a record would hold up to ${characters} characters of filler text; the limit is ${maxTextCharacters}`,
     });
   }
   return issues;

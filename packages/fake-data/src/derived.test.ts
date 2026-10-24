@@ -405,3 +405,96 @@ describe('derived document numbers through the public engine', () => {
     (_name, fields) => rejectsAt(rulesFor(fields), ['fields', 'a']),
   );
 });
+
+describe('T12 derived-field review regressions', () => {
+  it.each([
+    ['sum', { type: 'sum', of: ['base'] }, 7],
+    [
+      'percentage',
+      { type: 'percentage', part: 'base', whole: 'base', decimals: 0 },
+      100,
+    ],
+    [
+      'object sum',
+      {
+        type: 'object',
+        fields: { total: { type: 'sum', of: ['base'] } },
+      },
+      { total: 7 },
+    ],
+    [
+      'opening-only running balance',
+      {
+        type: 'object',
+        fields: {
+          balance: {
+            type: 'runningBalance',
+            opening: 'base',
+            add: [],
+            subtract: [],
+          },
+        },
+      },
+      { balance: 7 },
+    ],
+  ] satisfies [string, RuleField, unknown][])(
+    'evaluates %s inside arrays directly nested in arrays instead of leaving zero placeholders',
+    (_name, items, expected) => {
+      const rules = rulesFor({
+        base: constant(7),
+        grid: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 2,
+          items: { type: 'array', minItems: 2, maxItems: 2, items },
+        },
+      });
+      const seed = 'directly-nested-array-derived';
+      const record = generate(rules, seed);
+      expect(recordSchema(rules).parse(record)).toEqual(record);
+      expect(JSON.stringify(generate(rules, seed))).toBe(
+        JSON.stringify(record),
+      );
+      expect(record.grid).toEqual([
+        [expected, expected],
+        [expected, expected],
+      ]);
+    },
+  );
+
+  it('rejects a running balance with additions outside its unaddressable inner-array rows at the balance rule path', () => {
+    const rules = rulesFor({
+      base: constant(7),
+      grid: {
+        type: 'array',
+        minItems: 2,
+        maxItems: 2,
+        items: {
+          type: 'array',
+          minItems: 2,
+          maxItems: 2,
+          items: {
+            type: 'object',
+            fields: {
+              balance: {
+                type: 'runningBalance',
+                opening: 'base',
+                add: ['base'],
+                subtract: [],
+              },
+            },
+          },
+        },
+      },
+    });
+    rejectsAt(rules, ['fields', 'grid', 'items', 'items', 'fields', 'balance']);
+  });
+
+  it('reports a sum exceeding the JS number range as InvalidRulesError at its field instead of leaking RangeError', () => {
+    const rules = rulesFor({
+      a: constant(1e308),
+      total: { type: 'sum', of: ['a', 'a'] },
+    });
+    rejectsAt(rules, ['fields', 'total']);
+  });
+});

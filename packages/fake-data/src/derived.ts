@@ -53,6 +53,7 @@ function toNumber(value: Decimal): number | undefined {
     .padStart(scale + 1, '0');
   const text = `${units < 0n ? '-' : ''}${digits.slice(0, digits.length - scale)}${scale > 0 ? `.${digits.slice(-scale)}` : ''}`;
   const number = Number(text);
+  if (!Number.isFinite(number)) return undefined;
   const back = normal(toDecimal(number));
   return back.units === units && back.scale === scale ? number : undefined;
 }
@@ -213,38 +214,46 @@ type Slot = { holder: Container; key: string | number; bound: Bound };
 /**
  * Where a field's values sit in the record. An array on the path gives
  * every item, or only the item `bound` names for it; each slot records the
- * items it went through.
+ * items it went through. A segment may end in several `[]` (an array of
+ * arrays, as a derived field's own path can).
  */
 function slots(record: FakeRecord, path: string, bound: Bound = new Map()) {
+  // One step per key and per `[]`; an item step carries its path so far.
+  const steps: ({ key: string } | { items: string })[] = [];
+  let prefix = '';
+  for (const segment of path.split('.')) {
+    const name = segment.replace(/(\[\])+$/, '');
+    prefix += `${prefix === '' ? '' : '.'}${name}`;
+    steps.push({ key: name });
+    for (let i = name.length; i < segment.length; i += 2) {
+      prefix += '[]';
+      steps.push({ items: prefix });
+    }
+  }
   let nodes: { value: FakeValue; bound: Bound }[] = [{ value: record, bound }];
-  const segments = path.split('.');
   const found: Slot[] = [];
-  segments.forEach((segment, i) => {
-    const each = segment.endsWith('[]');
-    const name = each ? segment.slice(0, -2) : segment;
-    const prefix = segments.slice(0, i + 1).join('.');
-    const last = i === segments.length - 1;
+  steps.forEach((step, i) => {
+    const last = i === steps.length - 1;
     const next: typeof nodes = [];
     for (const node of nodes) {
       const { value } = node;
-      if (!isContainer(value) || Array.isArray(value)) continue;
-      if (last && !each) {
-        found.push({ holder: value, key: name, bound: node.bound });
+      if ('key' in step) {
+        if (!isContainer(value) || Array.isArray(value)) continue;
+        if (last)
+          found.push({ holder: value, key: step.key, bound: node.bound });
+        else if (value[step.key] !== undefined) {
+          next.push({ value: value[step.key] ?? null, bound: node.bound });
+        }
         continue;
       }
-      const child = value[name];
-      if (!each) {
-        if (child !== undefined) next.push({ value: child, bound: node.bound });
-        continue;
-      }
-      if (!Array.isArray(child)) continue;
-      const only = node.bound.get(prefix);
+      if (!Array.isArray(value)) continue;
+      const only = node.bound.get(step.items);
       const indices =
-        only === undefined ? child.keys() : only < child.length ? [only] : [];
+        only === undefined ? value.keys() : only < value.length ? [only] : [];
       for (const index of indices) {
-        const itemBound = new Map(node.bound).set(prefix, index);
-        if (last) found.push({ holder: child, key: index, bound: itemBound });
-        else next.push({ value: child[index] ?? null, bound: itemBound });
+        const itemBound = new Map(node.bound).set(step.items, index);
+        if (last) found.push({ holder: value, key: index, bound: itemBound });
+        else next.push({ value: value[index] ?? null, bound: itemBound });
       }
     }
     nodes = next;
@@ -260,18 +269,47 @@ function write(holder: Container, key: string | number, value: FakeValue) {
   else holder[key as string] = value;
 }
 
-/** The sum of every value `path` reaches; null counts as 0. */
-function total(record: FakeRecord, path: string, bound?: Bound): Decimal {
-  let sum = zero;
-  for (const { holder, key } of slots(record, path, bound)) {
-    const value = read(holder, key);
-    if (typeof value === 'number') sum = add(sum, toDecimal(value));
-  }
-  return sum;
-}
+type Totals = {
+  /** The sum of every value `path` reaches; null counts as 0. */
+  total: (path: string, bound?: Bound) => Decimal;
+  /** The sum over `paths`, a path listed twice counting twice. */
+  totals: (paths: string[], bound?: Bound) => Decimal;
+};
 
-const totals = (record: FakeRecord, paths: string[], bound?: Bound) =>
-  paths.reduce((sum, path) => add(sum, total(record, path, bound)), zero);
+/**
+ * Path totals over one record. Each total is computed once per item of the
+ * bound arrays it goes through, and a repeated path once, so derived fields
+ * read each value a bounded number of times. Totals never go stale: a path
+ * is read only after the derived fields it reaches are filled.
+ */
+function totalsOf(record: FakeRecord): Totals {
+  const memo = new Map<string, Decimal>();
+  const total = (path: string, bound: Bound = new Map()) => {
+    const used = [...bound].filter(([array]) => through(path, array));
+    const key = `${path}|${used.map(([, index]) => index).join(',')}`;
+    let sum = memo.get(key);
+    if (sum === undefined) {
+      sum = zero;
+      for (const { holder, key } of slots(record, path, new Map(used))) {
+        const value = read(holder, key);
+        if (typeof value === 'number') sum = add(sum, toDecimal(value));
+      }
+      memo.set(key, sum);
+    }
+    return sum;
+  };
+  const totals = (paths: string[], bound?: Bound) => {
+    const counts = new Map<string, number>();
+    for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
+    let sum = zero;
+    for (const [path, count] of counts) {
+      const { units, scale } = total(path, bound);
+      sum = add(sum, { units: units * BigInt(count), scale });
+    }
+    return sum;
+  };
+  return { total, totals };
+}
 
 class Unprintable extends Error {}
 
@@ -300,6 +338,7 @@ function fillOnce(
 // rows, and through the rows themselves, refer to the current item.
 function fillRunning(
   record: FakeRecord,
+  { total, totals }: Totals,
   path: string,
   field: Extract<Derived, { type: 'runningBalance' }>,
 ) {
@@ -309,11 +348,11 @@ function fillRunning(
   for (const row of slots(record, rows)) {
     if (row.holder !== holder) {
       holder = row.holder;
-      balance = total(record, field.opening, row.bound);
+      balance = total(field.opening, row.bound);
     }
     if (read(row.holder, row.key) === null) continue;
-    balance = add(balance, totals(record, field.add, row.bound));
-    balance = add(balance, negate(totals(record, field.subtract, row.bound)));
+    balance = add(balance, totals(field.add, row.bound));
+    balance = add(balance, negate(totals(field.subtract, row.bound)));
     for (const target of slots(record, path, row.bound)) {
       if (read(target.holder, target.key) !== null) {
         write(target.holder, target.key, print(balance));
@@ -332,25 +371,22 @@ export function fillDerived(
   order: DerivedField[],
 ): Issue[] {
   const issues: Issue[] = [];
+  const { total, totals } = totalsOf(record);
   for (const { path, rulePath, field } of order) {
     try {
       switch (field.type) {
         case 'sum':
-          fillOnce(record, path, () => print(totals(record, field.of)));
+          fillOnce(record, path, () => print(totals(field.of)));
           break;
         case 'percentage':
           fillOnce(record, path, () =>
             print(
-              percentage(
-                total(record, field.part),
-                total(record, field.whole),
-                field.decimals,
-              ),
+              percentage(total(field.part), total(field.whole), field.decimals),
             ),
           );
           break;
         case 'runningBalance':
-          fillRunning(record, path, field);
+          fillRunning(record, { total, totals }, path, field);
           break;
       }
     } catch (error) {
