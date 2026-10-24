@@ -357,8 +357,16 @@ type Node = { value: FakeValue; bound: Bound };
 /**
  * One step from `nodes`: into a key, or into the items of an array (every
  * item, or only the one `bound` names). Slots when `last`, else nodes.
+ * Without `track`, items don't record which item they are (walks below a
+ * row need no binding), so nothing is copied per item.
  */
-function advance(nodes: Node[], step: Step, bound: Bound, last: boolean) {
+function advance(
+  nodes: Node[],
+  step: Step,
+  bound: Bound,
+  last: boolean,
+  track = true,
+) {
   const found: Slot[] = [];
   const next: Node[] = [];
   for (const node of nodes) {
@@ -376,7 +384,9 @@ function advance(nodes: Node[], step: Step, bound: Bound, last: boolean) {
     const indices =
       only === undefined ? value.keys() : only < value.length ? [only] : [];
     for (const index of indices) {
-      const itemBound = new Map(node.bound).set(step.at, index);
+      const itemBound = track
+        ? new Map(node.bound).set(step.at, index)
+        : node.bound;
       if (last) found.push({ holder: value, key: index, bound: itemBound });
       else next.push({ value: value[index] ?? null, bound: itemBound });
     }
@@ -493,8 +503,10 @@ export function fillDerived(
   };
 
   // The values of `steps` below one row: every item of any array on the
-  // way. Paths below the same row share their prefixes through `seen`,
-  // which lives only while that row is filled.
+  // way. Every path below the same row, for every running balance, shares
+  // its prefixes through that row's `seen`: each row is walked once.
+  const unbound: Bound = new Map();
+  const rowWalks = new Map<Container, Map<Prefix, Node[]>>();
   const below = (
     row: Slot,
     steps: Step[],
@@ -507,11 +519,11 @@ export function fillDerived(
     for (const step of steps.slice(0, -1)) {
       const known = seen.get(step.at);
       if (known === undefined) {
-        nodes = advance(nodes, step, new Map(), false).next;
+        nodes = advance(nodes, step, unbound, false, false).next;
         seen.set(step.at, nodes);
       } else nodes = known;
     }
-    return advance(nodes, steps[steps.length - 1] as Step, new Map(), true)
+    return advance(nodes, steps[steps.length - 1] as Step, unbound, true, false)
       .found;
   };
   const sumBelow = (
@@ -559,7 +571,12 @@ export function fillDerived(
         balance = total(opening, row.bound);
       }
       if (read(row.holder, row.key) === null) continue;
-      const seen = new Map<Prefix, Node[]>();
+      const value = read(row.holder, row.key);
+      let seen = isContainer(value) ? rowWalks.get(value) : undefined;
+      if (seen === undefined) {
+        seen = new Map();
+        if (isContainer(value)) rowWalks.set(value, seen);
+      }
       balance = add(balance, sumBelow(row, adds, seen));
       balance = add(balance, negate(sumBelow(row, subtracts, seen)));
       for (const slot of below(row, target, seen)) {

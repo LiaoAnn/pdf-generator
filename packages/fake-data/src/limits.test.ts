@@ -764,3 +764,46 @@ test('running balances deep inside nested arrays keep every prefix over non-empt
     }
   `);
 }, 15_000);
+
+test.each([
+  ['empty', 1_000, 0, 0],
+  ['populated', 100, 1, 100],
+])(
+  'running balances share a deep %s array path below a row across 500 balances promptly',
+  (_regression, outerCount, leafCount, expected) => {
+    guardedGeneration(
+      `
+      const lengths = [${outerCount}, ...Array(12).fill(1), ${leafCount}];
+      // Each array item is an object containing the next a array.
+      // rows is level 1, its item level 2, and v is level 31.
+      let nested = object({ v: constant(1) });
+      for (const length of lengths.toReversed()) {
+        nested = object({ a: array(length, nested) });
+      }
+      const path = 'rows[].' + 'a[].'.repeat(14) + 'v';
+      // Empty: 501 values, 500,000 steps. Populated: 601 values, 50,000 steps.
+      const rules = rulesFor({
+        opening: constant(0),
+        rows: array(1, object({
+          ...nested.fields,
+          ...Object.fromEntries(Array.from({ length: 500 }, (_, i) => [
+            'b' + i,
+            { type: 'runningBalance', opening: 'opening', add: [path], subtract: [] },
+          ])),
+        })),
+      });
+      const start = performance.now();
+      const record = generate(rules, 'shared-deep-array-balance-path');
+      const elapsed = performance.now() - start;
+      assert.equal(record.opening, 0);
+      assert.equal(record.rows.length, 1);
+      for (let b = 0; b < 500; b++) {
+        assert.equal(record.rows[0]['b' + b], ${expected}, 'balance ' + b);
+      }
+      assert.ok(elapsed < 1_500, 'shared deep ${_regression} array path took ' + elapsed.toFixed(1) + ' ms');
+    `,
+      10_000,
+    );
+  },
+  15_000,
+);
