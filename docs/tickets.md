@@ -652,3 +652,12 @@
 - **驗收測試**：一份只在頁碼欄位設粗體平台字型的 fixture，印出的頁碼用的是該字型（PDF 字型清單），gt.json 每頁仍與 PDF 相符
 - **不做**：改頁碼欄位的寫法
 - **來源**：PR #35（T02-5）。順帶：`templates/monthly-report/src/acceptance.ts` 用法註解的 `acceptance -- --url` 在 pnpm 12 會失敗，拿掉 `--`
+
+### T23-1 樣板：通報單與銀行對帳單改用民國年
+- **目標**：T06-2 加了內建的 `{{rocDate d format="…"}}`。`templates/incident-form` 與 `templates/bank-statement`（交易列的 `{{date}}`、`issueDate`）目前直接印出 YYYY-MM-DD，改成台灣表單常見的民國年格式（例如 113/05/07、民國113年5月7日）
+- **Blocked by**：T06-2
+- **Blocks**：—
+- **撞車風險**：只動這兩個樣板包；與正在改它們的票不要同時派
+- **驗收測試**：兩個樣板各跑一批 10 份，自我檢查全過；gt.json 的日期文字與 PDF 一致；目視確認
+- **不做**：改平台程式、改其他樣板
+- **來源**：PR #36（T06-2）
