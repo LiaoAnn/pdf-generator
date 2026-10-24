@@ -133,6 +133,27 @@ function rowsOf(path: string): string | undefined {
 const through = (path: string, array: string) =>
   path === array || path.startsWith(`${array}.`);
 
+/**
+ * How many of the arrays `path` (a derived field's own path) sits inside
+ * `reference` goes through: those read only the current item.
+ */
+function shared(path: string, reference: string): number {
+  let count = 0;
+  for (
+    let end = path.indexOf('[]');
+    end >= 0;
+    end = path.indexOf('[]', end + 2)
+  ) {
+    const array = path.slice(0, end + 2);
+    if (through(reference, array) || reference.startsWith(`${array}[`)) count++;
+  }
+  return count;
+}
+
+/** Whether a sum reads the current row of an array it is inside. */
+const rowScoped = (path: string, field: Derived) =>
+  field.type === 'sum' && field.of.some(each => shared(path, each) > 0);
+
 /** Where a running balance's paths must, or must not, go. */
 function placement({ path, rulePath, field }: DerivedField): Issue[] {
   if (field.type !== 'runningBalance') return [];
@@ -179,7 +200,8 @@ export function derivedOrder(rules: Rules): {
   // Worst-case evaluation steps: each instance of a running balance reads
   // each of its distinct paths below its row, as many values as the path
   // fans out there (at least one lookup); a sum or percentage is computed
-  // once (path totals are memoized).
+  // once (path totals are memoized), unless it reads the current row of an
+  // array it is inside: then once per instance.
   let steps = 0;
   // How many nodes `path` reaches at its widest level after its first
   // `skip` arrays: the largest running product of their maxItems. An empty
@@ -216,6 +238,13 @@ export function derivedOrder(rules: Rules): {
         const skip = (rowsOf(path) ?? '').split('[]').length - 1;
         for (const each of new Set([...field.add, ...field.subtract])) {
           steps += instances * fanOut(each, skip);
+        }
+      } else if (rowScoped(path, field)) {
+        // Computed per instance: each distinct path is looked up once per
+        // instance, and walked below the arrays it shares with the field.
+        for (const each of new Set(references(field))) {
+          const k = shared(path, each);
+          steps += instances * (k > 0 ? fanOut(each, k) : 1);
         }
       } else steps += new Set(references(field)).size;
     }
@@ -601,12 +630,23 @@ export function fillDerived(
     }
   };
 
+  // A field that reads the current row of an array it is inside: one value
+  // per target, with the target's own items bound.
+  const fillEach = (path: string, value: (bound: Bound) => number | null) => {
+    for (const { holder, key, bound } of slots(compile(path))) {
+      if (read(holder, key) !== null) write(holder, key, value(bound));
+    }
+  };
+
   const issues: Issue[] = [];
   for (const { path, rulePath, field } of order) {
     try {
       switch (field.type) {
         case 'sum':
-          fillOnce(path, () => print(totals(multiset(field.of))));
+          if (rowScoped(path, field)) {
+            const of = multiset(field.of);
+            fillEach(path, bound => print(totals(of, bound)));
+          } else fillOnce(path, () => print(totals(multiset(field.of))));
           break;
         case 'percentage':
           fillOnce(path, () =>
