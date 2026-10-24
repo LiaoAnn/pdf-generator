@@ -117,21 +117,58 @@ test('sum reuses a 20000-item column repeated 5000 times without losing multipli
   `);
 }, 15_000);
 
-test('running balances collapse 2000 repeated add paths across 20000 rows while preserving every prefix', () => {
+test('running balances collapse 100000 repeated add paths across 20000 rows while preserving every prefix', () => {
   guardedGeneration(`
     const record = generate(rulesFor({
       opening: constant(0),
       rows: array(20_000, object({
-        d: constant(0.1),
+        d: constant(1),
         b: {
           type: 'runningBalance', opening: 'opening',
-          add: Array(2_000).fill('rows[].d'), subtract: [],
+          add: Array(100_000).fill('rows[].d'), subtract: [],
         },
       })),
     }), 'repeated-add');
     assert.equal(record.rows.length, 20_000);
     for (const [i, row] of record.rows.entries()) {
-      assert.equal(row.b, 200 * (i + 1), 'wrong balance at row ' + i);
+      assert.equal(row.b, 100_000 * (i + 1), 'wrong balance at row ' + i);
     }
   `);
 }, 15_000);
+
+test.each([
+  [
+    'bounds cycle diagnostics for 500 repeated back edges instead of expanding every cycle path',
+    "Array(500).fill('f0')",
+  ],
+  [
+    'bounds cycle diagnostics for 499 distinct back edges instead of expanding every cycle path',
+    "Array.from({ length: 499 }, (_, i) => 'f' + i)",
+  ],
+])(
+  '%s',
+  (_regression, backEdges) => {
+    guardedGeneration(`
+      const fields = Object.fromEntries(Array.from({ length: 500 }, (_, i) => [
+        'f' + i,
+        { type: 'sum', of: i === 499 ? ${backEdges} : ['f' + (i + 1)] },
+      ]));
+      const rules = rulesFor(fields);
+      assert.throws(() => generate(rules, 'bounded-cycle-diagnostics'), error => {
+        assert.ok(error instanceof InvalidRulesError,
+          'expected InvalidRulesError for cyclic sums; got ' + error.name + ': ' + error.message.slice(0, 120));
+        assert.ok(error.issues.length > 0, 'expected a cycle diagnostic');
+        assert.ok(error.issues.length <= 500,
+          'expected at most one issue per derived field; got ' + error.issues.length + ' issues');
+        const cycleIssues = error.issues.filter(issue =>
+          issue.path[0] === 'fields' && Object.hasOwn(fields, issue.path[1]));
+        assert.ok(cycleIssues.length > 0, 'expected an issue path identifying a cycle member');
+        assert.equal(new Set(cycleIssues.map(issue => issue.path[1])).size,
+          cycleIssues.length, 'expected each cycle member to be reported at most once');
+        assert.ok(error.message.length < 1_000_000, 'expected a bounded cycle error message');
+        return true;
+      });
+    `);
+  },
+  15_000,
+);

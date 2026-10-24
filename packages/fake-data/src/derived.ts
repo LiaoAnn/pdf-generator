@@ -173,33 +173,44 @@ export function derivedOrder(rules: Rules): {
 
   const order: DerivedField[] = [];
   const issues = [...fields.values()].flatMap(placement);
+  // Depth-first without recursion, so a long chain cannot overflow the
+  // stack; the first cycle found is reported, once per field on it.
   const state = new Map<string, 'visiting' | 'done'>();
-  const stack: DerivedField[] = [];
-  const place = (derived: DerivedField) => {
-    const seen = state.get(derived.path);
-    if (seen === 'done') return;
-    if (seen === 'visiting') {
-      const cycle = stack.slice(stack.indexOf(derived));
-      const names = [...cycle, derived].map(({ path }) => path).join(' → ');
-      for (const { rulePath } of cycle) {
-        issues.push({
-          path: rulePath,
-          message: `derived fields depend on each other: ${names}`,
-        });
-      }
-      return;
-    }
+  type Frame = { derived: DerivedField; next: Iterator<string> };
+  const frame = (derived: DerivedField): Frame => {
     state.set(derived.path, 'visiting');
-    stack.push(derived);
-    for (const path of references(derived.field)) {
-      const target = fields.get(path);
-      if (target) place(target);
-    }
-    stack.pop();
-    state.set(derived.path, 'done');
-    order.push(derived);
+    return { derived, next: new Set(references(derived.field)).values() };
   };
-  for (const derived of fields.values()) place(derived);
+  for (const start of fields.values()) {
+    if (state.has(start.path)) continue;
+    const frames = [frame(start)];
+    while (frames.length > 0) {
+      const top = frames[frames.length - 1] as Frame;
+      const step = top.next.next();
+      if (step.done) {
+        frames.pop();
+        state.set(top.derived.path, 'done');
+        order.push(top.derived);
+        continue;
+      }
+      const target = fields.get(step.value);
+      if (target === undefined || state.get(target.path) === 'done') continue;
+      if (state.get(target.path) === 'visiting') {
+        const cycle = frames
+          .slice(frames.findIndex(({ derived }) => derived === target))
+          .map(({ derived }) => derived);
+        cycle.forEach(({ path, rulePath }, i) => {
+          const reads = (cycle[i + 1] ?? target).path;
+          issues.push({
+            path: rulePath,
+            message: `${path} reads ${reads}, which depends on ${path}`,
+          });
+        });
+        return { order, issues };
+      }
+      frames.push(frame(target));
+    }
+  }
   return { order, issues };
 }
 
@@ -269,11 +280,20 @@ function write(holder: Container, key: string | number, value: FakeValue) {
   else holder[key as string] = value;
 }
 
+/** Each distinct path and how often it is listed. */
+type Multiset = ReadonlyMap<string, number>;
+
+function multiset(paths: string[]): Multiset {
+  const counts = new Map<string, number>();
+  for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
+  return counts;
+}
+
 type Totals = {
   /** The sum of every value `path` reaches; null counts as 0. */
   total: (path: string, bound?: Bound) => Decimal;
-  /** The sum over `paths`, a path listed twice counting twice. */
-  totals: (paths: string[], bound?: Bound) => Decimal;
+  /** The sum over `paths` (from `multiset`), each total times its count. */
+  totals: (paths: Multiset, bound?: Bound) => Decimal;
 };
 
 /**
@@ -298,11 +318,9 @@ function totalsOf(record: FakeRecord): Totals {
     }
     return sum;
   };
-  const totals = (paths: string[], bound?: Bound) => {
-    const counts = new Map<string, number>();
-    for (const path of paths) counts.set(path, (counts.get(path) ?? 0) + 1);
+  const totals = (paths: Multiset, bound?: Bound) => {
     let sum = zero;
-    for (const [path, count] of counts) {
+    for (const [path, count] of paths) {
       const { units, scale } = total(path, bound);
       sum = add(sum, { units: units * BigInt(count), scale });
     }
@@ -343,6 +361,8 @@ function fillRunning(
   field: Extract<Derived, { type: 'runningBalance' }>,
 ) {
   const rows = rowsOf(path) as string;
+  const adds = multiset(field.add);
+  const subtracts = multiset(field.subtract);
   let holder: Container | undefined;
   let balance = zero;
   for (const row of slots(record, rows)) {
@@ -351,8 +371,8 @@ function fillRunning(
       balance = total(field.opening, row.bound);
     }
     if (read(row.holder, row.key) === null) continue;
-    balance = add(balance, totals(field.add, row.bound));
-    balance = add(balance, negate(totals(field.subtract, row.bound)));
+    balance = add(balance, totals(adds, row.bound));
+    balance = add(balance, negate(totals(subtracts, row.bound)));
     for (const target of slots(record, path, row.bound)) {
       if (read(target.holder, target.key) !== null) {
         write(target.holder, target.key, print(balance));
@@ -376,7 +396,7 @@ export function fillDerived(
     try {
       switch (field.type) {
         case 'sum':
-          fillOnce(record, path, () => print(totals(field.of)));
+          fillOnce(record, path, () => print(totals(multiset(field.of))));
           break;
         case 'percentage':
           fillOnce(record, path, () =>
