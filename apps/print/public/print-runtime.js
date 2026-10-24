@@ -284,21 +284,23 @@
     return rows;
   }
 
-  // Per page, each [data-gt] element's border box (PDF points from the page's
-  // top left) and the text of its visible text nodes outside KaTeX's MathML
-  // copy, as the PDF's text layer should contain it there (T03 Must 4, PDF
-  // part). Text is matched per box, so a formula's single letters can't use
-  // up the letters of another block (T07-6).
+  // Per page, each [data-gt] element's box (PDF points from the page's top
+  // left) and the text of its visible text nodes outside KaTeX's MathML copy,
+  // as the PDF's text layer should contain it there (T03 Must 4, PDF part).
+  // Text is matched per box, so a formula's single letters can't use up the
+  // letters of another block (T07-6). The box also covers its text where that
+  // overflows the element or is positioned outside it: whether text lies in
+  // its block's box is the self-check's to report (T14), not this guard's.
   function expectedText() {
     const ptPerPx = 0.75;
     return pagedPages().map(page => {
       const origin = page.getBoundingClientRect();
-      /** @type {Map<Element, string[]>} */
+      /** @type {Map<Element, { texts: string[], rects: DOMRect[] }>} */
       const blocks = new Map();
       const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        const block = node.parentElement?.closest('[data-gt]');
-        if (!block) continue;
+        const element = node.parentElement?.closest('[data-gt]');
+        if (!element) continue;
         // KaTeX's MathML copy is clipped to 1px for screen readers; only its
         // visible .katex-html is printed, which is also what T13 reads.
         if (node.parentElement?.closest('.katex-mathml')) continue;
@@ -308,26 +310,27 @@
         if (!text) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
-        const visible = [...range.getClientRects()].some(
+        const rects = [...range.getClientRects()].filter(
           rect => rect.width > 0 && rect.height > 0,
         );
-        if (!visible) continue;
-        const texts = blocks.get(block) ?? [];
-        texts.push(text);
-        blocks.set(block, texts);
-      }
-      return [...blocks].map(([block, texts]) => {
-        const box = block.getBoundingClientRect();
-        return {
-          box: {
-            x0: (box.left - origin.left) * ptPerPx,
-            y0: (box.top - origin.top) * ptPerPx,
-            x1: (box.right - origin.left) * ptPerPx,
-            y1: (box.bottom - origin.top) * ptPerPx,
-          },
-          texts,
+        if (rects.length === 0) continue;
+        const block = blocks.get(element) ?? {
+          texts: [],
+          rects: [element.getBoundingClientRect()],
         };
-      });
+        block.texts.push(text);
+        block.rects.push(...rects);
+        blocks.set(element, block);
+      }
+      return [...blocks.values()].map(({ texts, rects }) => ({
+        box: {
+          x0: (Math.min(...rects.map(r => r.left)) - origin.left) * ptPerPx,
+          y0: (Math.min(...rects.map(r => r.top)) - origin.top) * ptPerPx,
+          x1: (Math.max(...rects.map(r => r.right)) - origin.left) * ptPerPx,
+          y1: (Math.max(...rects.map(r => r.bottom)) - origin.top) * ptPerPx,
+        },
+        texts,
+      }));
     });
   }
 
