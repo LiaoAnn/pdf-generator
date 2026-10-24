@@ -188,7 +188,11 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   acknowledged(first);
   expect(await progress(id)).toEqual({ completed: 1, failed: 0 });
   expect(await statuses(id)).toEqual([
-    { index: 0, status: 'completed' },
+    {
+      index: 0,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
     { index: 1, status: 'pending' },
     { index: 2, status: 'pending' },
   ]);
@@ -247,8 +251,16 @@ test('HTTP progress rises only for settled fixtures; retries recover and exhaust
   }
   expect(await progress(id)).toEqual({ completed: 2, failed: 1 });
   expect(await statuses(id)).toEqual([
-    { index: 0, status: 'completed' },
-    { index: 1, status: 'completed' },
+    {
+      index: 0,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
+    {
+      index: 1,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
     {
       index: 2,
       status: 'failed',
@@ -381,8 +393,16 @@ test('one failing message does not prevent later messages in the delivery from c
   expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
   expect(await statuses(id)).toEqual([
     { index: 0, status: 'pending' },
-    { index: 1, status: 'completed' },
-    { index: 2, status: 'completed' },
+    {
+      index: 1,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
+    {
+      index: 2,
+      status: 'completed',
+      check: { passed: true, differences: 0 },
+    },
   ]);
   expect(get).not.toHaveBeenCalled();
 });

@@ -243,7 +243,11 @@ test('uploaded v1 and v2 batches reach the queue printer with their own text eve
     expect(printed?.source.templateVersion).toBe(batch.templateVersion);
     const status = await request(`/api/batches/${batch.id}/fixtures`);
     expect(fixtureListSchema.parse(await status.json()).fixtures).toEqual([
-      { index: 0, status: 'completed' },
+      {
+        index: 0,
+        status: 'completed',
+        check: { passed: true, differences: 0 },
+      },
     ]);
     expect(await stored(job, 'fixture.pdf')).toEqual(
       new Uint8Array([37, 80, 68, 70, 45, 10]),
