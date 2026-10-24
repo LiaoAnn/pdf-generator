@@ -627,13 +627,13 @@
 - **來源**：T24 驗收（`page 2: 3.19`）
 
 ### T07-13 印 PDF：全形斜線「／」沒有進到 PDF 文字層
-- **目標**：全形斜線 U+FF0F 在粗體、一般、換行或單行時，列印的缺字檢查都讀不到（ASCII `/` 正常）。T07-11 查到原因：U+FF0F 與 U+2215 ∕ 在 cmap 共用 glyph 18194，ToUnicode 取較小的碼位，抽出來是 U+2215（T03 §2.5 的機制；`apps/print/src/fonts/build.ts` 的 cmap 修補沒有拿掉 U+2215）。修正字型的 cmap，讓抽出的是 U+FF0F
+- **目標**：全形斜線 U+FF0F 在粗體、一般、換行或單行時，列印的缺字檢查都讀不到（ASCII `/` 正常）。T07-11 查到原因：U+FF0F 與 U+2215 ∕ 在 cmap 共用 glyph 18194，ToUnicode 取較小的碼位，抽出來是 U+2215（T03 §2.5 的機制；`apps/print/src/fonts/build.ts` 的 cmap 修補沒有拿掉 U+2215）。修正字型的 cmap，讓抽出的是 U+FF0F。一併處理 T26 發現的中點「・」U+30FB：Noto Sans TC 印出後讀不到（有「・」得 422 `text_missing`，拿掉就 200；Serif 正常），推測也是共用 glyph，先確認機制；並掃過整份 cmap，找出其他共用 glyph、會抽錯碼位的常用字元
 - **Blocked by**：T07-11
 - **Blocks**：—
 - **撞車風險**：`apps/print` 字型處理；與 T07-11、T07-12 不要同時派
-- **驗收測試**：含「／」的區塊印出後，PDF 文字層抽出的是「／」，不再誤報 `text_missing`
+- **驗收測試**：含「／」、Sans 的「・」的區塊印出後，PDF 文字層抽出的是原字元，不再誤報 `text_missing`；列出掃描找到的其他字元與處理結果
 - **不做**：改樣板包
-- **來源**：T24 驗收
+- **來源**：T24 驗收；「・」來自 T26 驗收
 
 ### T07-14 印 PDF：跨頁表格保留欄寬
 - **目標**：Paged.js 用 `cloneNode(false)` 重建跨頁表格的外殼，print runtime 的表格 handler 只把 `<thead>` 抄回去、沒抄 `<colgroup>`，所以第 2 頁起欄寬變平均（T24：客戶名稱第 1 頁 18%，之後 1/11）。把 `<colgroup>` 跟 `<thead>` 一起抄到每個接續的表格片段
