@@ -715,3 +715,12 @@
 - **驗收測試**：上述兩種位移的 fixture 被自我檢查判為框不符；5 個既有樣板各一批 10 份仍全過；空勾選框與圖片各至少一個案例
 - **不做**：改區塊讀取規則
 - **來源**：T08-1 的 Security review（第 2 輪）
+
+### T09-3 網站：`page_count_mismatch` 的中文說明，以及偶發逾時的測試
+- **目標**：(1) T08-1 新增的列印錯誤 `page_count_mismatch`（PDF 頁數與 Paged.js 頁數不同）在 `apps/web` 的 `explain.ts` 還沒有中文說明，補上，並指出常見原因（樣板 CSS 動到 `.pagedjs_*` 或 body 的版面）；(2) `apps/web/src/api/batch-checks.test.ts` 的「reports self-check totals…」在 CI 偶發撞到 60 秒逾時（PR #39 第一次 CI；本機 6/6 通過、重跑通過），找出原因
+- **Blocked by**：T08-1
+- **Blocks**：—
+- **撞車風險**：`apps/web`
+- **驗收測試**：批次結果頁對 `page_count_mismatch` 顯示中文說明；該測試在 CI 連跑 3 次不逾時，或說明原因與修法
+- **不做**：改錯誤代碼
+- **來源**：PR #39（T08-1）
