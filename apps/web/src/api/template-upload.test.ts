@@ -184,12 +184,20 @@ async function refused(
   expect(body.error.message.trim().length).toBeGreaterThan(0);
   expect(await list()).toEqual([]);
   expect((await platform.env.FILES.list()).objects).toEqual([]);
+  if (code === 'invalid_template_pack') {
+    expect(body.error.details?.length).toBeGreaterThan(0);
+    for (const detail of body.error.details ?? []) {
+      expect(detail.code).toEqual(expect.any(String));
+      expect(detail.message).not.toMatch(/^[a-z][a-z0-9_-]*: /);
+    }
+  }
   return body.error;
 }
 
 function detail({ code, message, file, ...location }: PackIssue) {
   return {
-    message: `${code}: ${message}`,
+    code,
+    message,
     ...(file === '.' ? {} : { file }),
     ...location,
   };
@@ -331,12 +339,13 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
       expect(error.code).toBe('invalid_template_pack');
       expect(error.details).toContainEqual({
         file: path,
-        message: expect.stringMatching(/^file-too-large: /),
+        code: 'file-too-large',
+        message: expect.any(String),
       });
       const issue = error.details?.find(
         detail =>
           detail.file === path &&
-          detail.message.startsWith('file-too-large:') &&
+          detail.code === 'file-too-large' &&
           detail.message.includes('16777216'),
       );
       expect(issue?.message).toContain(path);
@@ -451,6 +460,15 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     },
   );
 
+  test('an empty zip reports manifest-missing as a code with the original unprefixed message', async () => {
+    const bytes = zipSync({});
+    const error = await refused(bytes);
+    expect(error.details).toEqual(checkPack(bytes).issues.map(detail));
+    expect(error.details).toContainEqual(
+      expect.objectContaining({ code: 'manifest-missing' }),
+    );
+  });
+
   test('returns every issue rather than only the first when a pack has multiple errors', async () => {
     const files = pack();
     delete files['styles/report.css'];
@@ -467,7 +485,7 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     const error = await refused(bytes);
     expect(error.details).toEqual(checkPack(bytes).issues.map(detail));
     expect(error.details).toEqual([
-      { message: expect.stringMatching(/^zip-invalid: /) },
+      { code: 'zip-invalid', message: expect.any(String) },
     ]);
   });
 
@@ -490,7 +508,8 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     const error = await refused(zipSync(files));
     expect(error.details).toContainEqual({
       file: 'styles/report.css',
-      message: expect.stringMatching(/^file-too-large: /),
+      code: 'file-too-large',
+      message: expect.any(String),
     });
   });
 
@@ -500,7 +519,8 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     const error = await refused(zipSync(files));
     expect(error.details).toContainEqual({
       file: 'styles/report.css',
-      message: expect.stringMatching(/^file-too-large: /),
+      code: 'file-too-large',
+      message: expect.any(String),
     });
   });
 
@@ -513,7 +533,8 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
       const error = await refused(zipSync(files));
       expect(error.details).toContainEqual({
         file: path,
-        message: expect.stringMatching(/^file-too-large: /),
+        code: 'file-too-large',
+        message: expect.any(String),
       });
     },
   );
@@ -545,7 +566,8 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     const error = await refused(zipSync(tooMany));
     expect(error.details).toContainEqual(
       expect.objectContaining({
-        message: expect.stringMatching(/^pack-too-many-files: /),
+        code: 'pack-too-many-files',
+        message: expect.any(String),
       }),
     );
     await upload(boundaryBytes);
@@ -583,7 +605,8 @@ describe('template upload HTTP acceptance with local D1 and R2', () => {
     const error = await refused(zipSync(oversized));
     expect(error.details).toContainEqual(
       expect.objectContaining({
-        message: expect.stringMatching(/^pack-text-too-large: /),
+        code: 'pack-text-too-large',
+        message: expect.any(String),
       }),
     );
     await upload(boundaryBytes);

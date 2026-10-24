@@ -5,7 +5,12 @@
   "count": 2,
   "seed": "Seed_01-a",
   "status": "completed",
-  "progress": { "completed": 1, "failed": 1 },
+  "progress": {
+    "completed": 1,
+    "failed": 1,
+    "checkPassed": 0,
+    "checkFailed": 0
+  },
   "createdAt": "2026-10-23T15:46:22.998Z",
   "finishedAt": "2026-10-23T15:47:22.1Z",
   "rerunOf": "Original_01"

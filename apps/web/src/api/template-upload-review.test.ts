@@ -6,10 +6,11 @@ import {
   manifestSchema,
   templateSummarySchema,
 } from '@pdf-generator/contract';
+import * as templateTools from '@pdf-generator/template-tools';
 import { drizzle } from 'drizzle-orm/d1';
 import { migrate } from 'drizzle-orm/d1/migrator';
 import { strFromU8, strToU8, unzipSync, zipSync } from 'fflate';
-import { afterAll, beforeAll, expect, test } from 'vitest';
+import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { createFetchHandler } from '../worker.ts';
@@ -184,17 +185,45 @@ test.each(['../outside.txt', '/abs.txt'])(
     expect(body).toMatchObject({ error: { code: 'invalid_template_pack' } });
     expect(apiErrorSchema.safeParse(body).success).toBe(true);
     const error = apiErrorSchema.parse(body).error;
-    const detail = error.details?.find(item =>
-      item.message.startsWith('path-invalid: '),
-    );
+    for (const issue of error.details ?? []) {
+      expect(issue.code).toEqual(expect.any(String));
+      expect(issue.message).not.toMatch(/^[a-z][a-z0-9_-]*: /);
+    }
+    const detail = error.details?.find(item => item.code === 'path-invalid');
     expect(detail).toBeDefined();
     expect(detail?.message).toContain(invalidPath);
     expect(detail).not.toHaveProperty('file');
     expect(error.details).toContainEqual(
       expect.objectContaining({
-        message: expect.stringMatching(/^json-syntax: /),
+        code: 'json-syntax',
+        message: expect.any(String),
         file: 'data/sample.json',
       }),
     );
   },
 );
+
+test('a checker exception returns pack-check-failed separately from its unprefixed diagnostic', async () => {
+  const checker = vi
+    .spyOn(templateTools, 'checkPack')
+    .mockImplementationOnce(() => {
+      throw new Error('malformed pack structure');
+    });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const response = await request('/api/templates', zipSync(valid));
+    expect(response.status).toBe(400);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('invalid_template_pack');
+    expect(error.details).toEqual([
+      {
+        code: 'pack-check-failed',
+        message:
+          'the pack could not be checked: Error: malformed pack structure',
+      },
+    ]);
+  } finally {
+    checker.mockRestore();
+    log.mockRestore();
+  }
+});

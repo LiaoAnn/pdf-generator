@@ -5,6 +5,7 @@
     "details": [
       {
         "message": "規則值無效",
+        "code": "rules-invalid",
         "file": "data/rules.json",
         "line": 12,
         "column": 3,

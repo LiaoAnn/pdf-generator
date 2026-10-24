@@ -117,7 +117,7 @@ describe('batch HTTP API with local D1 and a Workflow binding fake', () => {
       ...input,
       id: expect.stringMatching(/^[A-Za-z0-9_-]{1,64}$/),
       status: 'queued',
-      progress: { completed: 0, failed: 0 },
+      progress: { completed: 0, failed: 0, checkPassed: 0, checkFailed: 0 },
       createdAt: expect.any(String),
     });
     expect(Date.parse(batch.createdAt)).toBeGreaterThanOrEqual(before);
@@ -178,7 +178,7 @@ describe('batch HTTP API with local D1 and a Workflow binding fake', () => {
       ...input,
       id: expect.any(String),
       status: 'queued',
-      progress: { completed: 0, failed: 0 },
+      progress: { completed: 0, failed: 0, checkPassed: 0, checkFailed: 0 },
       createdAt: expect.any(String),
       rerunOf: original.id,
     });
@@ -335,7 +335,7 @@ describe('batch HTTP API with local D1 and a Workflow binding fake', () => {
         ...input,
         id: attempt?.id,
         status: 'failed',
-        progress: { completed: 0, failed: 0 },
+        progress: { completed: 0, failed: 0, checkPassed: 0, checkFailed: 0 },
         createdAt: expect.any(String),
         finishedAt: expect.any(String),
         ...(original ? { rerunOf: original.id } : {}),

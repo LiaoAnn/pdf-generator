@@ -190,7 +190,12 @@ test('a started 100-fixture batch exposes rising HTTP progress and finishes with
   expect(observed).toEqual([25, 50, 75, 100]);
   const result = await batch(id);
   finished(result, 'completed');
-  expect(result.progress).toEqual({ completed: 100, failed: 0 });
+  expect(result.progress).toEqual({
+    completed: 100,
+    failed: 0,
+    checkPassed: 100,
+    checkFailed: 0,
+  });
   const response = await request(`/api/batches/${id}/fixtures`);
   expect(response.status).toBe(200);
   expect(fixtureListSchema.parse(await response.json()).fixtures).toEqual(
@@ -265,7 +270,12 @@ test('a timed-out wait rechecks progress and completes even when every fixture f
   );
   expect(waits).toBe(2);
   finished(await batch(id), 'completed');
-  expect((await batch(id)).progress).toEqual({ completed: 0, failed: 2 });
+  expect((await batch(id)).progress).toEqual({
+    completed: 0,
+    failed: 2,
+    checkPassed: 0,
+    checkFailed: 0,
+  });
   expect(new Set(context.names).size).toBe(context.names.length);
   for (const [, options] of vi.mocked(context.step.waitForEvent).mock.calls) {
     expect(options).toEqual({ type: 'fixtures-done', timeout: '2 seconds' });
@@ -290,7 +300,12 @@ test.each(['event', 'timeout'] as const)(
     );
     expect(context.step.waitForEvent).toHaveBeenCalledTimes(2);
     finished(await batch(id), 'failed');
-    expect((await batch(id)).progress).toEqual({ completed: 0, failed: 0 });
+    expect((await batch(id)).progress).toEqual({
+      completed: 0,
+      failed: 0,
+      checkPassed: 0,
+      checkFailed: 0,
+    });
     expect(new Set(context.names).size).toBe(context.names.length);
   },
 );

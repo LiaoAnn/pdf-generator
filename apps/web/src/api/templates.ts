@@ -156,15 +156,15 @@ async function readBody(
 type Detail = NonNullable<ApiError['error']['details']>[number];
 
 /**
- * An issue as an error detail. The contract's detail has no code field, so
- * the code leads the message (`file-missing: …`); the upload page reads it
- * back to explain the issue. A file that is not a path inside the pack (the
- * whole pack `.`, or the bad path a path-invalid issue names, which its
- * message repeats) is left out: the contract's file is a relative path.
+ * An issue as an error detail; the upload page explains it by its code. A
+ * file that is not a path inside the pack (the whole pack `.`, or the bad path
+ * a path-invalid issue names, which its message repeats) is left out: the
+ * contract's file is a relative path.
  */
 function toDetail({ code, file, message, ...location }: PackIssue): Detail {
   return {
-    message: `${code}: ${message}`,
+    message,
+    code,
     ...(relativePathSchema.safeParse(file).success ? { file } : {}),
     ...location,
   };
@@ -229,13 +229,13 @@ const previewFailure = (cause: unknown) => {
     cause.status < 500
   ) {
     // The printer refused this document: a problem of the pack, which the
-    // template page explains from the code leading the first detail.
+    // template page explains from the first detail's code.
     return new ApiFailure({
       status: 422,
       code: 'preview_failed',
       message: `The sample could not be printed: ${cause.reason}`,
       details: [
-        { message: `${cause.code}: ${cause.reason}` },
+        { message: cause.reason, code: cause.code },
         ...cause.details.map(message => ({ message })),
       ],
     });
