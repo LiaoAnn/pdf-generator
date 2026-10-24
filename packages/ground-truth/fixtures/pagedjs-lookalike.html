@@ -1,0 +1,34 @@
+<!doctype html>
+<!--
+Independent hand derivation, in pt:
+Two 600 x 800 pages, each with margins (top/bottom 60, left/right 48).
+The first wrapper has 12pt padding and a 180 x 24 paragraph, hence its
+block is (48+12,60+12)..(48+12+180,60+12+24) = [60,72,240,96].
+The second section forces page 2. Its container adds 18pt padding and
+its page look-alike adds 12pt: [48+18+12,60+18+12, +180, +24]
+= [78,90,258,114]. Neither wrapper is a printed page. In particular,
+the block on page 2 must not be measured from its nearest class match.
+The html/body classes also belong to the pack, not to generated pages.
+-->
+<html lang="en" class="pagedjs_pages">
+<head>
+<meta charset="utf-8">
+<title>Paged.js class look-alikes</title>
+<style>
+@page { size: 600pt 800pt; margin: 60pt 48pt; }
+* { box-sizing: border-box; }
+html.pagedjs_pages, body.pagedjs_page { display: block; margin: 0; padding: 0; width: auto; height: auto; }
+body { font: 10pt/12pt sans-serif; }
+p { margin: 0; width: 180pt; height: 24pt; }
+.pack-page { position: relative; width: 240pt; height: 48pt; margin: 0; padding: 12pt; box-shadow: none; flex: none; }
+.pack-pages { display: block; width: 300pt; height: 84pt; margin: 0; padding: 18pt; }
+.next { break-before: page; }
+</style>
+</head>
+<body class="pagedjs_page">
+<div class="pagedjs_page pack-page"><p data-gt="paragraph" data-gt-id="first">First real page</p></div>
+<section class="next">
+<div class="pagedjs_pages pack-pages"><div class="pagedjs_page pack-page"><p data-gt="paragraph" data-gt-id="second">Second real page</p></div></div>
+</section>
+</body>
+</html>

@@ -67,6 +67,45 @@ async function expectReaderError(page: Page, message: RegExp): Promise<void> {
 }
 
 describe('readGroundTruth on completed Paged.js pages', () => {
+  test('ignores earlier live body page containers when a pack supplies pagedjs-content', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pagedjs_pages"><div class="pagedjs_page">Live pack sibling</div></div>
+         <template data-ref="pagedjs-content"><p data-gt="paragraph" data-gt-id="real">Real page</p></template>`,
+        'p { width: 180pt; height: 24pt; }',
+      );
+      // Paged.js leaves the sibling live and appends its own container last.
+      expect(await page.locator('body > .pagedjs_pages').count()).toBe(2);
+      const result = await readGroundTruth(page, source);
+      expect(result.pages).toEqual([{ width: 600, height: 800 }]);
+      expect(result.blocks).toEqual([
+        {
+          id: 'real',
+          type: 'paragraph',
+          page: 1,
+          bbox: [48, 60, 228, 84],
+          order: 0,
+          text: 'Real page',
+        },
+      ]);
+    });
+  }, 30_000);
+
+  test('rejects a visible block in an earlier live look-alike instead of assigning it a fake page', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pagedjs_pages"><div class="pagedjs_page"><p data-gt="paragraph" data-gt-id="outside-real-pages">Live pack block</p></div></div>
+         <template data-ref="pagedjs-content"><p data-gt="paragraph">Real page</p></template>`,
+      );
+      expect(await page.locator('body > .pagedjs_pages').count()).toBe(2);
+      await expectMarkupIssues(page, [
+        { id: 'outside-real-pages', problem: /no such page/i },
+      ]);
+    });
+  }, 30_000);
+
   test('reads a contract-valid two-page document using page-relative border boxes and rendered text', async () => {
     await withPage(async page => {
       await paginate(

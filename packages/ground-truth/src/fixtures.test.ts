@@ -20,6 +20,7 @@ afterAll(async () => {
 describe('hand-authored fixture ground truth', () => {
   for (const name of [
     'monthly-report',
+    'pagedjs-lookalike',
     'incident-form',
     'checkbox',
     'blank-field',
@@ -59,9 +60,15 @@ describe('hand-authored fixture ground truth', () => {
         await page.addScriptTag({ path: polyfill });
         // T03: the first page appearing is not completion; wait for after().
         await page.waitForFunction('window.__pagedDone === true');
-        expect(await page.locator('.pagedjs_page').count()).toBe(
-          expected.pages.length,
-        );
+        // Count generated children, independently of the reader's measurements.
+        // Pack content may reuse both Paged.js class names.
+        expect(
+          await page
+            .locator('body > .pagedjs_pages')
+            .last()
+            .locator(':scope > .pagedjs_page')
+            .count(),
+        ).toBe(expected.pages.length);
         const result = await readGroundTruth(page, expected.source);
         expect(result).toEqual(expected);
       } finally {

@@ -42,7 +42,17 @@ export async function readGroundTruth(
  * helper that exists only in the bundle, under a name minify changes.
  */
 function collect(): Measurement {
-  const pages = Array.from(document.querySelectorAll('.pagedjs_page'));
+  // The pages Paged.js generated: the `.pagedjs_page` children of the last
+  // `.pagedjs_pages` child of <body>. Paged.js moves the pack's body into a
+  // <template> and appends its container to <body> last, so a pack's own use
+  // of these class names lands inside a real page, on <html> or <body>, or
+  // (with a pack-supplied pagedjs-content template) in an earlier body child.
+  const container = Array.from(document.body?.children ?? [])
+    .filter(child => child.classList.contains('pagedjs_pages'))
+    .at(-1);
+  const pages = Array.from(container?.children ?? []).filter(child =>
+    child.classList.contains('pagedjs_page'),
+  );
   const regions: [string, Region][] = [
     [
       '.pagedjs_margin-top, .pagedjs_margin-top-left-corner-holder, .pagedjs_margin-top-right-corner-holder',
@@ -59,7 +69,8 @@ function collect(): Measurement {
     // Not laid out (display: none), e.g. the original of a running element.
     .filter(element => element.getClientRects().length > 0)
     .map((element): MeasuredElement => {
-      const pageElement = element.closest('.pagedjs_page');
+      // Real pages never nest, so at most one contains the element.
+      const pageElement = pages.find(page => page.contains(element)) ?? null;
       const { x, y, width, height } = element.getBoundingClientRect();
       const origin = pageElement?.getBoundingClientRect() ?? {
         x: 0,

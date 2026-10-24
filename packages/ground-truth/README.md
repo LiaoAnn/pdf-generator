@@ -14,6 +14,7 @@ const gt = await readGroundTruth(page, { templateId, templateVersion, seed, inde
 
 - `page` only needs `evaluate(expression: string)`. The reader sends one self-contained expression and never launches a browser.
 - It does not wait for Paged.js. The caller waits for its own `PagedConfig.after` flag. A page with no `.pagedjs_page` throws.
+- **Generated pages** are the `.pagedjs_page` direct children of the last `.pagedjs_pages` direct child of `<body>`. The pack's own use of these class names can't add a page or move a block: Paged.js moves the body into a `<template>` and appends its container to `<body>` last, so look-alikes end up inside a real page, on `<html>`/`<body>`, or (when the pack ships its own `<template data-ref="pagedjs-content">`) in an earlier body child. A visible block in no generated page is an error. Anything else that walks Paged.js pages should use the same rule.
 - Problems throw one `GroundTruthError` whose `issues` list every problem: an unknown type, a nested `data-gt`, a missing detail reader, a box outside its page or with zero area, a duplicate id.
 
 ## The markup it reads
@@ -23,8 +24,8 @@ const gt = await readGroundTruth(page, { templateId, templateVersion, seed, inde
 | `data-gt="<type>"` | Marks a block; one of the contract's 17 block types. |
 | `data-gt-id="<id>"` | Optional id. Without one, blocks are named `<type>-1`, `<type>-2`, … in reading order. |
 
-- **Box**: the element's border box (padding and border included), relative to its `.pagedjs_page`, CSS px × 0.75 → pt, each edge rounded to 0.01 pt.
-- **Page**: the position of its `.pagedjs_page`, from 1. The page size is the one `@page { size }` declares (A4 → 595.28 × 841.89), not the layout box, which Chrome snaps to 1/64 px (595.27 wide). With bleed it falls back to the layout box.
+- **Box**: the element's border box (padding and border included), relative to its generated page, CSS px × 0.75 → pt, each edge rounded to 0.01 pt.
+- **Page**: the position of its generated page, from 1. The page size is the one `@page { size }` declares (A4 → 595.28 × 841.89), not the layout box, which Chrome snaps to 1/64 px (595.27 wide). With bleed it falls back to the layout box.
 - **Text**: `innerText`, trimmed. CSS-generated content (`::before`, `content: counter(page)`) is not read, so a page number must be real text in the DOM.
 - **Hidden elements** (no layout box) are skipped. This includes the original that Paged.js hides for a `position: running()` element.
 - **Reading order**: page by page. On each page: top margin boxes, left, content area, right, bottom margin boxes; document order within each.
@@ -51,4 +52,4 @@ const gt = await readGroundTruth(page, { templateId, templateVersion, seed, inde
 
 ## Tests
 
-The Playwright tests use `playwright-core` (pinned to the container's global Playwright version, whose headless shell is installed in the container and by CI) and `pagedjs` 0.4.3. `fixtures/` holds fixed documents, one per case (T08's two multi-page documents, then T13's checkbox, blank field, formula, image text, table grid, merged cells, cross-page table, repeated header, checkboxes in table cells and padded, bordered cells). Their `gt.json` files were written by hand from the CSS, and each HTML file explains its derivation in a comment. Never regenerate them from the reader's output.
+The Playwright tests use `playwright-core` (pinned to the container's global Playwright version, whose headless shell is installed in the container and by CI) and `pagedjs` 0.4.3. `fixtures/` holds fixed documents, one per case (T08's two multi-page documents, T08-1's Paged.js class look-alikes, then T13's checkbox, blank field, formula, image text, table grid, merged cells, cross-page table, repeated header, checkboxes in table cells and padded, bordered cells). Their `gt.json` files were written by hand from the CSS, and each HTML file explains its derivation in a comment. Never regenerate them from the reader's output.
