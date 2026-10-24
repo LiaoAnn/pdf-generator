@@ -180,26 +180,21 @@ describe('public fake-data engine', () => {
     expect(generate({ ...rules, fields: remaining }, seed)).toEqual(expected);
   });
 
-  it('reports every T12 feature in the contract example, including two features on memo', () => {
+  it('reports only filler text and derived fields as unsupported in the contract example', () => {
     const error = caught(() => generate(example('valid'), seed));
     expect(error).toBeInstanceOf(UnsupportedRuleError);
     expect(error).toMatchObject({
       ticket: 'T12',
-      unsupported: expect.arrayContaining([
-        { path: 'memo', feature: 'blank probability' },
+      unsupported: [
         { path: 'memo', feature: 'filler text' },
-        { path: 'paperless', feature: 'random checkbox' },
-        { path: 'transactions', feature: 'row-count range' },
         { path: 'transactions[].balance', feature: 'derived field' },
         { path: 'totalDeposits', feature: 'derived field' },
         { path: 'utilization', feature: 'derived field' },
-      ]),
+      ],
     });
     expect(error.message).toContain('not supported yet (T12)');
     for (const path of [
       'memo',
-      'paperless',
-      'transactions',
       'transactions[].balance',
       'totalDeposits',
       'utilization',

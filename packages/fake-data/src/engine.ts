@@ -56,10 +56,13 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
       : rng.pick(field.options),
   constant: field => field.value,
   object: (field, _rng, child) => generateFields(field.fields, child),
-  // minItems === maxItems until T12 adds row-count ranges.
-  array: (field, _rng, child) =>
-    Array.from({ length: field.minItems }, (_, i) => child(field.items, i)),
-  checkbox: notYet,
+  // Items draw from their own streams, keyed by index, so item k does not
+  // depend on the drawn length.
+  array: (field, rng, child) =>
+    Array.from({ length: rng.int(field.minItems, field.maxItems) }, (_, i) =>
+      child(field.items, i),
+    ),
+  checkbox: (field, rng) => rng.chance(field.probability ?? 0.5),
   text: notYet,
   sum: notYet,
   runningBalance: notYet,
@@ -69,21 +72,14 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
 /** Features of `field` itself that the engine cannot generate yet (T12). */
 function unsupported(field: RuleField): string[] {
   const features: string[] = [];
-  if ((field.blankProbability ?? 0) > 0) features.push('blank probability');
   switch (field.type) {
     case 'sum':
     case 'runningBalance':
     case 'percentage':
       features.push('derived field');
       break;
-    case 'checkbox':
-      features.push('random checkbox');
-      break;
     case 'text':
       features.push('filler text');
-      break;
-    case 'array':
-      if (field.minItems < field.maxItems) features.push('row-count range');
       break;
   }
   return features;
@@ -218,6 +214,13 @@ export function generate(rules: unknown, seed: string): FakeRecord {
     (path: string): Child =>
     (field, key) => {
       const at = path === '' ? String(key) : `${path}.${key}`;
+      // The blank draw has its own stream (`?` never occurs in a key), so
+      // adding blankProbability leaves the value stream unchanged. A blank
+      // object or array generates nothing inside it.
+      const blank = field.blankProbability ?? 0;
+      if (blank > 0 && createRng(seed, `${at}?blank`).chance(blank)) {
+        return null;
+      }
       const generator = generators[field.type] as Generator<typeof field.type>;
       return generator(field, createRng(seed, at), childAt(at));
     };

@@ -10,6 +10,8 @@ export interface Rng {
   pick<T>(items: readonly T[]): T;
   /** Element chosen with probability weights[i] / sum(weights). */
   weighted<T>(items: readonly T[], weights: readonly number[]): T;
+  /** True with probability `probability` (0 → never, 1 → always). */
+  chance(probability: number): boolean;
 }
 
 const twoTo32 = 2 ** 32;
@@ -129,6 +131,13 @@ export function createRng(seed: string, path: string): Rng {
       }
       // Rounding can leave target at the total: take the last positive weight.
       return items[last] as T;
+    },
+    chance(probability: number): boolean {
+      if (!(probability >= 0 && probability <= 1)) {
+        throw new RangeError(`invalid probability ${probability}`);
+      }
+      // probability * 2^53 is exact: scaling by a power of two.
+      return below(twoTo53) < probability * twoTo53;
     },
   };
 }
