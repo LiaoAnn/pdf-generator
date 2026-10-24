@@ -58,6 +58,83 @@ function guardedDerivedBudget(body: string, timeout = 10_000) {
   );
 }
 
+test('nesting limit accepts level 32 and generates 20000 deeply nested running balances', () => {
+  guardedGeneration(`
+    let nest = array(20_000, {
+      type: 'runningBalance', opening: 'opening', add: [], subtract: [],
+    });
+    // Root array is level 1; 30 wrappers put each balance at level 32.
+    for (let i = 0; i < 30; i++) nest = array(1, nest);
+    const record = generate(rulesFor({ opening: constant(1), nest }), 'depth-boundary');
+    assert.equal(record.opening, 1);
+    let balances = record.nest;
+    for (let i = 0; i < 30; i++) {
+      assert.equal(balances.length, 1);
+      balances = balances[0];
+    }
+    assert.equal(balances.length, 20_000);
+    for (const balance of balances) assert.equal(balance, 1);
+  `);
+}, 15_000);
+
+test('nesting limit accepts object fields at level 32', () => {
+  guardedGeneration(`
+    let nest = constant(7);
+    for (let i = 0; i < 31; i++) nest = object({ child: nest });
+    const record = generate(rulesFor({ nest }), 'object-depth-boundary');
+    let value = record.nest;
+    for (let i = 0; i < 31; i++) value = value.child;
+    assert.equal(value, 7);
+  `);
+}, 15_000);
+
+test.each(['array', 'object'])(
+  'nesting limit promptly rejects %s fields at level 33 with the offending rule path',
+  kind => {
+    guardedGeneration(
+      `
+      let nest = constant(7);
+      const firstTooDeep = ['fields', 'nest'];
+      for (let i = 0; i < 32; i++) {
+        nest = ${kind === 'array' ? 'array(1, nest)' : 'object({ child: nest })'};
+        firstTooDeep.push(...${kind === 'array' ? "['items']" : "['fields', 'child']"});
+      }
+      const rules = rulesFor({ nest });
+      assert.throws(() => generate(rules, 'depth-over-limit'), error => {
+        assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
+        assert.equal(error.issues.length, 1, 'expected one issue for the too-deep branch');
+        assert.deepEqual(error.issues[0].path.slice(0, firstTooDeep.length), firstTooDeep,
+          'expected an issue identifying the first field at level 33');
+        return true;
+      }, 'expected level 33 to be rejected');
+    `,
+      3_000,
+    );
+  },
+  15_000,
+);
+
+test('nesting limit promptly rejects 100 array wrappers around 20000 balances with one branch issue', () => {
+  guardedGeneration(
+    `
+    let nest = array(20_000, {
+      type: 'runningBalance', opening: 'opening', add: [], subtract: [],
+    });
+    for (let i = 0; i < 100; i++) nest = array(1, nest);
+    const rules = rulesFor({ opening: constant(1), nest });
+    const firstTooDeep = ['fields', 'nest', ...Array(32).fill('items')];
+    assert.throws(() => generate(rules, 'reviewer-depth-exhaustion'), error => {
+      assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
+      assert.equal(error.issues.length, 1, 'expected one issue, not one per deeper level');
+      assert.deepEqual(error.issues[0].path.slice(0, firstTooDeep.length), firstTooDeep,
+        'expected an issue identifying the first field at level 33');
+      return true;
+    }, 'expected 100 array wrappers to be rejected before generation');
+  `,
+    3_000,
+  );
+}, 15_000);
+
 test.each([
   [200, 200, 200],
   [160, 300, 300],

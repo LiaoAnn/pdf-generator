@@ -317,7 +317,11 @@ function slots(record: FakeRecord, path: Compiled, bound: Bound = new Map()) {
       const indices =
         only === undefined ? value.keys() : only < value.length ? [only] : [];
       for (const index of indices) {
-        const itemBound = new Map(node.bound).set(step.items, index);
+        // An item already bound adds nothing to the binding.
+        const itemBound =
+          only === undefined
+            ? new Map(node.bound).set(step.items, index)
+            : node.bound;
         if (last) found.push({ holder: value, key: index, bound: itemBound });
         else next.push({ value: value[index] ?? null, bound: itemBound });
       }

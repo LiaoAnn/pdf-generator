@@ -104,6 +104,9 @@ function impossible(field: RuleField): Issue[] {
 /** The most values one record may hold, so a small rule file cannot exhaust a Worker. */
 const maxValues = 100_000;
 
+/** How deep fields may nest (a root field is level 1), so a path stays short to walk. */
+const maxLevels = 32;
+
 /** The most filler-text characters one record may hold. */
 const maxTextCharacters = 1_000_000;
 
@@ -127,24 +130,35 @@ function worstCase(
   }
 }
 
-/** Every impossible range in the rule file, and a record too large or too long. */
+/** Every impossible range in the rule file, and a record too deep, large or long. */
 function check(rules: Rules): Issue[] {
   const issues: Issue[] = [];
-  const visit = (field: RuleField, rulePath: (string | number)[]) => {
+  const visit = (
+    field: RuleField,
+    rulePath: (string | number)[],
+    level: number,
+  ) => {
+    if (level > maxLevels) {
+      issues.push({
+        path: rulePath,
+        message: `fields nest ${level} levels deep; the limit is ${maxLevels}`,
+      });
+      return;
+    }
     for (const issue of impossible(field)) {
       issues.push({ ...issue, path: [...rulePath, ...issue.path] });
     }
     if (field.type === 'object') {
       for (const [key, child] of Object.entries(field.fields)) {
-        visit(child, [...rulePath, 'fields', key]);
+        visit(child, [...rulePath, 'fields', key], level + 1);
       }
     }
     if (field.type === 'array') {
-      visit(field.items, [...rulePath, 'items']);
+      visit(field.items, [...rulePath, 'items'], level + 1);
     }
   };
   for (const [key, field] of Object.entries(rules.fields)) {
-    visit(field, ['fields', key]);
+    visit(field, ['fields', key], 1);
   }
   const record: RuleField = { type: 'object', fields: rules.fields };
   const count = worstCase(record, () => 1);
