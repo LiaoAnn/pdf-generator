@@ -15,6 +15,7 @@
     "@pdf-generator/fake-data": "workspace:*",
     "@pdf-generator/template-tools": "workspace:*",
     "@types/node": "^24.13.6",
+    "fflate": "^0.8.3",
     "katex": "~0.16.47",
     "parse5": "^8.0.1",
     "typescript": "catalog:",

@@ -127,7 +127,10 @@ h1 {
 .columns {
   column-count: 2;
   column-gap: 7mm;
-  column-fill: auto;
+  /* Not auto: with auto and break-inside: avoid, Paged.js moved the whole
+     body to page 2 for some records (T25 acceptance, seed t25-acceptance
+     fixture 5). */
+  column-fill: balance;
 }
 
 .columns h2 {
@@ -151,7 +154,10 @@ h1 {
 }
 
 .equation {
-  margin: 2mm 0;
+  /* Padding, not margin: a big fraction's glyphs reach above KaTeX's own
+     box, and the gt box (the border box) must hold the printed text. */
+  margin: 0.5mm 0;
+  padding: 1.5mm 0;
   break-inside: avoid;
 }
 
