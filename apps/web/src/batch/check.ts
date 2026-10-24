@@ -2,10 +2,15 @@ import type { GroundTruth } from '@pdf-generator/contract';
 import { checkPdf, type SelfCheckReport } from '@pdf-generator/self-check';
 
 export type Checker = {
-  check(pdf: Uint8Array, gt: GroundTruth): Promise<SelfCheckReport>;
+  /** `fonts`: PostScript names of the pack's own fonts, also allowed. */
+  check(
+    pdf: Uint8Array,
+    gt: GroundTruth,
+    fonts: readonly string[],
+  ): Promise<SelfCheckReport>;
 };
 
-// PostScript names of the platform fonts; pack-owned fonts come after T07-3.
+// PostScript names of the platform fonts, which every pack may use.
 export const platformFonts: readonly string[] = [
   'LXGWWenKaiTC-Regular',
   'NotoSansSymbols2-Regular',
@@ -16,5 +21,6 @@ export const platformFonts: readonly string[] = [
 ];
 
 export const selfChecker: Checker = {
-  check: (pdf, gt) => checkPdf(pdf, gt, { fonts: platformFonts }),
+  check: (pdf, gt, fonts) =>
+    checkPdf(pdf, gt, { fonts: [...platformFonts, ...fonts] }),
 };

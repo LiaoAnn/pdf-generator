@@ -39,7 +39,11 @@ const input = {
 const pdf = new Uint8Array([37, 80, 68, 70, 45, 10]);
 const print = vi.fn<Printer['print']>();
 const check = vi.fn(
-  async (_pdf: Uint8Array, _gt: GroundTruth): Promise<SelfCheckReport> => ({
+  async (
+    _pdf: Uint8Array,
+    _gt: GroundTruth,
+    _fonts: readonly string[],
+  ): Promise<SelfCheckReport> => ({
     ok: true,
     differences: [],
   }),

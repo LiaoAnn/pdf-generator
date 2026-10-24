@@ -122,8 +122,9 @@ export async function makeFixture(
       seed: job.seed,
       index: job.index,
     },
+    pack: { template: pack.manifest.files.template, files: pack.files },
   });
-  const report = await deps.checker.check(printed.pdf, printed.gt);
+  const report = await deps.checker.check(printed.pdf, printed.gt, pack.fonts);
   const files: [FixtureFile, Uint8Array<ArrayBuffer>][] = [
     ['data.json', encoder.encode(`${JSON.stringify(record, null, 2)}\n`)],
     ['gt.json', encoder.encode(`${JSON.stringify(printed.gt, null, 2)}\n`)],

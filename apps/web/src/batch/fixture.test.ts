@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import {
@@ -19,7 +20,7 @@ import {
   makeFixture,
   render,
 } from './fixture.ts';
-import type { Printer } from './printer.ts';
+import { createPrinter, type Printer } from './printer.ts';
 
 type LocalPlatform = Awaited<ReturnType<typeof getPlatformProxy<Env>>>;
 let platform: LocalPlatform;
@@ -44,7 +45,10 @@ const hash = (bytes: Uint8Array) =>
 const passingReport: SelfCheckReport = { ok: true, differences: [] };
 
 function fakeChecker(report: SelfCheckReport = passingReport) {
-  return vi.fn(async (_pdf: Uint8Array, _gt: GroundTruth) => report);
+  return vi.fn(
+    async (_pdf: Uint8Array, _gt: GroundTruth, _fonts: readonly string[]) =>
+      report,
+  );
 }
 
 // A missing call is asserted separately. Comparing the absent argument to gt
@@ -59,6 +63,7 @@ function expectCheckCall(
   if (!call) return;
   expect(call[0]).toEqual(pdfBytes);
   expect(call[1]).toEqual(groundTruth);
+  expect(call[2]).toEqual([]);
 }
 
 beforeAll(async () => {
@@ -86,6 +91,86 @@ async function stored(
 }
 
 describe('makeFixture with local R2', () => {
+  test.each(['pack-owned', 'platform'] as const)(
+    '%s-font batch fixtures send the selected version files and font names',
+    async variant => {
+      // Regression: batch printing omits pack assets, uses the bundled template
+      // path, or fails to pass the selected version's fonts to its self-check.
+      const pack: TemplatePack =
+        variant === 'platform'
+          ? fixtureReport
+          : {
+              ...fixtureReport,
+              manifest: {
+                ...fixtureReport.manifest,
+                files: {
+                  ...fixtureReport.manifest.files,
+                  template: 'pages/report.html',
+                },
+              },
+              files: {
+                'pages/report.html': Buffer.from(
+                  fixtureReport.template,
+                ).toString('base64'),
+                'styles.css': btoa(
+                  '@font-face { font-family: Custom; src: url(fonts/report.woff2); }',
+                ),
+                'fonts/report.woff2': 'AAEAgP8=',
+                'images/seal.png': 'iVBORw0KGgo=',
+              },
+              fonts: ['CustomReport-Regular'],
+            };
+      const requests: { pack?: unknown }[] = [];
+      const printer = createPrinter(
+        {
+          fetch: async (input, init) => {
+            requests.push(await new Request(input, init).json());
+            return Response.json({
+              pageCount: 2,
+              pdf: btoa(String.fromCharCode(...pdf)),
+              gt,
+            });
+          },
+        },
+        'batch-token',
+      );
+      const check = fakeChecker();
+      for (const index of [0, 1]) {
+        const result = await makeFixture(
+          { ...job, batchId: `assets-${variant}`, index },
+          {
+            templates: { get: async () => pack },
+            printer,
+            files: platform.env.FILES,
+            checker: { check },
+          },
+        );
+        expect(result).toMatchObject({
+          checkPassed: true,
+          checkDifferences: 0,
+        });
+        expect(
+          JSON.parse(
+            new TextDecoder().decode(
+              await stored(`assets-${variant}`, index, 'check.json'),
+            ),
+          ),
+        ).toEqual(passingReport);
+      }
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect.soft(request.pack).toEqual({
+          template: pack.manifest.files.template,
+          files: pack.files,
+        });
+      }
+      expect(check).toHaveBeenCalledTimes(2);
+      expect
+        .soft(check.mock.calls.map(call => call[2]))
+        .toEqual([pack.fonts, pack.fonts]);
+    },
+  );
+
   test('stores a reproducible fixture with exact printer bytes, matching source and hashes', async () => {
     // Regression: makeFixture stores the PDF without check.json, or returns
     // FixtureFiles without checkPassed and checkDifferences.
