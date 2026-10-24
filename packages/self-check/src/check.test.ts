@@ -151,18 +151,42 @@ async function expectBoxDifference(gt: GroundTruth, id: string) {
 }
 
 // Acceptance first: real Paged.js documents and independent hand-written GT.
-test.each([
-  'monthly-report',
-  'incident-form',
-  'blank-field',
-  'image-text',
-  'table-grid',
-  'comparison',
-])(
+test.each(['incident-form', 'blank-field', 'table-grid', 'comparison'])(
   'correct %s passes without false text, box, page or order differences',
   async name => {
     const { pdf, gt } = fixture(name);
     expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
+  },
+);
+
+test.each([
+  {
+    name: 'monthly-report',
+    invisible: [{ blockId: 'field-2', bbox: [54, 156, 414, 180] }],
+  },
+  {
+    name: 'image-text',
+    invisible: [
+      { blockId: 'empty-img', bbox: [54, 198, 294, 246] },
+      { blockId: 'blank-declaration', bbox: [54, 246, 294, 294] },
+    ],
+  },
+])(
+  '$name reports only invisible blocks without false differences for other blocks',
+  async ({ name, invisible }) => {
+    const { pdf, gt } = fixture(name);
+    // These shared fixtures deliberately include borderless empty elements and
+    // empty SVGs. Their boxes cannot be verified from any printed ink.
+    expect(await checkPdf(pdf, gt)).toStrictEqual({
+      ok: false,
+      differences: invisible.map(({ blockId, bbox }) => ({
+        kind: 'ink',
+        page: 1,
+        blockId,
+        bbox,
+        message: expect.any(String),
+      })),
+    });
   },
 );
 
@@ -234,7 +258,7 @@ test('ink protruding by less than 1pt does not cause a bbox false positive', asy
   });
 });
 
-test('the smallest containing box owns text instead of an enclosing blank block', async () => {
+test('the smallest box owns text and the enclosing invisible block reports ink', async () => {
   const gt = mutate(gt => {
     gt.blocks.push({
       id: 'outer',
@@ -246,10 +270,9 @@ test('the smallest containing box owns text instead of an enclosing blank block'
     });
     block(gt, 'beta').order = 4;
   });
-  expect(await checkPdf(fixture().pdf, gt)).toEqual({
-    ok: true,
-    differences: [],
-  });
+  expect(await differences(gt)).toEqual([
+    { kind: 'ink', page: 1, blockId: 'outer', bbox: [40, 40, 400, 85] },
+  ]);
 });
 
 test('wrong page consumes the actual page text without cascading text or unmarked differences', async () => {
@@ -327,7 +350,7 @@ test('consecutive unclaimed items coalesce despite a visual gap between blocks',
 });
 
 test('an extra nonempty block in blank space reports actual empty text', async () => {
-  // An extra empty block cannot be revealed by the PDF's text layer.
+  // Nonempty invented text must still report the missing text.
   const gt = mutate(gt => {
     gt.blocks.push({
       id: 'extra',

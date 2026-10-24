@@ -2,6 +2,7 @@
 <!-- Hand oracle: A4, 54pt margins; page 1 Alpha at y=54, two lines
 at y=102/126 and a blank at y=174. Page 2 Beta starts at y=54.
 All blocks are 300pt wide; 12pt monospace, 24pt line boxes.
+The blank field has an inset border so its empty box is verifiable.
 Zero-height inline markers expose baselines independently of PDF extraction. -->
 <html lang="en">
 <head><meta charset="utf-8"><title>Comparison oracle</title>
@@ -14,6 +15,7 @@ section:first-child { break-before: auto; }
 p { width: 300pt; height: 24pt; }
 .gap { height: 24pt; }
 #multi { height: 48pt; }
+#blank { box-sizing: border-box; border: 1pt solid black; }
 .baseline { display: inline-block; width: 0; height: 0; }
 </style></head>
 <body>
