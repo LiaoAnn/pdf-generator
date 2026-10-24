@@ -76,23 +76,22 @@ Run every project command inside your worktree's stack (see "Environment"), neve
 - **One ticket = one T3 thread = one worktree = one branch = one PR.** Ticket sizes were settled when the tickets were cut; don't stop or split a ticket because its diff is large. State the size in the PR (production code, tests, fixtures, generated files).
 - A **coordinator** thread (the user's main conversation, in the main checkout) tracks every ticket, starts **worker** threads, relays their questions to the user, and merges PRs. Workers never talk to the user directly; they talk to the coordinator.
 - A ticket may start once every ticket in its **Blocked by** has merged. Anything else it needs that isn't merged yet is replaced by a **stub** behind the same interface. Don't wait for it, and don't build it.
-- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, red tests first (written by a different model) → implement (by a fresh Codex child, one per slice) → verify on the real stack; after the last slice, one code review of the whole ticket (by a model that wrote none of the code) → PR. The worker plans, checks and integrates; it doesn't write the code itself. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
+- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, red tests first (written by a different model) → implement → verify on the real stack; after the last slice, one code review of the whole ticket (by a different model) → PR. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
 
 | Skill | Who uses it |
 | --- | --- |
 | `coordinate-tickets` | The coordinator: status, dispatch, relaying, merging. |
 | `work-ticket` | A worker thread, from its first message to the merged PR. |
-| `cross-model-delegate` | Anyone handing implementation, tests or reviews to another model. |
+| `cross-model-delegate` | Anyone handing tests or reviews to a different model. |
 
 ### Models
 
 | Role | Model | Fallback when its credit or quota runs out |
 | --- | --- | --- |
-| Coordinator, worker (planning, checking, acceptance, PR) | Claude Opus 5.5, effort medium | none |
-| Implementer (one child per slice, and per fix) | GPT-6.1-Sol (Codex), reasoning medium | the worker implements itself |
-| Test author, every review lens | Grok 4.7, reasoning high | Claude Sonnet 5.5, effort high |
+| Coordinator, worker (planning, implementation) | Claude Opus 5.5, effort medium | none |
+| Test author, every review lens | GPT-6.1-Sol (Codex), reasoning medium | Grok 4.7, reasoning high; then Claude Sonnet 5.5, effort high |
 
-The test author and reviewers are always a different model from the implementer, so a misunderstanding isn't shared between the code and its tests. Code goes to Codex children so the long-running Opus worker keeps a short context: most of the Claude spend was workers rereading their own long histories (set 2026-10-24; tickets started before then finish on the old flow, where Opus implemented and Codex tested and reviewed). `cross-model-delegate` says how to call them and when to fall back.
+The test author and reviewers are always a different model from the implementer, so a misunderstanding isn't shared between the code and its tests. Keep your own context short (`| tail -n 40` on long output, `git diff --stat` before a full diff): most of the Claude spend is workers rereading their own long histories. `cross-model-delegate` says how to call them and when to fall back.
 
 ## Rules
 
