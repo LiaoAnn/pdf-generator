@@ -8,4 +8,5 @@ export interface NavItem {
 export const navItems: readonly NavItem[] = [
   { to: '/', label: '首頁' },
   { to: '/templates', label: '樣板' },
+  { to: '/batches', label: '批次' },
 ];
