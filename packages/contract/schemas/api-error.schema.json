@@ -25,6 +25,11 @@
                 "type": "string",
                 "minLength": 1
               },
+              "code": {
+                "description": "Stable code of this problem, e.g. file-missing or font_not_loaded.",
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]*$"
+              },
               "file": {
                 "description": "File inside the uploaded template pack.",
                 "type": "string",

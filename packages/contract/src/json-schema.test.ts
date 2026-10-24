@@ -55,6 +55,61 @@ describe('published JSON Schema contract', () => {
         expect(schema.safeParse(example).success).toBe(false);
         expect(validate(example)).toBe(false);
       });
+
+      if (name === 'api-error') {
+        test('preserves optional machine-readable detail codes and rejects malformed codes in both consumers', () => {
+          const validate = new Ajv2020({ strict: true }).compile(
+            readJson('../schemas/api-error.schema.json') as object,
+          );
+          const cases: [unknown, boolean][] = [
+            [undefined, true],
+            ['a', true],
+            ['file-missing', true],
+            ['template-unknown-field', true],
+            ['font_not_loaded', true],
+            ['a0_-', true],
+            ['', false],
+            ['File-missing', false],
+            ['fileMissing', false],
+            ['1file', false],
+            ['_file', false],
+            ['-file', false],
+            ['file missing', false],
+            ['file:missing', false],
+            ['file-missing\n', false],
+            [null, false],
+            [123, false],
+          ];
+          for (const [code, accepted] of cases) {
+            const input = {
+              error: {
+                code: 'invalid_template_pack',
+                message: 'Invalid pack',
+                details: [
+                  {
+                    message: 'Missing file',
+                    ...(code === undefined ? {} : { code }),
+                  },
+                  { message: 'Legacy detail without a code' },
+                ],
+              },
+            };
+            const result = schema.safeParse(input);
+            const context = `detail code ${JSON.stringify(code)}`;
+            expect.soft(result.success, `Zod: ${context}`).toBe(accepted);
+            if (result.success)
+              expect
+                .soft(result.data, `Zod preserves ${context}`)
+                .toEqual(input);
+            expect
+              .soft(
+                validate(input),
+                `Ajv: ${context}; ${JSON.stringify(validate.errors)}`,
+              )
+              .toBe(accepted);
+          }
+        });
+      }
     });
   }
 });

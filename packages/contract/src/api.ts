@@ -27,6 +27,13 @@ export const apiErrorSchema = z
           z
             .strictObject({
               message: z.string().min(1),
+              code: z
+                .string()
+                .regex(/^[a-z][a-z0-9_-]*$/)
+                .optional()
+                .describe(
+                  'Stable code of this problem, e.g. file-missing or font_not_loaded.',
+                ),
               file: relativePathSchema
                 .optional()
                 .describe('File inside the uploaded template pack.'),
