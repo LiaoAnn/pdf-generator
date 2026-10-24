@@ -498,3 +498,100 @@ describe('T12 derived-field review regressions', () => {
     rejectsAt(rules, ['fields', 'total']);
   });
 });
+
+describe('T12 derived fields over rule objects shared by identity', () => {
+  const sharedSeeds = ['shared-a', 'shared-b', 'shared-c', 'shared-d'];
+  const digit: RuleField = { type: 'integer', min: 0, max: 9 };
+  // In-memory rules may reuse one object for several fields; generate must
+  // read each field's own values, so build the rules without rulesSchema.parse
+  // (which would clone them apart).
+  const sumOf = (...xs: number[]) => xs.reduce((total, x) => total + x, 0);
+  const xs = (rows: unknown): number[] =>
+    (rows as { x: number }[]).map(row => row.x);
+
+  it('sums each of two fields sharing one array rule object over its own items, not the first field’s', () => {
+    const shared: RuleField = {
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: { type: 'object', fields: { x: digit } },
+    };
+    const sharedObj: RuleField = { type: 'object', fields: { y: digit } };
+    const rules = {
+      schemaVersion: 1,
+      fields: {
+        a: shared,
+        b: shared,
+        o1: sharedObj,
+        o2: sharedObj,
+        sa: { type: 'sum', of: ['a[].x'] },
+        sb: { type: 'sum', of: ['b[].x'] },
+        so1: { type: 'sum', of: ['o1.y'] },
+        so2: { type: 'sum', of: ['o2.y'] },
+      },
+    } satisfies Rules;
+    let differing = 0;
+    for (const seed of sharedSeeds) {
+      const record = generate(rules, seed);
+      if (JSON.stringify(record.a) !== JSON.stringify(record.b)) differing++;
+      expect(record.sa).toBe(sumOf(...xs(record.a)));
+      expect(record.sb).toBe(sumOf(...xs(record.b)));
+      expect(record.so1).toBe((record.o1 as { y: number }).y);
+      expect(record.so2).toBe((record.o2 as { y: number }).y);
+    }
+    // The check only distinguishes the fields when a and b actually differ.
+    expect(differing).toBeGreaterThan(0);
+  });
+
+  it('keeps the running balances of two fields sharing one detail object rule over their own rows', () => {
+    const sharedDetail: RuleField = {
+      type: 'object',
+      fields: { v: { type: 'integer', min: 1, max: 9 } },
+    };
+    const rowsOf = (balance: string): RuleField => ({
+      type: 'array',
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: 'object',
+        fields: {
+          detail: sharedDetail,
+          [balance]: {
+            type: 'runningBalance',
+            opening: 'opening',
+            add: [`${balance === 'balA' ? 'rowsA' : 'rowsB'}[].detail.v`],
+            subtract: [],
+          },
+        },
+      },
+    });
+    const rules = {
+      schemaVersion: 1,
+      fields: {
+        opening: constant(100),
+        rowsA: rowsOf('balA'),
+        rowsB: rowsOf('balB'),
+      },
+    } satisfies Rules;
+    let differing = 0;
+    for (const seed of sharedSeeds) {
+      const record = generate(rules, seed);
+      const read = (rows: unknown, balance: string) =>
+        (rows as { detail: { v: number }; [key: string]: unknown }[]).map(
+          row => ({ v: row.detail.v, balance: row[balance] }),
+        );
+      const a = read(record.rowsA, 'balA');
+      const b = read(record.rowsB, 'balB');
+      if (JSON.stringify(a.map(r => r.v)) !== JSON.stringify(b.map(r => r.v)))
+        differing++;
+      for (const [rows] of [[a], [b]] as const) {
+        let running = 100;
+        for (const row of rows) {
+          running += row.v;
+          expect(row.balance).toBe(running);
+        }
+      }
+    }
+    expect(differing).toBeGreaterThan(0);
+  });
+});

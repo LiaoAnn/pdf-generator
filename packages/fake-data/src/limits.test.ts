@@ -485,3 +485,44 @@ test.each([
   },
   15_000,
 );
+
+test.each([
+  [
+    'keeps every printed balance of extreme-magnitude constants fast and exact (largest opening, smallest-denormal add/subtract)',
+    '1.7976931348623157e308',
+  ],
+  [
+    'keeps every printed balance of denormal add/subtract constants fast and exact (opening 1)',
+    '1',
+  ],
+])(
+  '%s',
+  (_regression, opening) => {
+    guardedGeneration(`
+      const opening = ${opening};
+      // 8,000 rows × 10 balances = 80,000 derived steps; ~96,000 values.
+      const rules = rulesFor({
+        opening: constant(opening),
+        rows: array(8_000, object({
+          p: constant(5e-324),
+          q: constant(5e-324),
+          ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
+            'b' + i,
+            { type: 'runningBalance', opening: 'opening', add: ['rows[].p'], subtract: ['rows[].q'] },
+          ])),
+        })),
+      });
+      const start = performance.now();
+      const record = generate(rules, 'extreme-constants');
+      const elapsed = performance.now() - start;
+      assert.ok(elapsed < 2_000, 'extreme constants took ' + elapsed.toFixed(1) + ' ms');
+      assert.equal(record.rows.length, 8_000);
+      for (const [i, row] of record.rows.entries()) {
+        for (let b = 0; b < 10; b++) {
+          assert.equal(row['b' + b], opening, 'row ' + i + ', balance ' + b);
+        }
+      }
+    `);
+  },
+  15_000,
+);

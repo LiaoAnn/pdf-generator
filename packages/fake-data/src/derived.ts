@@ -11,7 +11,15 @@ import type { FakeRecord, FakeValue } from './schema.ts';
 type Decimal = { units: bigint; scale: number };
 
 const zero: Decimal = { units: 0n, scale: 0 };
-const pow10 = (n: number) => 10n ** BigInt(n);
+const powers: bigint[] = [];
+const pow10 = (n: number) => {
+  let power = powers[n];
+  if (power === undefined) {
+    power = 10n ** BigInt(n);
+    powers[n] = power;
+  }
+  return power;
+};
 const negate = (a: Decimal): Decimal => ({ units: -a.units, scale: a.scale });
 
 function toDecimal(value: number): Decimal {
@@ -35,13 +43,23 @@ function add(a: Decimal, b: Decimal): Decimal {
   };
 }
 
-// Without trailing zeros, so equal values compare equal.
+// Without trailing zeros, so equal values compare equal. The zeros are
+// found by halving steps (divisibility by 10^k is monotone in k), a few
+// divisions however long the number is.
 function normal({ units, scale }: Decimal): Decimal {
-  while (scale > 0 && units % 10n === 0n) {
-    units /= 10n;
-    scale--;
+  if (units === 0n) return { units, scale: 0 };
+  let zeros = 0;
+  for (
+    let step = 2 ** Math.floor(Math.log2(scale || 1));
+    step >= 1;
+    step /= 2
+  ) {
+    if (zeros + step <= scale && units % pow10(step) === 0n) {
+      units /= pow10(step);
+      zeros += step;
+    }
   }
-  return { units, scale };
+  return { units, scale: scale - zeros };
 }
 
 /** The number that prints as exactly `value`, or undefined if there is none. */
@@ -260,32 +278,47 @@ type Slot = { holder: Container; key: string | number; bound: Bound };
  * `[]` (a derived field's own path may hold several, for an array of
  * arrays). An item step names its array by the array's rule, so binding
  * and lookups never depend on how long the names are. Each step also names
- * the rule it reaches (`at`, the same for every path through it) and the
- * arrays passed so far.
+ * its prefix (`at`, the same object for every path with that prefix, even
+ * when the rules reuse one rule object in two places) and the arrays
+ * passed so far.
  */
+type Prefix = Map<string, Prefix>;
 type Step = ({ key: string } | { items: RuleField }) & {
-  at: RuleField;
+  at: Prefix;
   arrays: RuleField[];
 };
 type Compiled = { steps: Step[]; arrays: RuleField[] };
 
 function compiler(rules: Rules) {
   const compiled = new Map<string, Compiled>();
+  // A trie of prefixes: a key, or `[]` (never a key) for the items.
+  const root: Prefix = new Map();
+  const below = (prefix: Prefix, step: string) => {
+    let child = prefix.get(step);
+    if (child === undefined) {
+      child = new Map();
+      prefix.set(step, child);
+    }
+    return child;
+  };
   return (path: string): Compiled => {
     const known = compiled.get(path);
     if (known) return known;
     const steps: Step[] = [];
     const arrays: RuleField[] = [];
     let fields: Rules['fields'] | undefined = rules.fields;
+    let at = root;
     for (const segment of path.split('.')) {
       const name = segment.replace(/(\[\])+$/, '');
       let field: RuleField | undefined = fields?.[name];
       if (field === undefined) throw new Error(`no field at ${path}`);
-      steps.push({ key: name, at: field, arrays: [...arrays] });
+      at = below(at, name);
+      steps.push({ key: name, at, arrays: [...arrays] });
       for (let i = name.length; i < segment.length; i += 2) {
         if (field.type !== 'array') throw new Error(`no array at ${path}`);
         arrays.push(field);
-        steps.push({ items: field, at: field.items, arrays: [...arrays] });
+        at = below(at, '[]');
+        steps.push({ items: field, at, arrays: [...arrays] });
         field = field.items;
       }
       fields = field.type === 'object' ? field.fields : undefined;
@@ -364,7 +397,7 @@ export function fillDerived(
   // way, or only the items `bound` names. The nodes after each step are
   // kept per rule reached and binding, so paths sharing a prefix walk it
   // once (the record's shape doesn't change while derived fields fill).
-  const prefixes = new Map<RuleField, Map<string, Node[]>>();
+  const prefixes = new Map<Prefix, Map<string, Node[]>>();
   const slots = (path: Compiled, bound: Bound = new Map()): Slot[] => {
     let nodes: Node[] = [{ value: record, bound: new Map() }];
     const { steps } = path;
