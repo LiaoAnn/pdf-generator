@@ -134,7 +134,7 @@ function field(path: (string | number)[]): string {
     .join('');
 }
 
-function location(detail: Detail, code: string | undefined) {
+function location(detail: Detail) {
   const parts: string[] = [];
   if (detail.file !== undefined) {
     let place = detail.file;
@@ -148,7 +148,9 @@ function location(detail: Detail, code: string | undefined) {
     parts.push(`欄位 ${field(detail.path)}`);
   }
   if (parts.length > 0) return parts.join('，');
-  return code !== undefined && code in packIssues ? '整個樣板包' : undefined;
+  return detail.code !== undefined && detail.code in packIssues
+    ? '整個樣板包'
+    : undefined;
 }
 
 function explainDetail(detail: Detail): ExplainedIssue {
@@ -158,7 +160,7 @@ function explainDetail(detail: Detail): ExplainedIssue {
     explanation:
       (code !== undefined && (packIssues[code] ?? printIssues[code])) ||
       fallback,
-    location: location(detail, code),
+    location: location(detail),
     raw: detail.message,
   };
 }
