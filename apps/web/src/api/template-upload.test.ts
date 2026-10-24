@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, constants } from 'node:zlib';
 import {
   apiErrorSchema,
   type Manifest,
@@ -24,7 +25,9 @@ import {
   type PackIssue,
 } from '../../../../packages/template-tools/src/index.ts';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
+import * as schema from '../db/schema.ts';
 import { templates } from '../db/schema.ts';
+import { templateStore } from '../templates/store.ts';
 import { createFetchHandler } from '../worker.ts';
 
 const fixtures = new URL(
@@ -105,6 +108,40 @@ function addAssets(files: Files, assets: Files) {
   Object.assign(files, assets, {
     'manifest.json': strToU8(JSON.stringify(manifest)),
   });
+}
+
+// A tiny compressed file whose name-only stream has a known decompression
+// cost. No outlines are needed: upload treats font assets as opaque bytes.
+function budgetFont(name: string, outputLength: number): Uint8Array {
+  const stream = Buffer.alloc(outputLength);
+  const text = Buffer.from(name, 'utf16le').swap16();
+  stream.writeUInt16BE(1, 2);
+  stream.writeUInt16BE(18, 4);
+  stream.writeUInt16BE(3, 6);
+  stream.writeUInt16BE(1, 8);
+  stream.writeUInt16BE(0x409, 10);
+  stream.writeUInt16BE(6, 12);
+  stream.writeUInt16BE(text.length, 14);
+  text.copy(stream, 18);
+  const compressed = brotliCompressSync(stream, {
+    params: { [constants.BROTLI_PARAM_QUALITY]: 0 },
+  });
+  const length = [outputLength & 127];
+  for (
+    let rest = Math.floor(outputLength / 128);
+    rest;
+    rest = Math.floor(rest / 128)
+  ) {
+    length.unshift((rest & 127) | 128);
+  }
+  const directory = Buffer.from([5, ...length]);
+  const header = Buffer.alloc(48);
+  header.write('wOF2');
+  header.writeUInt32BE(0x00010000, 4);
+  header.writeUInt32BE(48 + directory.length + compressed.length, 8);
+  header.writeUInt16BE(1, 12);
+  header.writeUInt32BE(compressed.length, 20);
+  return Buffer.concat([header, directory, compressed]);
 }
 
 async function upload(bytes: Uint8Array) {
@@ -189,6 +226,128 @@ afterAll(async () => {
 }, 30_000);
 
 describe('template upload HTTP acceptance with local D1 and R2', () => {
+  test('stored pack stops discovering font names after 64 MiB of cumulative decompressed font output', async () => {
+    const files = pack({ id: 'font-decompression-budget' });
+    addAssets(files, {
+      'assets/first.woff2': budgetFont('First-Within-Budget', 32 * 1024 * 1024),
+      'assets/second.woff2': budgetFont(
+        'Second-Within-Budget',
+        32 * 1024 * 1024,
+      ),
+      'assets/beyond.woff2': budgetFont('Beyond-Pack-Budget', 256),
+    });
+    const summary = await upload(zipSync(files));
+    const stored = await templateStore(
+      drizzle(platform.env.DB, { schema }),
+      platform.env.FILES,
+    ).get(summary.id, summary.version);
+    expect(stored?.fonts).toEqual([
+      'First-Within-Budget',
+      'Second-Within-Budget',
+    ]);
+    // Exhausting name discovery must not discard assets used by rendering.
+    expect(stored?.files['assets/beyond.woff2']).toBe(
+      Buffer.from(requiredBytes(files['assets/beyond.woff2'])).toString(
+        'base64',
+      ),
+    );
+  });
+
+  test('uploaded pack read-back preserves every zip file as base64 and discovers its real WOFF2 PostScript name', async () => {
+    const files = pack({ id: 'real-pack-font' });
+    files['assets/report.woff2'] = new Uint8Array(
+      await readFile(
+        new URL(
+          '../../../print/src/test-fixtures/pack-font/report.woff2',
+          import.meta.url,
+        ),
+      ),
+    );
+    const summary = await upload(zipSync(files));
+    const stored = await templateStore(
+      drizzle(platform.env.DB, { schema }),
+      platform.env.FILES,
+    ).get(summary.id, summary.version);
+    expect(stored).toBeDefined();
+    expect.soft(stored?.fonts).toEqual(['LXGWWenKaiTC-Regular']);
+    expect(stored?.files).toBeDefined();
+    expect(Object.keys(stored?.files ?? {}).sort()).toEqual(
+      Object.keys(files).sort(),
+    );
+    for (const [path, bytes] of Object.entries(files)) {
+      expect(stored?.files[path], path).toBe(
+        Buffer.from(bytes).toString('base64'),
+      );
+      expect(
+        new Uint8Array(Buffer.from(stored?.files[path] ?? '', 'base64')),
+        path,
+      ).toEqual(bytes);
+    }
+  });
+
+  test('stored font names are sorted and unique across case-insensitive font paths while unreadable fonts are ignored', async () => {
+    const files = pack({ id: 'multiple-pack-fonts' });
+    const [noto, wenkai] = await Promise.all([
+      readFile(
+        new URL(
+          '../../../print/public/fonts/NotoSansTC-Regular.otf',
+          import.meta.url,
+        ),
+      ),
+      readFile(
+        new URL(
+          '../../../print/src/test-fixtures/pack-font/report.woff2',
+          import.meta.url,
+        ),
+      ),
+    ]);
+    addAssets(files, {
+      'assets/z-font.OTF': new Uint8Array(noto),
+      'assets/a-font.WOFF2': new Uint8Array(wenkai),
+      'assets/duplicate.woff2': new Uint8Array(wenkai),
+      'assets/not-a-font.ttf': strToU8('not a font'),
+    });
+    // The original assets/report.woff2 is deliberately still the unreadable placeholder.
+    const summary = await upload(zipSync(files));
+    const stored = await templateStore(
+      drizzle(platform.env.DB, { schema }),
+      platform.env.FILES,
+    ).get(summary.id, summary.version);
+    expect(stored?.fonts).toEqual([
+      'LXGWWenKaiTC-Regular',
+      'NotoSansTC-Regular',
+    ]);
+  });
+
+  test.each(['png', 'WOFF2', 'txt'])(
+    'refuses a .%s pack file over the print limit with a 400 invalid_template_pack path-specific issue naming 16777216',
+    async extension => {
+      const files = pack();
+      const path = `assets/too-large.${extension}`;
+      addAssets(files, {
+        [path]: new Uint8Array(16 * 1024 * 1024 + 1).fill(32),
+      });
+      const error = await refused(zipSync(files), 400);
+      expect(error.code).toBe('invalid_template_pack');
+      expect(error.details).toContainEqual({
+        file: path,
+        message: expect.stringMatching(/^file-too-large: /),
+      });
+      const issue = error.details?.find(
+        detail =>
+          detail.file === path &&
+          detail.message.startsWith('file-too-large:') &&
+          detail.message.includes('16777216'),
+      );
+      expect(issue?.message).toContain(path);
+      expect(issue?.message).toContain('16777216');
+      if (extension !== 'txt') {
+        files[path] = new Uint8Array(16 * 1024 * 1024).fill(32);
+        await upload(zipSync(files));
+      }
+    },
+  );
+
   test('re-uploading identical bytes adds versions and later changes preserve the original download', async () => {
     const bytes = zipSync(valid);
     const first = await upload(bytes);

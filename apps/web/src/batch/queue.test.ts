@@ -44,7 +44,11 @@ const sendEvent = vi.fn(
 );
 const get = vi.fn(async (_id: string) => ({ sendEvent }));
 const check = vi.fn(
-  async (_pdf: Uint8Array, _gt: GroundTruth): Promise<SelfCheckReport> => ({
+  async (
+    _pdf: Uint8Array,
+    _gt: GroundTruth,
+    _fonts: readonly string[],
+  ): Promise<SelfCheckReport> => ({
     ok: true,
     differences: [],
   }),
@@ -441,8 +445,9 @@ test('records each fixture self-check in R2 and D1, including a mismatch that st
     printed.set(job.source.index, value);
     return { ...value, pdf: value.pdf.slice() };
   });
-  const inspect = vi.fn(async (_pdf: Uint8Array, gt: GroundTruth) =>
-    gt.source.index === 0 ? passingReport : mismatchReport,
+  const inspect = vi.fn(
+    async (_pdf: Uint8Array, gt: GroundTruth, _fonts: readonly string[]) =>
+      gt.source.index === 0 ? passingReport : mismatchReport,
   );
   const messages = [message(id, 0), message(id, 1)];
   await handleFixtureMessages(messages, {
@@ -467,7 +472,7 @@ test('records each fixture self-check in R2 and D1, including a mismatch that st
     if (!value) throw new Error(`print did not return a PDF for ${index}`);
     expect(await storedPdf(id, index)).toEqual(value.pdf);
     expect(await storedGroundTruth(id, index)).toEqual(value.gt);
-    expect(inspect).toHaveBeenCalledWith(value.pdf, value.gt);
+    expect(inspect).toHaveBeenCalledWith(value.pdf, value.gt, []);
   }
   for (const msg of messages) acknowledged(msg);
   expect(await progress(id)).toEqual({ completed: 2, failed: 0 });
@@ -495,7 +500,7 @@ test('retries a throwing checker, then fails the fixture with null check columns
     const msg = message(id, 0, attempt);
     await handleFixtureMessages([msg], withChecker());
     expect(printedGt, 'printed gt').toBeDefined();
-    expect(inspect).toHaveBeenCalledWith(bytes, printedGt);
+    expect(inspect).toHaveBeenCalledWith(bytes, printedGt, []);
     retried(msg);
     expect(await rows(id)).toEqual([]);
     expect(await storedText(id, 0, 'check.json')).toBeNull();

@@ -9,6 +9,13 @@ const request: Parameters<Printer['print']>[0] = {
   html: '<html><head></head><body>測試</body></html>',
   page: { size: 'A4', orientation: 'landscape' },
   source: gt.source,
+  pack: {
+    template: 'pages/report.html',
+    files: {
+      'pages/report.html': 'PGh0bWw+',
+      'fonts/report.woff2': 'AAEAgP8=',
+    },
+  },
 };
 const pdf = new Uint8Array([37, 80, 68, 70, 0, 128, 255, 10]);
 type Fetch = (

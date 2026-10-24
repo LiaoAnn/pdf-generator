@@ -7,6 +7,8 @@ interface PrintJob {
   html: string;
   page: { size: 'A4'; orientation: 'portrait' | 'landscape' };
   source: GroundTruth['source'];
+  /** The pack's files the page loads by relative URL (/print's `pack`). */
+  pack: { template: string; files: Record<string, string> };
 }
 
 /** A document to print without reading its ground truth (the preview). */

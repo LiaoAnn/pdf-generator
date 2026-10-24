@@ -13,6 +13,12 @@ import { unzipBounded } from './unzip.ts';
 export const maxUploadBytes = 10 * 1024 * 1024;
 /** Largest pack once unzipped, binary files included. */
 export const maxPackBytes = 20 * 1024 * 1024;
+/**
+ * Largest single file: the print Worker refuses a pack file over 16 MiB
+ * (apps/print packLimits.fileBytes), so such a pack could never print. Its
+ * 24 MiB for the whole pack is above maxPackBytes.
+ */
+const maxFileBytes = 16 * 1024 * 1024;
 const maxFiles = 200;
 const maxTextFileBytes = 64 * 1024;
 const maxTextBytes = 256 * 1024;
@@ -48,6 +54,13 @@ export function unzipWithinLimits(
   const issues: PackIssue[] = [];
   let text = 0;
   for (const [path, bytes] of entries) {
+    if (bytes.byteLength > maxFileBytes) {
+      issues.push({
+        code: 'file-too-large',
+        file: path,
+        message: `${path} is ${bytes.byteLength} bytes, more than the print limit of ${maxFileBytes} per file`,
+      });
+    }
     if (binary.test(path)) continue;
     text += bytes.byteLength;
     if (bytes.byteLength > maxTextFileBytes) {

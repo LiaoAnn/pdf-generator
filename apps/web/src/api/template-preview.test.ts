@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
@@ -12,6 +13,7 @@ import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { templates } from '../db/schema.ts';
+import { fixtureReport, storeFixturePack } from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 
 type Files = Record<string, Uint8Array>;
@@ -82,7 +84,7 @@ function pack(heading: string, approved = true) {
   };
   delete files['data/sample.json'];
   delete files['styles/report.css'];
-  return { files, manifest, styles, heading, approved };
+  return { files, manifest, heading, approved };
 }
 
 function request(path: string, bytes?: Uint8Array) {
@@ -133,6 +135,14 @@ beforeAll(async () => {
       import.meta.url,
     ),
   );
+  valid['assets/report.woff2'] = new Uint8Array(
+    await readFile(
+      new URL(
+        '../../../print/src/test-fixtures/pack-font/report.woff2',
+        import.meta.url,
+      ),
+    ),
+  );
   platform = await getPlatformProxy<Env>({
     configPath: fileURLToPath(new URL('../../wrangler.jsonc', import.meta.url)),
     persist: false,
@@ -157,7 +167,7 @@ afterAll(async () => {
   await platform?.dispose();
 }, 30_000);
 
-test('preview HTTP returns unchanged inline PDF bytes and prints each version’s own filled sample after a newer upload', async () => {
+test('preview prints each version’s own pack files and linked stylesheets with its filled sample and unchanged PDF bytes', async () => {
   const v1 = pack('第一版月報');
   const v2 = pack('第二版月報', false);
   const first = await upload(v1);
@@ -192,6 +202,15 @@ test('preview HTTP returns unchanged inline PDF bytes and prints each version’
     expect(body).toEqual({
       html: expect.any(String),
       page: value.manifest.page,
+      pack: {
+        template: value.manifest.files.template,
+        files: Object.fromEntries(
+          Object.entries(value.files).map(([path, bytes]) => [
+            path,
+            Buffer.from(bytes).toString('base64'),
+          ]),
+        ),
+      },
     });
     expect(body.html).toContain(`<h1 data-gt="title">${value.heading}</h1>`);
     expect(body.html).toContain(`${value.heading}範例有限公司`);
@@ -205,43 +224,79 @@ test('preview HTTP returns unchanged inline PDF bytes and prints each version’
     expect(body.html).not.toContain(other.heading);
     expect(body.html).not.toContain('{{');
     const head = /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(body.html)?.[1] ?? '';
-    expect(
-      [...head.matchAll(/<style\b[^>]*>\s*([\s\S]*?)<\/style>/gi)].map(match =>
-        match[1]?.trim(),
-      ),
-    ).toEqual(value.styles.map(css => css.trim()));
+    expect(head).not.toMatch(/<style\b/i);
+    expect(head).toMatch(
+      /<link rel="stylesheet" href="\.\.\/styles\/z-first\.css">\s*<link rel="stylesheet" href="\.\.\/styles\/a-last\.css">\s*$/,
+    );
   }
 });
 
-test('an unprintable pack returns preview_failed with the print summary and all detail messages in order', async () => {
-  const uploaded = await upload();
-  printFetch.mockResolvedValueOnce(
-    Response.json(
-      {
-        error: {
-          code: 'font_not_loaded',
-          message: 'Some font faces did not load',
-          details: [
-            { message: 'Report Sans normal: error' },
-            { message: 'Report Sans bold: error' },
-          ],
-        },
-      },
-      { status: 422 },
-    ),
-  );
-  const failure = await error(
-    await preview(uploaded.id, uploaded.version),
-    422,
-    'preview_failed',
-  );
-  expect(failure.details).toEqual([
-    { message: 'font_not_loaded: Some font faces did not load' },
-    { message: 'Report Sans normal: error' },
-    { message: 'Report Sans bold: error' },
-  ]);
+test('the bundled platform-font pack previews with its root-relative stylesheet and complete files', async () => {
+  await storeFixturePack(platform.env);
+  const response = await preview(fixtureReport.manifest.id, 1);
+  expect(response.status).toBe(200);
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(pdf);
   expect(printFetch).toHaveBeenCalledOnce();
+  const call = printFetch.mock.calls[0];
+  if (!call) throw new Error('Preview did not call PRINT');
+  const body = (await new Request(...call).json()) as {
+    html: string;
+    pack: unknown;
+  };
+  expect(body.pack).toEqual({
+    template: 'template.hbs',
+    files: fixtureReport.files,
+  });
+  expect(body.html).toMatch(
+    /<link rel="stylesheet" href="styles\.css">\s*<\/head>/,
+  );
+  expect(body.html).not.toMatch(/<style\b/i);
 });
+
+test.each([
+  {
+    status: 422,
+    code: 'font_not_loaded',
+    message: 'Some font faces did not load',
+    details: ['Report Sans normal: error', 'Report Sans bold: error'],
+  },
+  {
+    status: 413,
+    code: 'pack_too_large',
+    message: 'Pack exceeds the print size limit',
+    details: [
+      'assets/report.woff2 exceeds the file size limit',
+      'Pack decoded size exceeds the total limit',
+    ],
+  },
+])(
+  'printer $status $code becomes preview_failed preserving the summary and ordered file details',
+  async ({ status, code, message, details }) => {
+    const uploaded = await upload();
+    printFetch.mockResolvedValueOnce(
+      Response.json(
+        {
+          error: {
+            code,
+            message,
+            details: details.map(message => ({ message })),
+          },
+        },
+        { status },
+      ),
+    );
+    const failure = await error(
+      await preview(uploaded.id, uploaded.version),
+      422,
+      'preview_failed',
+    );
+    expect(failure.details).toEqual([
+      { message: `${code}: ${message}` },
+      ...details.map(message => ({ message })),
+    ]);
+    expect(printFetch).toHaveBeenCalledOnce();
+  },
+);
 
 test.each(['throws', 'non-JSON 502'])(
   'an unavailable printer (%s) returns a readable print_unavailable API error',

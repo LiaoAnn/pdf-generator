@@ -106,7 +106,22 @@ function pack(heading: string, approved = true) {
     'styles/a-last.css': strToU8(styles[1] ?? ''),
   };
   delete (files as Files)['styles/report.css'];
-  return { files, decoded: { manifest, template, styles, rules, sample } };
+  return {
+    files,
+    decoded: {
+      manifest,
+      template,
+      rules,
+      sample,
+      files: Object.fromEntries(
+        Object.entries(files).map(([path, bytes]) => [
+          path,
+          Buffer.from(bytes).toString('base64'),
+        ]),
+      ),
+      fonts: [],
+    },
+  };
 }
 
 function request(path: string, body?: string | Uint8Array) {
@@ -325,11 +340,10 @@ test.each([true, false])(
     expect(first?.html).not.toContain('{{');
     const head =
       /<head\b[^>]*>([\s\S]*?)<\/head>/i.exec(first?.html ?? '')?.[1] ?? '';
-    expect(
-      [...head.matchAll(/<style\b[^>]*>\s*([\s\S]*?)<\/style>/gi)].map(match =>
-        match[1]?.trim(),
-      ),
-    ).toEqual(value.styles.map(css => css.trim()));
+    expect(head).toMatch(
+      /<link rel="stylesheet" href="\.\.\/styles\/z-first\.css">\s*<link rel="stylesheet" href="\.\.\/styles\/a-last\.css">\s*$/,
+    );
+    expect(head).not.toMatch(/<style\b/i);
     expect(first?.page).toEqual(value.manifest.page);
     const bytes = await stored(job);
     const record = JSON.parse(strFromU8(bytes));

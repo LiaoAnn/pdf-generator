@@ -87,7 +87,7 @@ test('selfChecker rejects an unreadable PDF instead of reporting a pass', async 
   // checker could not read as a passed fixture.
   const gt = gtSchema.parse(gtExample);
   await expect(
-    selfChecker.check(new Uint8Array([1, 2, 3, 4]), gt),
+    selfChecker.check(new Uint8Array([1, 2, 3, 4]), gt, []),
   ).rejects.toThrow();
 });
 
@@ -193,6 +193,7 @@ test.each(platformFonts)(
     const report = await selfChecker.check(
       pdf,
       lineGroundTruth(platformRun + fallbackRun),
+      [],
     );
     expect(report.ok).toBe(false);
     expect(report.differences).toEqual([
@@ -205,3 +206,34 @@ test.each(platformFonts)(
     ]);
   },
 );
+
+test('selfChecker adds pack fonts without rejecting platform fonts or allowing unrelated fonts', async () => {
+  // Regression: ignoring pack fonts flags the pack's face; replacing platform
+  // fonts flags platform text; disabling font checks silently allows fallback.
+  const runs = [
+    { font: 'NotoSansTC-Regular', text: platformRun },
+    { font: fallbackFont, text: fallbackRun },
+  ];
+  const fonts: readonly string[] = Object.freeze([fallbackFont]);
+  expect(platformFonts).not.toContain(fallbackFont);
+  const allowed = await selfChecker.check(
+    textInFonts(runs),
+    lineGroundTruth(platformRun + fallbackRun),
+    fonts,
+  );
+  expect.soft(allowed).toEqual({ ok: true, differences: [] });
+  const rejected = await selfChecker.check(
+    textInFonts([...runs, { font: 'Times-Roman', text: 'Fallback' }]),
+    lineGroundTruth(`${platformRun}${fallbackRun}Fallback`),
+    fonts,
+  );
+  expect.soft(rejected.ok).toBe(false);
+  expect.soft(rejected.differences).toEqual([
+    expect.objectContaining({
+      kind: 'font',
+      font: 'Times-Roman',
+      text: 'Fallback',
+      page: 1,
+    }),
+  ]);
+});
