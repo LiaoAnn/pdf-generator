@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "bank-statement",
+  "name": "銀行對帳單",
+  "description": "銀行綜合存款對帳單：銀行標誌、郵寄條碼、客服資訊框、帳戶摘要與無框線交易明細（依日期排序、逐筆餘額）。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "template.hbs",
+    "styles": ["styles/bank-statement.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": ["assets/logo.svg"]
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "bank": {
+      "type": "object",
+      "fields": {
+        "name": {
+          "type": "choice",
+          "description": "Fictional bank names.",
+          "options": [
+            "臺灣永泰商業銀行",
+            "合信商業銀行",
+            "宏昇商業銀行",
+            "瑞豐商業銀行",
+            "安和聯合商業銀行"
+          ]
+        },
+        "branch": {
+          "type": "choice",
+          "options": [
+            "信義分行",
+            "中山分行",
+            "板橋分行",
+            "桃園分行",
+            "臺中分行",
+            "府城分行",
+            "高雄分行",
+            "新竹分行"
+          ]
+        },
+        "branchPhone": {
+          "type": "phone",
+          "kind": "landline"
+        },
+        "businessId": {
+          "type": "businessId"
+        },
+        "address": {
+          "type": "address"
+        }
+      }
+    },
+    "customer": {
+      "type": "object",
+      "fields": {
+        "name": {
+          "type": "name"
+        },
+        "address": {
+          "type": "address"
+        }
+      }
+    },
+    "account": {
+      "type": "object",
+      "fields": {
+        "number": {
+          "type": "integer",
+          "min": 10000000000000,
+          "max": 99999999999999
+        }
+      }
+    },
+    "statementDigits": {
+      "type": "array",
+      "description": "The statement number, one digit per item, so the template can draw each Code 39 character.",
+      "minItems": 10,
+      "maxItems": 10,
+      "items": {
+        "type": "integer",
+        "min": 0,
+        "max": 9
+      }
+    },
+    "periodStart": {
+      "type": "constant",
+      "value": "2026-09-01"
+    },
+    "periodEnd": {
+      "type": "constant",
+      "value": "2026-09-30"
+    },
+    "issueDate": {
+      "type": "constant",
+      "value": "2026-10-03"
+    },
+    "opening": {
+      "type": "money",
+      "description": "At least 32 rows × the largest withdrawal, so no balance goes negative.",
+      "min": 400000,
+      "max": 2500000,
+      "decimals": 0
+    },
+    "transactions": {
+      "type": "array",
+      "minItems": 8,
+      "maxItems": 32,
+      "sortBy": "date",
+      "items": {
+        "type": "object",
+        "fields": {
+          "date": {
+            "type": "date",
+            "min": "2026-09-01",
+            "max": "2026-09-30"
+          },
+          "summary": {
+            "type": "choice",
+            "options": [
+              "跨行轉帳",
+              "網路轉帳",
+              "臨櫃交易",
+              "ATM 交易",
+              "自動扣繳",
+              "行動支付",
+              "票據交換"
+            ]
+          },
+          "withdrawal": {
+            "type": "money",
+            "min": 100,
+            "max": 12000,
+            "decimals": 0,
+            "blankProbability": 0.45
+          },
+          "deposit": {
+            "type": "money",
+            "min": 500,
+            "max": 50000,
+            "decimals": 0,
+            "blankProbability": 0.55
+          },
+          "balance": {
+            "type": "runningBalance",
+            "opening": "opening",
+            "add": ["transactions[].deposit"],
+            "subtract": ["transactions[].withdrawal"]
+          },
+          "note": {
+            "type": "choice",
+            "options": [
+              "台電公司",
+              "中華電信",
+              "自來水費",
+              "房屋租金",
+              "信用卡款",
+              "網購退款",
+              "保險費",
+              "管理費"
+            ],
+            "blankProbability": 0.6
+          }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "fields": {
+        "deposits": {
+          "type": "sum",
+          "of": ["transactions[].deposit"]
+        },
+        "withdrawals": {
+          "type": "sum",
+          "of": ["transactions[].withdrawal"]
+        }
+      }
+    }
+  }
+}

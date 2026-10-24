@@ -1,0 +1,176 @@
+/* 銀行對帳單 (T26). Every printed element is a data-gt block on its own
+   line: no two inline blocks share a line (backlog T14-1). The page header
+   and footer are Paged.js running elements; no page number (counter(page)
+   text can't carry data-gt). The transaction table has no rules at all:
+   columns are kept apart by fixed widths and right-aligned amounts. */
+
+@page {
+  size: A4 portrait;
+  margin: 22mm 16mm 20mm;
+  @top-center {
+    content: element(pageHeader);
+    vertical-align: bottom;
+    padding-bottom: 4mm;
+  }
+  @bottom-center {
+    content: element(pageFooter);
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+}
+
+html {
+  font-family: "Noto Sans TC", sans-serif;
+  font-size: 10pt;
+  line-height: 1.5;
+  color: #1f2933;
+}
+
+body {
+  margin: 0;
+}
+
+p {
+  margin: 0;
+}
+
+.running-header {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageHeader);
+  font-size: 8.5pt;
+  color: #52606d;
+}
+
+.running-footer {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageFooter);
+  font-size: 8pt;
+  color: #52606d;
+}
+
+.masthead {
+  display: flex;
+  align-items: flex-start;
+  gap: 4mm;
+}
+
+.logo {
+  width: 16mm;
+  height: 16mm;
+  flex: none;
+}
+
+.bank {
+  flex: 1;
+  font-size: 9pt;
+}
+
+.bank-name {
+  font-size: 15pt;
+  font-weight: bold;
+  color: #0b4f8a;
+  line-height: 1.3;
+}
+
+.service {
+  flex: none;
+  width: 58mm;
+  border: 1pt solid #0b4f8a;
+  border-radius: 2mm;
+  padding: 2mm 3mm;
+  font-size: 8.5pt;
+}
+
+.service-title {
+  font-weight: bold;
+  color: #0b4f8a;
+}
+
+.recipient {
+  margin: 8mm 0 0 8mm;
+  width: 95mm;
+  font-size: 11pt;
+}
+
+.recipient-name {
+  font-size: 13pt;
+  font-weight: bold;
+}
+
+h1 {
+  margin: 8mm 0 3mm;
+  font-size: 16pt;
+  text-align: center;
+  letter-spacing: 0.2em;
+}
+
+h2 {
+  margin: 5mm 0 2mm;
+  font-size: 11pt;
+}
+
+table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 1mm 1.5mm;
+  text-align: left;
+  vertical-align: top;
+}
+
+.summary {
+  border: 0.75pt solid #9aa5b1;
+}
+
+.summary th {
+  color: #52606d;
+  font-weight: normal;
+}
+
+.transactions th,
+.transactions td {
+  border: none;
+}
+
+.transactions th {
+  font-weight: bold;
+  color: #0b4f8a;
+}
+
+.num {
+  text-align: right;
+}
+
+.notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 8.5pt;
+  color: #52606d;
+}
+
+/* Code 39 mailing barcode: one svg per character, 16 units wide
+   (15 of bars and spaces, 1 of inter-character gap), 0.25 mm per unit. */
+.barcode {
+  /* The block's box is the bars and their quiet zone, not the column. */
+  display: flex;
+  width: fit-content;
+  margin-top: 3mm;
+  padding: 0 2.5mm;
+}
+
+.barcode svg {
+  width: 4mm;
+  height: 9mm;
+  fill: #000;
+}
+
+.barcode-text {
+  font-size: 8pt;
+  letter-spacing: 0.15em;
+  padding-left: 2.5mm;
+}

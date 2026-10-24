@@ -474,6 +474,33 @@ importers:
         specifier: 'catalog:'
         version: 4.1.12(@types/node@24.13.6)(vite@8.3.5(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
 
+  templates/bank-statement:
+    devDependencies:
+      '@pdf-generator/contract':
+        specifier: workspace:*
+        version: link:../../packages/contract
+      '@pdf-generator/fake-data':
+        specifier: workspace:*
+        version: link:../../packages/fake-data
+      '@pdf-generator/template-tools':
+        specifier: workspace:*
+        version: link:../../packages/template-tools
+      '@types/node':
+        specifier: ^24.13.6
+        version: 24.13.6
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
+      parse5:
+        specifier: ^8.0.1
+        version: 8.0.1
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.12(@types/node@24.13.6)(vite@8.3.5(@types/node@24.13.6)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15)(yaml@2.9.1))
+
   templates/financial-statement:
     devDependencies:
       '@pdf-generator/contract':

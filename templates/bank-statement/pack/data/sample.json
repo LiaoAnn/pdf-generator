@@ -1,0 +1,179 @@
+{
+  "bank": {
+    "name": "宏昇商業銀行",
+    "branch": "高雄分行",
+    "branchPhone": "04-5089-7563",
+    "businessId": "44311571",
+    "address": "407臺中市西屯區和平路233號18樓"
+  },
+  "customer": {
+    "name": "李惠宜",
+    "address": "411臺中市太平區公園路388號12樓"
+  },
+  "account": {
+    "number": 39120647402621
+  },
+  "statementDigits": [3, 0, 9, 1, 5, 7, 2, 8, 4, 6],
+  "periodStart": "2026-09-01",
+  "periodEnd": "2026-09-30",
+  "issueDate": "2026-10-03",
+  "opening": 714022,
+  "transactions": [
+    {
+      "date": "2026-09-02",
+      "summary": "自動扣繳",
+      "withdrawal": null,
+      "deposit": 37277,
+      "balance": 751299,
+      "note": null
+    },
+    {
+      "date": "2026-09-05",
+      "summary": "跨行轉帳",
+      "withdrawal": 2611,
+      "deposit": null,
+      "balance": 748688,
+      "note": "管理費"
+    },
+    {
+      "date": "2026-09-05",
+      "summary": "跨行轉帳",
+      "withdrawal": 4353,
+      "deposit": 44103,
+      "balance": 788438,
+      "note": null
+    },
+    {
+      "date": "2026-09-06",
+      "summary": "行動支付",
+      "withdrawal": null,
+      "deposit": null,
+      "balance": 788438,
+      "note": "保險費"
+    },
+    {
+      "date": "2026-09-06",
+      "summary": "行動支付",
+      "withdrawal": 2421,
+      "deposit": null,
+      "balance": 786017,
+      "note": null
+    },
+    {
+      "date": "2026-09-07",
+      "summary": "ATM 交易",
+      "withdrawal": null,
+      "deposit": null,
+      "balance": 786017,
+      "note": null
+    },
+    {
+      "date": "2026-09-08",
+      "summary": "網路轉帳",
+      "withdrawal": null,
+      "deposit": 41600,
+      "balance": 827617,
+      "note": null
+    },
+    {
+      "date": "2026-09-09",
+      "summary": "票據交換",
+      "withdrawal": 6969,
+      "deposit": 25754,
+      "balance": 846402,
+      "note": null
+    },
+    {
+      "date": "2026-09-13",
+      "summary": "行動支付",
+      "withdrawal": 10564,
+      "deposit": null,
+      "balance": 835838,
+      "note": "中華電信"
+    },
+    {
+      "date": "2026-09-15",
+      "summary": "票據交換",
+      "withdrawal": 11772,
+      "deposit": 37533,
+      "balance": 861599,
+      "note": null
+    },
+    {
+      "date": "2026-09-17",
+      "summary": "自動扣繳",
+      "withdrawal": 10483,
+      "deposit": null,
+      "balance": 851116,
+      "note": null
+    },
+    {
+      "date": "2026-09-18",
+      "summary": "ATM 交易",
+      "withdrawal": 10596,
+      "deposit": 31650,
+      "balance": 872170,
+      "note": "保險費"
+    },
+    {
+      "date": "2026-09-19",
+      "summary": "ATM 交易",
+      "withdrawal": 9503,
+      "deposit": 30725,
+      "balance": 893392,
+      "note": null
+    },
+    {
+      "date": "2026-09-19",
+      "summary": "跨行轉帳",
+      "withdrawal": 11116,
+      "deposit": 12357,
+      "balance": 894633,
+      "note": "台電公司"
+    },
+    {
+      "date": "2026-09-22",
+      "summary": "ATM 交易",
+      "withdrawal": null,
+      "deposit": null,
+      "balance": 894633,
+      "note": null
+    },
+    {
+      "date": "2026-09-23",
+      "summary": "臨櫃交易",
+      "withdrawal": 11673,
+      "deposit": 14283,
+      "balance": 897243,
+      "note": "網購退款"
+    },
+    {
+      "date": "2026-09-26",
+      "summary": "行動支付",
+      "withdrawal": 6619,
+      "deposit": 19491,
+      "balance": 910115,
+      "note": null
+    },
+    {
+      "date": "2026-09-28",
+      "summary": "自動扣繳",
+      "withdrawal": null,
+      "deposit": null,
+      "balance": 910115,
+      "note": null
+    },
+    {
+      "date": "2026-09-30",
+      "summary": "票據交換",
+      "withdrawal": null,
+      "deposit": null,
+      "balance": 910115,
+      "note": null
+    }
+  ],
+  "totals": {
+    "deposits": 294773,
+    "withdrawals": 98680
+  }
+}
