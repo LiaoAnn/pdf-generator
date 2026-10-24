@@ -661,3 +661,21 @@
 - **驗收測試**：兩個樣板各跑一批 10 份，自我檢查全過；gt.json 的日期文字與 PDF 一致；目視確認
 - **不做**：改平台程式、改其他樣板
 - **來源**：PR #36（T06-2）
+
+### T07-16 印 PDF：print runtime 的頁面判定不被樣板偽造
+- **目標**：`apps/print/public/print-runtime.js` 的 `pagedPages()` 用 `.pagedjs_pages > .pagedjs_page` 找頁面，樣板內容裡放同樣的結構就能偽造，讓 expectedText 與頁碼填入對錯頁。改用 T08-1 在 `packages/ground-truth` 定下的同一條規則（`<body>` 直接子層的最後一個 `.pagedjs_pages` 的直接子層 `.pagedjs_page`）
+- **Blocked by**：T08-1
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與 T07-14、T07-15、T07-5、T07-8、T07-9、T07-10 不要同時派
+- **驗收測試**：樣板內容含偽造的 `.pagedjs_pages > .pagedjs_page` 時，頁碼填入與缺字檢查仍以真正的頁面為準；既有樣板 gt.json 不變
+- **不做**：改 ground-truth 的規則
+- **來源**：T08-1 的 ASK
+
+### T07-17 印 PDF：`apps/print` 的 tsconfig 分成 Worker 與 Node 測試
+- **目標**：`apps/print` 的 tsconfig 為了讓 Node 測試與 vitest.config 通過而載入 DOM lib（Worker 的 `URL` 與 Node 的 `URL`、fs、fetch 參數型別不合，共 11 處），而 `packages/template-tools/src/text.ts` 的 `TextDecoder({ fatal: true })` 在 Worker 型別下缺 `ignoreBOM`（1 處）。拆成 Worker 與 Node 測試兩個 program，拿掉 DOM lib
+- **Blocked by**：T08-1
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的測試檔與 tsconfig；`packages/template-tools/src/text.ts`
+- **驗收測試**：`apps/print` 不載入 DOM lib 也能 typecheck；`pnpm verify` 全過；行為不變
+- **不做**：改執行邏輯
+- **來源**：T08-1 的 ASK
