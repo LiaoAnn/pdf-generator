@@ -20,6 +20,7 @@ import { companyName } from './taiwan/company.ts';
 import { businessId, nationalId } from './taiwan/ids.ts';
 import { personName } from './taiwan/names.ts';
 import { phone } from './taiwan/phone.ts';
+import { fillerText } from './text.ts';
 import { date, decimal, decimalRange, isCalendarDate } from './values.ts';
 
 // Not Extract: the contract types name and nationalId as one variant.
@@ -63,7 +64,8 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
       child(field.items, i),
     ),
   checkbox: (field, rng) => rng.chance(field.probability ?? 0.5),
-  text: notYet,
+  text: (field, rng) =>
+    fillerText(rng, field.lang, rng.int(field.minLength, field.maxLength)),
   sum: notYet,
   runningBalance: notYet,
   percentage: notYet,
@@ -77,9 +79,6 @@ function unsupported(field: RuleField): string[] {
     case 'runningBalance':
     case 'percentage':
       features.push('derived field');
-      break;
-    case 'text':
-      features.push('filler text');
       break;
   }
   return features;
