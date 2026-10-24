@@ -254,7 +254,7 @@ A table that breaks across pages becomes one `table` block per page; each later 
 
 ### 4.3 Formulas and images
 
-A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding="application/x-tex">` KaTeX puts inside its MathML (`gt-formula` otherwise). The block's text is what KaTeX visibly renders; the hidden MathML copy doesn't count. KaTeX's HTML must be pre-rendered into the template (no scripts run), and its fonts are pack fonts (§6).
+A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding="application/x-tex">` KaTeX puts inside its MathML (`gt-formula` otherwise). The block's text is what KaTeX visibly renders; the hidden MathML copy doesn't count. KaTeX's HTML must be pre-rendered into the template (no scripts run), and its fonts are pack fonts (§6). The skill's recipe "Formulas (KaTeX)" (`skill/references/recipes.md`) and `templates/paper` show the whole setup: a build script, KaTeX's stock CSS, the woff2 faces and the spacing.
 
 An `image` block's text is `data-gt-text` if present, else the rendered text of an HTML element inside it, else empty. **Text drawn by inline SVG (`<text>`) is not read**: the block's text is empty, the PDF still prints the text, and the self-check fails. Keep text out of inline SVG: put it in HTML next to the drawing, in its own mark.
 
@@ -296,6 +296,7 @@ A `page_number` block holds its fixed text and two kinds of empty slot (no value
 - **Blank fields**: a field that can be `null` (`blankProbability`, or a `percentage` of a zero `whole`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
+- **Columns** (`column-count`): use `column-fill: balance`. With `column-fill: auto`, `break-inside: avoid` can push the whole column block to the next page. Give every block in the columns `break-inside: avoid`: a block split across two columns gets one gt box spanning both. See the recipe "Two columns" in `skill/references/recipes.md` and `templates/paper`.
 
 ## 6. Fonts
 

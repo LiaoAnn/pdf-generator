@@ -28,7 +28,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
    - `$PDF_GENERATOR_REPO/templates/minimal-example/pack/`: one-page minutes; label/value pairs, a table with checkbox cells, a list, a checkbox, a blank field, a footer.
    - `$PDF_GENERATOR_REPO/templates/monthly-report/pack/`: multi-page report; running header and footer, bullet lists, a figure with text, tables that break across pages, sums and percentages.
    - `$PDF_GENERATOR_REPO/templates/incident-form/pack/`: a one-page form built as one big table; merged cells, blank cells, checkbox options in cells.
-3. [references/recipes.md](references/recipes.md): checked snippets for each common layout element, and the print-time traps the checker can't see.
+3. [references/recipes.md](references/recipes.md): checked snippets for each common layout element (two columns and KaTeX formulas included), and the print-time traps the checker can't see.
 4. [references/check-codes.md](references/check-codes.md): what each `check-pack` code means and how to fix it.
 
 ## Workflow
