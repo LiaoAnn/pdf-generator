@@ -1,7 +1,7 @@
 // Printing a document on a Browser Rendering tab. Exported for the print
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect` before the PDF is printed (T03 Must 3).
-import type { Browser, Page } from '@cloudflare/puppeteer';
+import type { Browser, CDPSession, Page } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
 import { getDocumentProxy } from 'unpdf';
 import {
@@ -145,33 +145,87 @@ const runtimePaths = new Set(['/print-runtime.js', '/paged.polyfill.js']);
 const isFavicon = (url: URL) => url.pathname === '/favicon.ico';
 
 /**
- * Lets the tab load only the print's files and the platform's, and aborts
+ * Answers every request `cdp` pauses: continues it when `allow` says so,
+ * fails it otherwise. Returns `settle`, which resolves once every answer sent
+ * so far is acknowledged (or refused). Chrome continues each request that is
+ * still paused when the session detaches, so a session must settle before it
+ * goes (T07-8).
+ */
+async function answerRequests(
+  cdp: CDPSession,
+  allow: (url: string) => boolean,
+): Promise<() => Promise<void>> {
+  const answering = new Set<Promise<unknown>>();
+  cdp.on('Fetch.requestPaused', event => {
+    const { requestId } = event;
+    const answer = (
+      allow(event.request.url + (event.request.urlFragment ?? ''))
+        ? cdp.send('Fetch.continueRequest', { requestId })
+        : cdp.send('Fetch.failRequest', {
+            requestId,
+            errorReason: 'BlockedByClient',
+          })
+    ).catch(() => undefined);
+    answering.add(answer);
+    void answer.then(() => answering.delete(answer));
+  });
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  return async () => {
+    while (answering.size > 0) await Promise.all(answering);
+  };
+}
+
+/**
+ * Lets the tab load only the print's files and the platform's, and fails
  * everything else, reporting it to `onBlocked`. Interception only continues
- * or aborts: the browser loads every file by URL itself (T03 Must not 3).
- * data: URLs can't be intercepted; what they load in turn can.
+ * or fails: the browser loads every file by URL itself (T03 Must not 3).
+ * data: URLs can't be intercepted; what they load in turn can. The session
+ * is our own rather than puppeteer's interception, so `settle` knows every
+ * paused request, including those puppeteer holds back until it can pair
+ * them with their network event. Await `settle` before closing the tab.
  */
 async function blockOtherRequests(
   page: Page,
   origin: string,
   files: PublishedFiles,
   onBlocked: (url: string) => void,
-): Promise<void> {
-  await page.setRequestInterception(true);
-  page.on('request', request => {
-    if (request.isInterceptResolutionHandled()) return;
-    const url = request.url();
+): Promise<() => Promise<void>> {
+  // As puppeteer's interception did: a cached response skips Fetch.
+  await page.setCacheEnabled(false);
+  return answerRequests(await page.createCDPSession(), url => {
     const parsed = URL.parse(url);
     const platform =
       parsed?.origin === origin &&
       (runtimePaths.has(parsed.pathname) ||
         parsed.pathname.startsWith('/fonts/'));
-    if (url.startsWith('data:') || platform || files.serves(url)) {
-      void request.continue().catch(() => undefined);
-      return;
-    }
+    if (url.startsWith('data:') || platform || files.serves(url)) return true;
     if (!(parsed?.origin === origin && isFavicon(parsed))) onBlocked(url);
-    void request.abort('blockedbyclient').catch(() => undefined);
+    return false;
   });
+}
+
+/**
+ * Fails, for every tab of `browser`, each request that leaves the print
+ * Worker's origin, until the returned function detaches it. Settling the tab
+ * is not enough: under load, requests the document started before the
+ * render ended (Paged.js fetches an @import'ed sheet a second time) still
+ * reached the tab's interception as it closed, and Chrome let them out. This
+ * session outlives the tab and catches them (T07-8). It allows the whole
+ * origin, not this print's files: other prints may share the browser.
+ */
+async function guardBrowser(
+  browser: Browser,
+  origin: string,
+): Promise<() => Promise<void>> {
+  const cdp = await browser.target().createCDPSession();
+  const settle = await answerRequests(
+    cdp,
+    url => url.startsWith('data:') || URL.parse(url)?.origin === origin,
+  );
+  return async () => {
+    await settle();
+    await cdp.detach().catch(() => undefined);
+  };
 }
 
 /**
@@ -184,7 +238,11 @@ export async function renderPdf<T = undefined>(
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
-  const page = await browser.newPage();
+  const unguard = await guardBrowser(browser, options.assetOrigin);
+  const page = await browser.newPage().catch(async (error: unknown) => {
+    await unguard();
+    throw error;
+  });
   let files: PublishedFiles | undefined;
   const blocked = new Set<string>();
   const blockedError = () =>
@@ -200,6 +258,7 @@ export async function renderPdf<T = undefined>(
     stop = reject;
   });
   stopped.catch(() => undefined);
+  let settle: (() => Promise<void>) | undefined;
   try {
     files = await publishFiles(
       options.store,
@@ -207,7 +266,7 @@ export async function renderPdf<T = undefined>(
       prepareHtml(request.html, { page: request.page }),
       request.pack,
     );
-    await blockOtherRequests(page, options.assetOrigin, files, url => {
+    settle = await blockOtherRequests(page, options.assetOrigin, files, url => {
       blocked.add(url);
       stop(blockedError());
     });
@@ -221,8 +280,10 @@ export async function renderPdf<T = undefined>(
     if (blocked.size > 0) throw blockedError();
     return result;
   } finally {
+    await settle?.();
     await page.close().catch(() => undefined);
     await files?.remove();
+    await unguard();
   }
 }
 

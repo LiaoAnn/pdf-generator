@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
+import { fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -15,8 +16,7 @@ function fakeBrowser() {
     readFileSync(new URL('./test-fixtures/blank-3-pages.pdf', import.meta.url)),
   );
   const page = {
-    setRequestInterception: vi.fn(async () => {}),
-    on: vi.fn(),
+    ...fakeFetch(),
     goto: vi.fn(async (_url: string, _options?: unknown) => {
       calls.push('goto');
     }),
@@ -36,6 +36,7 @@ function fakeBrowser() {
     }),
   };
   const browser = {
+    target: () => fakeFetch(),
     newPage: vi.fn(async () => {
       calls.push('newPage');
       return page;
@@ -137,6 +138,8 @@ test('a pending pagination promise prevents inspection and printing until it res
     inspect,
     store: { put: async () => {}, delete: async () => {} },
   });
+  // Observe an early setup rejection even if a preceding assertion fails.
+  void rendering.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(0);
   expect(fake.page.evaluate).toHaveBeenCalledTimes(1);
   expect(inspect).not.toHaveBeenCalled();
@@ -184,7 +187,7 @@ test.each(['goto', 'evaluate', 'pdf'] as const)(
         assetOrigin,
         store: { put: async () => {}, delete: async () => {} },
       }),
-    ).rejects.toThrow();
+    ).rejects.toBe(failure);
     expect(fake.page.close).toHaveBeenCalledTimes(1);
     if (stage !== 'pdf') expect(fake.page.pdf).not.toHaveBeenCalled();
   },

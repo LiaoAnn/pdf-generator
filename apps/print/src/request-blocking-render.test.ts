@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import type { Browser } from '@cloudflare/puppeteer';
 import { expect, test, vi } from 'vitest';
-import { RenderError, renderPdf } from './lib.ts';
+import { fakeFetch } from './fake-fetch.ts';
+import { type PrintReadyState, RenderError, renderPdf } from './lib.ts';
 
 const origin = 'https://print-assets.example.test';
 const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString(
@@ -23,76 +24,97 @@ const ready = {
 
 type Stage = 'goto' | 'ready' | 'inspect' | 'pdf';
 
-// A tab whose requests the test fires through the handler renderPdf registers,
-// the way puppeteer does: each request must end in continue() or abort().
+// Requests use the real CDP event shape and are dispatched synchronously.
 function fakeTab(
   options: {
-    state?: Partial<Readonly<Record<keyof typeof ready, unknown>>>;
+    state?: Partial<PrintReadyState>;
     hangs?: boolean;
     fire?: Partial<Record<Stage, string[]>>;
   } = {},
 ) {
-  const handlers: ((request: unknown) => unknown)[] = [];
-  const requests: Record<
-    string,
-    { continue: ReturnType<typeof vi.fn>; abort: ReturnType<typeof vi.fn> }
-  > = {};
+  const fetch = fakeFetch();
+  const backstop = fakeFetch();
+  const requests: Record<string, string> = {};
+  const work: string[] = [];
   let documentUrl = '';
-  // Requests are fired for the URL as `/pack/<id>/…`; `{id}` is this print's.
-  const resolve = (url: string) =>
-    url.replace('{id}', documentUrl.split('/')[4] ?? 'unknown');
-  const fire = async (stage: Stage) => {
+  const fire = (stage: Stage) => {
     for (const template of options.fire?.[stage] ?? []) {
-      const url = resolve(template);
-      const entry = {
-        continue: vi.fn(async () => {}),
-        abort: vi.fn(async () => {}),
-      };
-      requests[template] = entry;
-      for (const handler of handlers) {
-        await handler({
-          url: () => url,
-          continue: entry.continue,
-          abort: entry.abort,
-          isInterceptResolutionHandled: () => false,
-        });
-      }
+      const url = template.replace(
+        '{id}',
+        documentUrl.split('/')[4] ?? 'unknown',
+      );
+      const hash = url.indexOf('#');
+      requests[template] =
+        hash < 0
+          ? fetch.pause(url)
+          : fetch.pause(url.slice(0, hash), url.slice(hash));
     }
   };
   const page = {
-    setRequestInterception: vi.fn(async (_enabled: boolean) => {}),
-    on: vi.fn((event: string, handler: (request: unknown) => unknown) => {
-      if (event === 'request') handlers.push(handler);
-    }),
+    createCDPSession: fetch.createCDPSession,
+    setCacheEnabled: fetch.setCacheEnabled,
     goto: vi.fn(async (url: string) => {
       documentUrl = url;
-      await fire('goto');
+      work.push('goto');
+      fire('goto');
     }),
-    setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => {
-      await fire('ready');
+      work.push('ready');
+      fire('ready');
       if (options.hangs) return new Promise<never>(() => {});
       return { ...ready, ...options.state };
     }),
     pdf: vi.fn(async () => {
-      await fire('pdf');
+      work.push('pdf');
+      fire('pdf');
       return new Uint8Array(
         readFileSync(
           new URL('./test-fixtures/blank-1-pages.pdf', import.meta.url),
         ),
       );
     }),
-    close: vi.fn(async () => {}),
+    close: vi.fn(async () => {
+      work.push('close');
+    }),
   };
+  const newPage = vi.fn(async () => page);
   return {
+    backstop,
+    newPage,
     page,
+    fetch,
     requests,
-    browser: { newPage: async () => page } as unknown as Browser,
+    work,
+    browser: { target: () => backstop, newPage } as unknown as Browser,
     inspect: async () => {
-      await fire('inspect');
+      work.push('inspect');
+      fire('inspect');
       return 'ground truth';
     },
   };
+}
+
+// Pin exactly one resolution per request, while allowing unrelated CDP params.
+function expectResolution(
+  tab: ReturnType<typeof fakeTab>,
+  url: string,
+  allowed: boolean,
+) {
+  const id = tab.requests[url];
+  expect(id, url).toBeDefined();
+  const resolutions = tab.fetch.send.mock.calls.filter(
+    ([method, params]) =>
+      (method === 'Fetch.continueRequest' || method === 'Fetch.failRequest') &&
+      params?.requestId === id,
+  );
+  expect(resolutions, url).toHaveLength(1);
+  expect(resolutions[0]?.[0], url).toBe(
+    allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest',
+  );
+  if (!allowed)
+    expect(resolutions[0]?.[1]).toMatchObject({
+      errorReason: 'BlockedByClient',
+    });
 }
 
 const run = (tab: ReturnType<typeof fakeTab>, timeoutMs?: number) =>
@@ -130,7 +152,7 @@ const blocked = [
 // Regression: an allow-list that matches paths alone, prefixes, or only some
 // of the print's own URLs would either let a fixture load from outside its
 // pack or abort the pack's own files (and with them the whole print).
-test('continues only the print’s own URLs and aborts every other request', async () => {
+test('continues only the print’s own URLs and fails every other request', async () => {
   const allowed = [
     `${origin}/pack/{id}/templates/report.hbs`,
     `${origin}/pack/{id}/assets/logo.svg`,
@@ -139,35 +161,43 @@ test('continues only the print’s own URLs and aborts every other request', asy
     `${origin}/print-runtime.js`,
     `${origin}/paged.polyfill.js`,
     `${origin}/fonts/NotoSansTC-Regular.otf`,
+    'data:text/css,p%7Bcolor:red%7D',
+    `${origin}/pack/{id}/assets/logo.svg#logo`,
   ];
   const tab = fakeTab({
     fire: { goto: [...allowed, ...blocked.map(b => b[1])] },
   });
   const outcome = await run(tab);
   expect(outcome).toHaveProperty('error');
-  for (const url of allowed) {
-    expect.soft(tab.requests[url]?.continue, url).toHaveBeenCalledTimes(1);
-    expect.soft(tab.requests[url]?.abort, url).not.toHaveBeenCalled();
-  }
-  for (const [name, url] of blocked) {
-    expect.soft(tab.requests[url]?.abort, name).toHaveBeenCalledTimes(1);
-    expect.soft(tab.requests[url]?.continue, name).not.toHaveBeenCalled();
-  }
+  for (const url of allowed) expectResolution(tab, url, true);
+  for (const [, url] of blocked) expectResolution(tab, url, false);
 });
 
-// Regression: interception switched on after goto (or not at all) lets the
-// document's first requests through.
-test('turns request interception on and registers the handler before navigating', async () => {
+// Regression: enabling Fetch or registering its listener after navigation leaks
+// the parser's first requests; cache hits must not bypass interception either.
+test('enables Fetch, registers its handler and disables cache before document navigation', async () => {
   const tab = fakeTab();
-  await run(tab);
-  expect(tab.page.on).toHaveBeenCalledWith('request', expect.any(Function));
-  expect(tab.page.setRequestInterception).toHaveBeenCalledWith(true);
+  const outcome = await run(tab);
+  expect(outcome).toHaveProperty('result');
+  expect(tab.fetch.on).toHaveBeenCalledWith(
+    'Fetch.requestPaused',
+    expect.any(Function),
+  );
+  const enable = tab.fetch.send.mock.calls.findIndex(
+    ([method]) => method === 'Fetch.enable',
+  );
+  expect(enable).toBeGreaterThanOrEqual(0);
+  expect(tab.fetch.send.mock.calls[enable]?.[1]).toMatchObject({
+    patterns: [{ urlPattern: '*' }],
+  });
   const goto = tab.page.goto.mock.invocationCallOrder[0] ?? 0;
   expect(goto).toBeGreaterThan(0);
-  expect(tab.page.on.mock.invocationCallOrder[0]).toBeLessThan(goto);
-  expect(
-    tab.page.setRequestInterception.mock.invocationCallOrder[0],
-  ).toBeLessThan(goto);
+  expect(tab.fetch.on.mock.invocationCallOrder[0]).toBeLessThan(goto);
+  expect(tab.fetch.send.mock.invocationCallOrder[enable]).toBeLessThan(goto);
+  expect(tab.page.setCacheEnabled).toHaveBeenCalledWith(false);
+  expect(tab.page.setCacheEnabled.mock.invocationCallOrder[0]).toBeLessThan(
+    goto,
+  );
 });
 
 // Regression: Chrome's own favicon request must not make every print fail.
@@ -176,8 +206,7 @@ test('aborts the browser’s own /favicon.ico request without failing the render
   const tab = fakeTab({ fire: { goto: [favicon] } });
   const outcome = await run(tab);
   expect(outcome).toHaveProperty('result');
-  expect(tab.requests[favicon]?.abort).toHaveBeenCalledTimes(1);
-  expect(tab.requests[favicon]?.continue).not.toHaveBeenCalled();
+  expectResolution(tab, favicon, false);
 });
 
 // Regression: only checking blocked requests at one point (after goto) lets a
@@ -194,6 +223,7 @@ test.each(['goto', 'ready', 'inspect', 'pdf'] as const)(
     expect(error).toMatchObject({ code: 'request_blocked' });
     expect((error as RenderError).details.join('\n')).toContain(url);
     expect(outcome).not.toHaveProperty('result');
+    expectResolution(tab, url, false);
     expect(tab.page.close).toHaveBeenCalledTimes(1);
   },
 );
@@ -205,7 +235,7 @@ test.each([
   ['font_not_loaded', { unloadedFaces: ['Report Sans 400: error'] }, false],
   ['row_fragmented', { fragmentedRows: ['page 1: row'] }, false],
   ['pagination_timeout', {}, true],
-] as const)(
+] satisfies [string, Partial<PrintReadyState>, boolean][])(
   'request_blocked wins over %s and lists the blocked URLs',
   async (_symptom, state, hangs) => {
     const first = 'http://127.0.0.1:9/font.woff2';
@@ -223,3 +253,282 @@ test.each([
     expect(details.join('\n')).toContain('/assets/other.png');
   },
 );
+
+function deferred() {
+  let resolve: (value?: unknown) => void = () => {};
+  let reject: (reason: Error) => void = () => {};
+  const promise = new Promise<unknown>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  void promise.catch(() => undefined);
+  return { promise, resolve, reject };
+}
+
+// Regression: closing a tab before a continue/fail acknowledgement detaches
+// Fetch and Chrome resumes the still-paused request, even after a 422.
+test.each([
+  ['continue', `${origin}/print-runtime.js`, 'Fetch.continueRequest'],
+  ['fail', 'https://outside.test/held.css', 'Fetch.failRequest'],
+] as const)(
+  'does not close while a %s acknowledgement is pending',
+  async (_name, url, method) => {
+    const tab = fakeTab({ fire: { ready: [url] } });
+    const held = deferred();
+    tab.fetch.send.mockImplementation(async command =>
+      command === method ? held.promise : {},
+    );
+    const rendering = run(tab);
+    try {
+      await vi.waitFor(() => {
+        expectResolution(tab, url, method === 'Fetch.continueRequest');
+        expect(tab.page.evaluate).toHaveBeenCalled();
+      });
+      expect(tab.page.close).not.toHaveBeenCalled();
+    } finally {
+      held.resolve();
+    }
+    const outcome = await rendering;
+    expect(outcome).toHaveProperty(
+      method === 'Fetch.continueRequest' ? 'result' : 'error',
+    );
+    expect(tab.page.close).toHaveBeenCalledTimes(1);
+  },
+);
+
+// Regression: Paged.js can start a second @import XHR after rendering ends.
+// A snapshot of pending sends misses another event delivered while draining.
+test('fails late requests paused while draining before closing', async () => {
+  const late = 'https://outside.test/polisher-import.css';
+  const tab = fakeTab({ fire: { ready: [late] } });
+  const first = deferred();
+  const second = deferred();
+  let count = 0;
+  tab.fetch.send.mockImplementation(async method => {
+    if (method !== 'Fetch.failRequest') return {};
+    return ++count === 1 ? first.promise : second.promise;
+  });
+  const rendering = run(tab);
+  try {
+    await vi.waitFor(() => expectResolution(tab, late, false));
+    expect(tab.page.close).not.toHaveBeenCalled();
+    const secondId = tab.fetch.pause('https://outside.test/another-import.css');
+    await vi.waitFor(() =>
+      expect(tab.fetch.send).toHaveBeenCalledWith(
+        'Fetch.failRequest',
+        expect.objectContaining({
+          requestId: secondId,
+          errorReason: 'BlockedByClient',
+        }),
+      ),
+    );
+    first.resolve();
+    // Let the first acknowledgement finish. The newly paused
+    // request must still prevent close, independently of the first one.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(tab.page.close).not.toHaveBeenCalled();
+  } finally {
+    first.resolve();
+    second.resolve();
+  }
+  await rendering;
+  expect(tab.page.close).toHaveBeenCalledTimes(1);
+});
+
+// Regression: invalid interception ids reject CDP sends. Treating rejection
+// as an outstanding request forever would hang cleanup and mask the error.
+test('a rejected fail acknowledgement is settled and preserves request_blocked', async () => {
+  const url = 'https://outside.test/stale.css';
+  const tab = fakeTab({ fire: { ready: [url] } });
+  const held = deferred();
+  tab.fetch.send.mockImplementation(async method =>
+    method === 'Fetch.failRequest' ? held.promise : {},
+  );
+  const rendering = run(tab);
+  try {
+    await vi.waitFor(() => expectResolution(tab, url, false));
+    expect(tab.page.close).not.toHaveBeenCalled();
+  } finally {
+    held.reject(new Error('Invalid InterceptionId'));
+  }
+  const outcome = await rendering;
+  expect(outcome).toHaveProperty('error');
+  expect((outcome as { error: unknown }).error).toMatchObject({
+    code: 'request_blocked',
+    details: [url],
+  });
+  expect(tab.page.close).toHaveBeenCalledTimes(1);
+});
+
+// Regression: the first request, or one released by an older tab, can arrive
+// before this print navigates. The browser guard must already be active.
+test('enables the browser backstop before newPage and document navigation', async () => {
+  const tab = fakeTab();
+  const enabled = deferred();
+  tab.backstop.send.mockImplementation(async method =>
+    method === 'Fetch.enable' ? enabled.promise : {},
+  );
+  const rendering = run(tab);
+  try {
+    await vi.waitFor(() =>
+      expect(tab.backstop.send).toHaveBeenCalledWith('Fetch.enable', {
+        patterns: [{ urlPattern: '*' }],
+      }),
+    );
+    expect(tab.backstop.on).toHaveBeenCalledWith(
+      'Fetch.requestPaused',
+      expect.any(Function),
+    );
+    expect(tab.backstop.on.mock.invocationCallOrder[0]).toBeLessThan(
+      tab.backstop.send.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(tab.newPage).not.toHaveBeenCalled();
+    expect(tab.page.goto).not.toHaveBeenCalled();
+  } finally {
+    enabled.resolve();
+    await rendering;
+  }
+  expect(tab.backstop.send.mock.invocationCallOrder[0]).toBeLessThan(
+    tab.newPage.mock.invocationCallOrder[0] ?? 0,
+  );
+});
+
+// Regression: released requests must not reach outside hosts; using the tab's
+// pack allow-list here would break other prints sharing the browser.
+test('the browser backstop fails outside URLs and continues data and any own-origin path without reporting request_blocked', async () => {
+  const tab = fakeTab();
+  const urls = [
+    ['https://outside.test/import.css', false],
+    ['http://127.0.0.1:9/leaked.png', false],
+    ['https://print-assets.example.test.evil.test/a', false],
+    ['http://print-assets.example.test/print-runtime.js', false],
+    [`${origin}:8443/print-runtime.js`, false],
+    [`${origin}/pack/another-print/assets/logo.svg`, true],
+    [`${origin}/unlisted-path`, true],
+    [`${origin}/favicon.ico`, true],
+    ['data:text/css,p%7Bcolor:red%7D', true],
+  ] as const;
+  const paused: { requestId: string; allowed: boolean }[] = [];
+  tab.page.close.mockImplementation(async () => {
+    for (const [url, allowed] of urls) {
+      paused.push({ requestId: tab.backstop.pause(url), allowed });
+    }
+  });
+  expect(await run(tab)).toHaveProperty('result');
+  expect(paused).toHaveLength(urls.length);
+  for (const { requestId, allowed } of paused) {
+    expect(tab.backstop.send).toHaveBeenCalledWith(
+      allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest',
+      allowed ? { requestId } : { requestId, errorReason: 'BlockedByClient' },
+    );
+  }
+});
+
+// Regression: detaching before close, or before an answer settles, releases
+// the very request that the backstop was meant to catch.
+test.each([
+  [
+    'continue',
+    `${origin}/pack/another-print/file.css`,
+    'Fetch.continueRequest',
+  ],
+  ['fail', 'https://outside.test/released.css', 'Fetch.failRequest'],
+] as const)(
+  'the browser backstop stays attached through close and its pending %s answer',
+  async (_name, url, method) => {
+    const tab = fakeTab();
+    const closed = deferred();
+    const answer = deferred();
+    tab.backstop.send.mockImplementation(async command =>
+      command === method ? answer.promise : {},
+    );
+    tab.page.close.mockImplementation(async () => {
+      tab.backstop.pause(url);
+      await closed.promise;
+    });
+    const rendering = run(tab);
+    try {
+      await vi.waitFor(() => expect(tab.page.close).toHaveBeenCalled());
+      expect(tab.backstop.detach).not.toHaveBeenCalled();
+      closed.resolve();
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(tab.backstop.detach).not.toHaveBeenCalled();
+    } finally {
+      closed.resolve();
+      answer.resolve();
+      await rendering;
+    }
+    expect(tab.backstop.detach).toHaveBeenCalledTimes(1);
+    expect(tab.page.close.mock.invocationCallOrder[0]).toBeLessThan(
+      tab.backstop.detach.mock.invocationCallOrder[0] ?? 0,
+    );
+  },
+);
+
+// Regression: a kept-alive browser accumulates interceptors unless every
+// render exit, including failing to create a tab, detaches its guard.
+test.each([
+  'success',
+  'request_blocked',
+  'pagination_timeout',
+  'font_not_loaded',
+  'row_fragmented',
+  'page_count_mismatch',
+  'text_missing',
+  'goto',
+  'evaluate',
+  'pdf',
+  'inspect',
+  'newPage',
+] as const)('detaches the browser backstop on %s', async exit => {
+  const tab = fakeTab({
+    hangs: exit === 'pagination_timeout',
+    fire:
+      exit === 'request_blocked' ? { ready: ['https://outside.test/a'] } : {},
+    state: {
+      ...(exit === 'font_not_loaded'
+        ? { unloadedFaces: ['Missing font'] }
+        : {}),
+      ...(exit === 'row_fragmented' ? { fragmentedRows: ['row 1'] } : {}),
+      ...(exit === 'page_count_mismatch' ? { pageCount: 2 } : {}),
+      ...(exit === 'text_missing'
+        ? {
+            expectedText: [
+              [
+                {
+                  texts: [
+                    {
+                      text: 'MISSING FROM BLANK PDF',
+                      boxes: [{ x0: 0, y0: 0, x1: 100, y1: 100 }],
+                    },
+                  ],
+                },
+              ],
+            ],
+          }
+        : {}),
+    },
+  });
+  const failure = new Error(`${exit} failed`);
+  if (exit === 'newPage') tab.newPage.mockRejectedValueOnce(failure);
+  if (exit === 'goto' || exit === 'evaluate' || exit === 'pdf')
+    tab.page[exit].mockRejectedValueOnce(failure);
+  if (exit === 'inspect')
+    tab.inspect = async () => {
+      throw failure;
+    };
+  const outcome = await run(tab, 10);
+  if (exit === 'success') expect(outcome).toHaveProperty('result');
+  else if (['newPage', 'goto', 'evaluate', 'pdf', 'inspect'].includes(exit))
+    expect((outcome as { error: unknown }).error).toBe(failure);
+  else
+    expect((outcome as { error: unknown }).error).toMatchObject({ code: exit });
+  expect(tab.backstop.detach).toHaveBeenCalledTimes(1);
+  if (exit === 'newPage') expect(tab.page.close).not.toHaveBeenCalled();
+  else {
+    expect(tab.page.close).toHaveBeenCalledTimes(1);
+    expect(tab.page.close.mock.invocationCallOrder[0]).toBeLessThan(
+      tab.backstop.detach.mock.invocationCallOrder[0] ?? 0,
+    );
+  }
+});

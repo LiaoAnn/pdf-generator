@@ -2,6 +2,7 @@ import type { Browser } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, readPdf } from '@pdf-generator/self-check';
 import { extractText } from 'unpdf';
 import { beforeAll, expect, test, vi } from 'vitest';
+import { fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 // A genuine, tiny two-page PDF, not fake "%PDF" bytes. A ToUnicode map
@@ -75,8 +76,7 @@ const block = (texts: string[], box = paragraphBox): ExpectedBlock => ({
 function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
   const calls: string[] = [];
   const page = {
-    setRequestInterception: vi.fn(async () => {}),
-    on: vi.fn(),
+    ...fakeFetch(),
     goto: vi.fn(async () => {}),
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
@@ -94,7 +94,10 @@ function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
     }),
   };
   return {
-    browser: { newPage: async () => page } as unknown as Browser,
+    browser: {
+      target: () => fakeFetch(),
+      newPage: async () => page,
+    } as unknown as Browser,
     page,
     calls,
   };

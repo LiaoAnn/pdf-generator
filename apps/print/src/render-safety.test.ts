@@ -1,5 +1,6 @@
 import type { Browser } from '@cloudflare/puppeteer';
 import { expect, test, vi } from 'vitest';
+import { fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -33,8 +34,7 @@ test.each([
   // Regression: forwarding a bad ready state to inspect/pdf can create ground
   // truth for fallback glyphs or for rows that disappear from the PDF.
   const page = {
-    setRequestInterception: vi.fn(async () => {}),
-    on: vi.fn(),
+    ...fakeFetch(),
     goto: vi.fn(async () => {}),
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
@@ -45,7 +45,10 @@ test.each([
     pdf: vi.fn(async () => new Uint8Array([37, 80, 68, 70])),
     close: vi.fn(async () => {}),
   };
-  const browser = { newPage: vi.fn(async () => page) };
+  const browser = {
+    target: () => fakeFetch(),
+    newPage: vi.fn(async () => page),
+  };
   const inspect = vi.fn(async () => 'ground truth');
   const outcome = await renderPdf(browser as unknown as Browser, request, {
     store: { put: async () => {}, delete: async () => {} },
