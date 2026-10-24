@@ -35,6 +35,17 @@ export type Difference = { message: string } & (
       expected: string;
       actual: string;
     }
+  /**
+   * A formula whose printed items the cover search (T14-3) couldn't match to
+   * its text, in any order, within its fixed budget: not passed (T14-5).
+   */
+  | {
+      kind: 'formula_undecided';
+      page: number;
+      blockId: string;
+      expected: string;
+      actual: string;
+    }
   /** The block's text is printed (partly) outside its box, at `textBox`. */
   | { kind: 'bbox'; page: number; blockId: string; bbox: Box; textBox: Box }
   /** The block's text is printed on `actualPage`, not on `page`. */
@@ -171,6 +182,12 @@ const outside = (item: PdfTextItem, box: readonly number[]) => {
   );
 };
 
+// The cover search's work limit, in pieces visited plus characters matched:
+// fixed, so a formula gets the same result on every run. The paper's 12
+// formula options need at most 387 (T14-5, measured over a 20-fixture batch);
+// 100,000 takes tens of milliseconds.
+const coverBudget = 100_000;
+
 /**
  * The contiguous run of `items` whose text is `wanted` (comparable form),
  * starting and ending on item boundaries; undefined if there is none.
@@ -196,8 +213,12 @@ function findRun(items: readonly Item[], wanted: string): Item[] | undefined {
  * and the PDF has nothing to restore it from (KaTeX's HTML is aria-hidden,
  * so a tagged PDF leaves it out of the structure tree). Characters within an
  * item still count in order; two whole items swapped go unnoticed (T14-3).
+ * Undefined when the search outgrows `coverBudget` before deciding.
  */
-function covers(pieces: readonly string[], wanted: string): boolean {
+function covers(
+  pieces: readonly string[],
+  wanted: string,
+): boolean | undefined {
   const counts = new Map<string, number>();
   let length = 0;
   for (const piece of pieces) {
@@ -206,18 +227,34 @@ function covers(pieces: readonly string[], wanted: string): boolean {
     length += piece.length;
   }
   if (length !== wanted.length) return false;
+  // Pieces that don't hold `wanted`'s characters can't spell it, however
+  // they are ordered: settled before the search, which can take exponential
+  // time to find out.
+  const chars = new Map<string, number>();
+  for (const char of wanted) chars.set(char, (chars.get(char) ?? 0) + 1);
+  for (const piece of pieces) {
+    for (const char of piece) {
+      const left = (chars.get(char) ?? 0) - 1;
+      if (left < 0) return false;
+      chars.set(char, left);
+    }
+  }
   // Positions known not to lead to a cover, with the pieces left then.
   const dead = new Set<string>();
-  const from = (at: number): boolean => {
+  let work = 0;
+  const from = (at: number): boolean | undefined => {
     if (at === wanted.length) return true;
+    work += counts.size;
+    if (work > coverBudget) return undefined;
     const key = `${at}:${[...counts.values()].join()}`;
     if (dead.has(key)) return false;
     for (const [piece, count] of counts) {
       if (count === 0 || !wanted.startsWith(piece, at)) continue;
+      work += piece.length;
       counts.set(piece, count - 1);
       const found = from(at + piece.length);
       counts.set(piece, count);
-      if (found) return true;
+      if (found !== false) return found;
     }
     dead.add(key);
     return false;
@@ -310,7 +347,8 @@ export async function checkPdf(
     const own = ownedBy(block, block.page);
     const wanted = comparable(block.text);
     const printed = comparable(joined(own));
-    if (
+    // Undefined when the formula's cover search ran out of budget.
+    const matched =
       printed === wanted ||
       (block.type === 'formula' &&
         // KaTeX's hidden MathML copy comes before the visible rendering, and
@@ -319,8 +357,8 @@ export async function checkPdf(
           covers(
             own.map(item => comparable(item.text)),
             wanted,
-          )))
-    ) {
+          )));
+    if (matched) {
       if (own.some(item => outside(item, block.bbox))) {
         report(block.page, boxDifference(block, own));
       }
@@ -382,7 +420,16 @@ export async function checkPdf(
     }
     // A table's text is compared cell by cell where cells differ.
     const found = details(block, own);
-    if (!found.some(difference => difference.kind === 'cell_text')) {
+    if (matched === undefined) {
+      report(block.page, {
+        kind: 'formula_undecided',
+        page: block.page,
+        blockId: block.id,
+        expected: block.text,
+        actual: joined(own),
+        message: `Block ${block.id} on page ${block.page}: the formula match budget was exceeded before its ${own.length} printed items could be matched to gt.json's text, so it fails undecided`,
+      });
+    } else if (!found.some(difference => difference.kind === 'cell_text')) {
       report(block.page, {
         kind: 'text',
         page: block.page,
