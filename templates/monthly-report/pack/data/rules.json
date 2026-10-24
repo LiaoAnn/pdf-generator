@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "company": { "type": "company" },
+    "businessId": { "type": "businessId" },
+    "period": {
+      "type": "object",
+      "fields": {
+        "year": { "type": "integer", "min": 2023, "max": 2026 },
+        "month": { "type": "integer", "min": 1, "max": 12 }
+      }
+    },
+    "preparedBy": {
+      "type": "object",
+      "fields": {
+        "name": { "type": "name", "gender": "any" },
+        "department": {
+          "type": "choice",
+          "options": ["經營企劃部", "財務部", "總經理室", "管理部"]
+        },
+        "phone": { "type": "phone", "kind": "landline" }
+      }
+    },
+    "summary": {
+      "type": "text",
+      "lang": "zh",
+      "minLength": 80,
+      "maxLength": 160
+    },
+    "highlights": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 6,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 14,
+        "maxLength": 36
+      }
+    },
+    "figure": {
+      "type": "object",
+      "fields": {
+        "caption": {
+          "type": "text",
+          "lang": "zh",
+          "minLength": 8,
+          "maxLength": 18
+        },
+        "body": {
+          "type": "text",
+          "lang": "zh",
+          "minLength": 90,
+          "maxLength": 180
+        }
+      }
+    },
+    "departments": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 7,
+      "items": {
+        "type": "object",
+        "fields": {
+          "name": {
+            "type": "choice",
+            "options": [
+              "業務一部",
+              "業務二部",
+              "研發部",
+              "製造部",
+              "行銷部",
+              "客服部",
+              "海外事業部",
+              "資訊部"
+            ]
+          },
+          "revenue": { "type": "money", "min": 1200000, "max": 9800000 },
+          "cost": { "type": "money", "min": 400000, "max": 1150000 },
+          "headcount": { "type": "integer", "min": 4, "max": 85 }
+        }
+      }
+    },
+    "totals": {
+      "type": "object",
+      "fields": {
+        "revenue": { "type": "sum", "of": ["departments[].revenue"] },
+        "cost": { "type": "sum", "of": ["departments[].cost"] },
+        "headcount": { "type": "sum", "of": ["departments[].headcount"] },
+        "costRatio": {
+          "type": "percentage",
+          "part": "totals.cost",
+          "whole": "totals.revenue",
+          "decimals": 1
+        }
+      }
+    },
+    "projects": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 9,
+      "items": {
+        "type": "object",
+        "fields": {
+          "title": {
+            "type": "text",
+            "lang": "zh",
+            "minLength": 6,
+            "maxLength": 14
+          },
+          "owner": { "type": "name", "gender": "any" },
+          "due": { "type": "date", "min": "2023-01-01", "max": "2027-06-30" },
+          "progress": { "type": "integer", "min": 0, "max": 100 },
+          "status": {
+            "type": "choice",
+            "options": ["進行中", "已完成", "延遲", "暫緩"],
+            "weights": [5, 2, 2, 1]
+          }
+        }
+      }
+    },
+    "nextSteps": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 5,
+      "items": {
+        "type": "text",
+        "lang": "zh",
+        "minLength": 14,
+        "maxLength": 36
+      }
+    },
+    "remarks": {
+      "type": "text",
+      "lang": "zh",
+      "minLength": 20,
+      "maxLength": 60,
+      "blankProbability": 0.3
+    }
+  }
+}

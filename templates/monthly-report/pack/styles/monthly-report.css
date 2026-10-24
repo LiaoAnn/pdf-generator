@@ -1,0 +1,164 @@
+/* 公司月報 (T22). Every printed element is a data-gt block on its own line:
+   no two inline blocks share a line (backlog T14-1). The page header and
+   footer are Paged.js running elements, cloned into the margin boxes of
+   every page with their data-gt. No page number: counter(page) text can't
+   carry data-gt. */
+
+@page {
+  size: A4 portrait;
+  margin: 24mm 18mm 22mm;
+  @top-center {
+    content: element(pageHeader);
+    vertical-align: bottom;
+    padding-bottom: 4mm;
+  }
+  @bottom-center {
+    content: element(pageFooter);
+    vertical-align: top;
+    padding-top: 4mm;
+  }
+}
+
+html {
+  font-family: "Noto Sans TC", sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.6;
+  color: #222;
+}
+
+body {
+  margin: 0;
+}
+
+.running-header {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageHeader);
+  font-size: 9pt;
+  color: #555;
+}
+
+.running-footer {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js running element */
+  position: running(pageFooter);
+  font-size: 8.5pt;
+  color: #777;
+}
+
+h1 {
+  font-family: "Noto Serif TC", serif;
+  font-size: 20pt;
+  font-weight: 700;
+  line-height: 1.35;
+  margin: 0 0 3mm;
+}
+
+h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  margin: 6mm 0 2.5mm;
+  padding-bottom: 1mm;
+  border-bottom: 0.6pt solid #2f5d8a;
+  color: #2f5d8a;
+  break-after: avoid;
+}
+
+p {
+  margin: 0 0 2.5mm;
+  text-align: justify;
+}
+
+.meta {
+  font-size: 9.5pt;
+  color: #444;
+}
+
+/* Bullets are drawn, not printed as text, so no marker text lies outside
+   a list_item box. */
+.bullets {
+  list-style: none;
+  margin: 0 0 2.5mm;
+  padding: 0;
+}
+
+.bullets li {
+  position: relative;
+  padding-left: 5mm;
+  margin: 0 0 1.2mm;
+  break-inside: avoid;
+}
+
+.bullets li::before {
+  content: "";
+  position: absolute;
+  left: 1mm;
+  top: 0.62em;
+  width: 1.6mm;
+  height: 1.6mm;
+  border-radius: 50%;
+  background: #2f5d8a;
+}
+
+/* Figure beside its text: side by side, so no block's box overlaps
+   another's text. */
+.figure-block {
+  display: flex;
+  gap: 6mm;
+  align-items: flex-start;
+  margin: 0 0 4mm;
+  break-inside: avoid;
+}
+
+.figure-block p {
+  flex: 1;
+  margin: 0;
+}
+
+figure {
+  flex: none;
+  width: 62mm;
+  margin: 0;
+}
+
+figure img {
+  display: block;
+  width: 62mm;
+  height: auto;
+}
+
+figcaption {
+  font-size: 9pt;
+  color: #555;
+  margin-top: 1.5mm;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 2.5mm;
+  font-size: 9.5pt;
+}
+
+table.data th,
+table.data td {
+  border: 0.5pt solid #9aa9b8;
+  padding: 1.2mm 2mm;
+  text-align: left;
+}
+
+table.data thead th {
+  background: #e8eef4;
+  font-weight: 700;
+}
+
+table.data tfoot td {
+  font-weight: 700;
+  background: #f4f6f8;
+}
+
+table.data tr {
+  break-inside: avoid;
+}
+
+table.data .num {
+  text-align: right;
+}
