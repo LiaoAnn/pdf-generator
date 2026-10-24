@@ -9,6 +9,7 @@ export {
 } from './check.ts';
 export {
   type PdfDocument,
+  type PdfMark,
   type PdfPage,
   type PdfTextItem,
   readPdf,

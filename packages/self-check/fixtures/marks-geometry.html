@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Text-free PDF marks geometry oracle</title>
+    <style>
+      @page { size: 640px 800px; margin: 32px 40px; }
+      body { margin: 0; }
+      section { position: relative; width: 560px; height: 700px; break-after: page; }
+      section:last-child { break-after: auto; }
+      [data-box] { position: absolute; box-sizing: border-box; }
+      img, svg { display: block; }
+      #png { left: 24px; top: 36px; width: 112px; height: 64px; }
+      #svg-image { left: 196px; top: 40px; width: 120px; height: 56px; }
+      #inline-svg { left: 28px; top: 144px; width: 120px; height: 56px; overflow: hidden; }
+      #checkbox { left: 204px; top: 152px; width: 20px; height: 20px; margin: 0; }
+      #border { left: 28px; top: 248px; width: 128px; height: 48px; border: 4px solid black; }
+      #underline { left: 212px; top: 248px; width: 144px; height: 40px; border-bottom: 2px solid black; }
+      #background { left: 28px; top: 344px; width: 128px; height: 40px; background: #167a39; }
+      #bare { left: 380px; top: 344px; width: 112px; height: 64px; }
+      .clip-parent { position: absolute; top: 456px; width: 80px; height: 48px; overflow: hidden; }
+      #path-clip { left: 28px; }
+      #image-clip { left: 212px; }
+      .clipped { left: 0; top: 0; width: 160px; height: 48px; }
+      #clipped-path { background: #b83020; }
+      #fully-hidden { left: 120px; top: 0; width: 24px; height: 24px; background: #003388; }
+      #page-two { left: 164px; top: 124px; width: 132px; height: 52px; background: #7350a0; }
+    </style>
+  </head>
+  <body>
+    <section data-page="1">
+      <img id="png" data-box alt="" />
+      <img id="svg-image" data-box alt="" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='56' viewBox='0 0 120 56'%3E%3Crect x='8' y='4' width='12' height='48'/%3E%3Crect x='32' y='4' width='8' height='48'/%3E%3Crect x='52' y='4' width='24' height='48'/%3E%3Crect x='92' y='4' width='16' height='48'/%3E%3C/svg%3E" />
+      <svg id="inline-svg" data-box xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 56" aria-label="Barcode">
+        <rect x="8" y="4" width="12" height="48" />
+        <rect x="32" y="4" width="8" height="48" />
+        <rect x="52" y="4" width="24" height="48" />
+        <rect x="92" y="4" width="16" height="48" />
+      </svg>
+      <input id="checkbox" data-box type="checkbox" aria-label="Empty checkbox" />
+      <div id="border" data-box></div>
+      <div id="underline" data-box></div>
+      <div id="background" data-box></div>
+      <div id="bare" data-box></div>
+      <div id="path-clip" class="clip-parent">
+        <div id="clipped-path" class="clipped" data-box></div>
+        <div id="fully-hidden" data-box></div>
+      </div>
+      <div id="image-clip" class="clip-parent">
+        <img id="clipped-image" class="clipped" data-box alt="" />
+      </div>
+    </section>
+    <section data-page="2">
+      <div id="page-two" data-box></div>
+    </section>
+    <script>
+      // Self-contained opaque PNGs; no network, font or external asset dependency.
+      const canvas = document.createElement('canvas');
+      canvas.width = 8;
+      canvas.height = 8;
+      const context = canvas.getContext('2d');
+      context.fillStyle = '#ce3420';
+      context.fillRect(0, 0, 8, 8);
+      for (const id of ['png', 'clipped-image']) {
+        document.getElementById(id).src = canvas.toDataURL('image/png');
+      }
+    </script>
+  </body>
+</html>
