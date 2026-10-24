@@ -580,3 +580,21 @@
 - **驗收測試**：data: 樣式表 `@import` 外部伺服器的文件連印 200 次，外部伺服器收到 0 個請求（修正前約 1/100 會收到）
 - **不做**：其他攔截規則
 - **來源**：T16-2（單獨重複跑 100 次的實驗）
+
+### T07-9 印 PDF：Paged.js 改由 npm 套件提供
+- **目標**：`apps/print/public/paged.polyfill.js`（3.3 萬行）是 Paged.js 0.4.3 的複製檔；`packages/ground-truth`、`packages/self-check` 已從 npm 的 `pagedjs@0.4.3` 讀同一個檔。`apps/print` 改為依賴 `pagedjs`（鎖死版本），在 `dev:print`、deploy 與測試前把 `dist/paged.polyfill.js` 複製進 `public/`（gitignore），repo 不再收這份檔
+- **Blocked by**：T07
+- **Blocks**：—
+- **撞車風險**：`apps/print`；與 T07-5、T07-6、T07-8 不要同時派
+- **驗收測試**：先比對 repo 裡的檔案與 npm 0.4.3 的 `dist/paged.polyfill.js` 是否位元組相同（不同就停下回報）；print Worker 提供的 `/paged.polyfill.js` 與 npm 套件的檔案位元組相同（測試會抓到漏複製）；乾淨 checkout 跑 `dev:print` 與 `pnpm verify` 都通過；同 seed 的批次輸出與改動前相同
+- **不做**：升級 Paged.js
+- **來源**：使用者 2026-10-24（cloc 統計）
+
+### T07-10 印 PDF：`@import` 進來的樣式表裡的平台字型
+- **目標**：T07-7 後 runtime 會讀連結樣式表的 `@page`／`@media print`，但被 `@import` 的樣式表裡、只用於列印的平台字型規則仍掃不到
+- **Blocked by**：T07-7
+- **Blocks**：—（目前沒有樣板包這樣寫）
+- **撞車風險**：`apps/print` 的 print runtime；與 T07-5、T07-6、T07-8、T07-9 不要同時派
+- **驗收測試**：只在 `@import` 樣式表的 `@media print` 裡用平台字型的樣板包，印出來只含 Noto 字型
+- **不做**：其他 CSS 載入方式
+- **來源**：PR #21 的 review
