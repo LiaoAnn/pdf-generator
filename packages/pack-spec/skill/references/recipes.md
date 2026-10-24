@@ -153,6 +153,80 @@ A field with `blankProbability` that drops a whole section: put the heading and 
 - Either-or columns (支出 or 存入): the engine can't make two fields exclusive, nor tie one field's value to another's (a 摘要 that matches the column). Without a running balance, use one `choice` field `kind` and one `money` field, printed in the matching cell with `{{#if (eq kind "支出")}}…{{/if}}`. With a `runningBalance`, which needs separate `add` and `subtract` fields, give both amounts a `blankProbability` (blank counts as 0) and accept that some rows fill both or neither. Keep texts like 摘要 neutral.
 - Account numbers and other fixed-length digit strings: an `integer` with `min`/`max` of that many digits (`100000000000`..`999999999999`); print separators by splitting it into several integer fields.
 
+## Two columns
+
+A journal-style body: the title block spans the page, the rest flows in two CSS columns. Put the title block before the column wrapper, and the wrapper itself needs no mark. Blocks in the left column come before the right one in `gt.json` because CSS columns flow in document order, so write the HTML in reading order.
+
+```html pack-ok
+<p class="word-title" data-gt="title">{{company}}業務會議紀錄</p>
+<main class="columns">
+<h2 data-gt="heading">一、討論事項</h2>
+<p data-gt="paragraph">{{summary}}</p>
+<h2 data-gt="heading">二、決議</h2>
+{{#each items}}
+<p data-gt="paragraph">{{this}}</p>
+{{/each}}
+</main>
+```
+
+```css pack-ok
+.columns {
+  column-count: 2;
+  column-gap: 7mm;
+  column-fill: balance;
+}
+
+.columns h2 {
+  break-after: avoid;
+}
+
+.columns p {
+  break-inside: avoid;
+}
+```
+
+- `column-fill: balance`, never `auto`. With `auto` and `break-inside: avoid`, Paged.js can push the whole column block to the next page, leaving the first page with only the title block.
+- `break-inside: avoid` on every block in the columns (paragraphs, formulas, references). A block split across two columns gets a single gt box spanning both, which is wrong. So keep each block shorter than a column: bound `maxLength` in the rules.
+- `break-after: avoid` on headings, so a heading isn't left alone at the bottom of a column.
+- Running headers and footnotes stay outside the columns, as running elements (above).
+
+See `$PDF_GENERATOR_REPO/templates/paper/pack/styles/paper.css` (`.columns`) in context.
+
+## Formulas (KaTeX)
+
+No script runs at print time, so KaTeX's output goes into the template already rendered. Write a small build script that calls `katex.renderToString(latex, { displayMode: true, output: 'html' })` and pastes the result into a `formula` block whose `data-gt-latex` holds the LaTeX source. `gt.json` takes the LaTeX from that attribute and the block's text from what KaTeX visibly prints. Rerun the script after changing a formula or the KaTeX version.
+
+```html pack-ok
+<div class="equation" data-gt="formula" data-gt-latex="E = mc^2"><span class="katex-display"><span class="katex"><span class="katex-html" aria-hidden="true"><span class="base"><span class="strut" style="height:0.6833em;"></span><span class="mord mathnormal" style="margin-right:0.0576em;">E</span><span class="mspace" style="margin-right:0.2778em;"></span><span class="mrel">=</span><span class="mspace" style="margin-right:0.2778em;"></span></span><span class="base"><span class="strut" style="height:0.8641em;"></span><span class="mord mathnormal">m</span><span class="mord"><span class="mord mathnormal">c</span><span class="msupsub"><span class="vlist-t"><span class="vlist-r"><span class="vlist" style="height:0.8641em;"><span style="top:-3.113em;margin-right:0.05em;"><span class="pstrut" style="height:2.7em;"></span><span class="sizing reset-size6 size3 mtight"><span class="mord mtight">2</span></span></span></span></span></span></span></span></span></span></span></span></div>
+```
+
+- **`output: 'html'`**: no MathML. The hidden MathML copy doesn't count toward the block's text, and the LaTeX is already in `data-gt-latex`.
+- **Braces**: write every `{` and `}` in the LaTeX and in KaTeX's HTML as `&#123;` and `&#125;`, so Handlebars never sees a `{{` (`\frac{a}{b}` → `data-gt-latex="\frac&#123;a&#125;&#123;b&#125;"`). Escape `&`, `"`, `<` and `>` in the attribute too.
+- **A formula chosen per record**: a `choice` field holding the option index, and one `{{#if (eq @root.eq1 0)}}…{{/if}}` branch per option, each a whole `formula` block (`@root`, so it also works inside `{{#each}}`).
+- **Size**: each rendered formula adds a few KiB, and the template must stay under 64 KiB (§8 of the spec). Keep the pool small.
+- **Stylesheet**: ship KaTeX's own `katex.min.css` unchanged (listed in `files.styles` before your own stylesheet), except its `@font-face` rules. The platform handles KaTeX's paint order and the U+200B it prints in `.vlist-s`, so the pack needs no overrides.
+- **Fonts**: keep only the `@font-face` rules for faces your formulas print. `check-pack` can't tell which those are, because KaTeX's stylesheet names every KaTeX family, so work them out from the rendered HTML and KaTeX's CSS rules together. A class name alone misses inherited bold or italic, scalable delimiters and large operators: the paper's `build.test.ts` (`neededFaces`) does it for every formula in the pool. A face you leave out prints wrong: in a fallback font, which fails the self-check, or as a style Chrome synthesizes from another shipped face (bold from regular), which the self-check doesn't catch. A face you add for nothing only makes the pack bigger, and Paged.js downloads every declared face before it paginates. Give each one a single `src` pointing at the woff2 copied from the `katex` package, relative to the stylesheet, and list the files in `files.assets`:
+
+```css
+@font-face{font-display:block;font-family:KaTeX_Main;font-style:normal;font-weight:400;src:url(../fonts/KaTeX_Main-Regular.woff2) format("woff2")}
+```
+
+- **Spacing**: put the space around a formula in the block's padding, not its margin, and zero KaTeX's own display margin. A tall fraction or a big operator reaches above KaTeX's box, and the gt box (the block's border box) must hold every printed glyph. Inside columns, the formula needs `break-inside: avoid` like every other block:
+
+```css pack-ok
+.equation {
+  margin: 0.5mm 0;
+  padding: 1.5mm 0;
+  break-inside: avoid;
+}
+
+.equation .katex-display {
+  margin: 0;
+}
+```
+
+The full setup is `$PDF_GENERATOR_REPO/templates/paper/`: `src/formulas.ts` (the LaTeX pool), `src/build.ts` (renders the branches, trims the stylesheet, copies the fonts) and `src/build.test.ts` (fails when the generated files are stale or a printed face isn't shipped).
+
 ## Landscape
 
 `"orientation": "landscape"` in the manifest; nothing else. The manifest wins over `@page { size }`.

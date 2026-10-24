@@ -28,7 +28,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
    - `$PDF_GENERATOR_REPO/templates/minimal-example/pack/`: one-page minutes; label/value pairs, a table with checkbox cells, a list, a checkbox, a blank field, a footer.
    - `$PDF_GENERATOR_REPO/templates/monthly-report/pack/`: multi-page report; running header and footer, bullet lists, a figure with text, tables that break across pages, sums and percentages.
    - `$PDF_GENERATOR_REPO/templates/incident-form/pack/`: a one-page form built as one big table; merged cells, blank cells, checkbox options in cells.
-3. [references/recipes.md](references/recipes.md): checked snippets for each common layout element, and the print-time traps the checker can't see.
+3. [references/recipes.md](references/recipes.md): checked snippets for each common layout element (two columns and KaTeX formulas included), and the print-time traps the checker can't see.
 4. [references/check-codes.md](references/check-codes.md): what each `check-pack` code means and how to fix it.
 
 ## Workflow
@@ -71,7 +71,7 @@ These are the ones agents get wrong; the spec has the rest.
 - **No generated text**: no `content: "…"`, `counter()`, `counter(page)` or list markers (`list-style: none`). They print text no block holds.
 - **No `<script>`, no URLs that leave the pack, no `{{{raw}}}`, no helpers but `eq`, `lookup`, `number`, `rocDate`** (and the built-in `if`/`unless`/`each`/`with`).
 - **Handlebars only in text or in quoted attribute values**, and an element opens and closes in the same `{{#if}}` branch: to switch an attribute, duplicate the whole element in each branch.
-- **Fonts**: only the platform families (`"Noto Serif TC"`, `"Noto Sans TC"`, `"LXGW WenKai TC"`, `"Noto Sans Symbols 2"`), named in the `font-family` of the printed elements in your stylesheet; `"Noto Sans Symbols 2"` first wherever ☑ ☐ print. No `@font-face` for them, no `@import`. Fixed text uses common Traditional Chinese characters only.
+- **Fonts**: only the platform families (`"Noto Serif TC"`, `"Noto Sans TC"`, `"LXGW WenKai TC"`, `"Noto Sans Symbols 2"`), named in the `font-family` of the printed elements in your stylesheet; `"Noto Sans Symbols 2"` first wherever ☑ ☐ print. No `@font-face` for them, no `@import`. The one exception is pack fonts a layout needs, such as KaTeX's for formulas (spec §6, "Formulas (KaTeX)" in [references/recipes.md](references/recipes.md)). Fixed text uses common Traditional Chinese characters only.
 - **Blank-able fields** (`blankProbability`) get a size: `display: inline-block; min-width: 6em; min-height: 1lh`, or sit in a table cell.
 - **Tables**: `table-layout: fixed` with `<col>` widths (word.css sets the layout; you give the widths), one row per `{{#each}}` item, rows short enough never to exceed a page.
 - **No text inside inline `<svg>`**; put it in an HTML mark beside the drawing.
