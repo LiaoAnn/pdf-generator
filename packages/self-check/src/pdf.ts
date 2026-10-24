@@ -1,4 +1,4 @@
-import { getDocumentProxy } from 'unpdf';
+import { getDocumentProxy, getResolvedPDFJS } from 'unpdf';
 
 /** One run of text in a PDF page's text layer. */
 export interface PdfTextItem {
@@ -15,12 +15,29 @@ export interface PdfTextItem {
   font: string;
 }
 
+/** Something a page draws besides text. */
+export interface PdfMark {
+  /**
+   * `image`: a painted image (raster XObject, inline or mask image).
+   * `path`: a filled or stroked path, or a shading over the clip.
+   * `clip`: a clipping path (Chrome clips every `<img>` and `<svg>` to its box).
+   */
+  kind: 'image' | 'path' | 'clip';
+  /**
+   * `[x0, y0, x1, y1]` in PDF points from the page's top-left corner, as text
+   * items; inside the clip in force (a stroke includes half its width).
+   */
+  box: [number, number, number, number];
+}
+
 export interface PdfPage {
   /** MediaBox size in PDF points. */
   width: number;
   height: number;
   /** Text items with visible text (whitespace-only items left out), in content-stream order. */
   items: PdfTextItem[];
+  /** What the page draws besides text, in content-stream order. */
+  marks: PdfMark[];
 }
 
 export interface PdfDocument {
@@ -45,6 +62,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   const document = await getDocumentProxy(new Uint8Array(pdf), {
     fontExtraProperties: true,
   });
+  const { OPS } = await getResolvedPDFJS();
   try {
     const pages: PdfPage[] = [];
     for (let n = 1; n <= document.numPages; n++) {
@@ -54,7 +72,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
       const content = await page.getTextContent();
       // Fonts are resolved into commonObjs only once the page's operators
       // have been read.
-      await page.getOperatorList();
+      const operators = await page.getOperatorList();
       const fontNames = new Map<string, string>();
       const fontOf = (id: string) => {
         let name = fontNames.get(id);
@@ -88,11 +106,202 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
           font: fontOf(item.fontName),
         });
       }
-      pages.push({ width: right - left, height: top - bottom, items });
+      const marks = readMarks(operators, OPS, [left, bottom, right, top]);
+      pages.push({ width: right - left, height: top - bottom, items, marks });
       page.cleanup();
     }
     return { pages };
   } finally {
     await document.loadingTask.destroy();
   }
+}
+
+type Matrix = [number, number, number, number, number, number];
+/** `[x0, y0, x1, y1]` in PDF user space (y up). */
+type Rect = [number, number, number, number];
+
+const identity: Matrix = [1, 0, 0, 1, 0, 0];
+
+const multiply = (m: Matrix, n: Matrix): Matrix => [
+  m[0] * n[0] + m[2] * n[1],
+  m[1] * n[0] + m[3] * n[1],
+  m[0] * n[2] + m[2] * n[3],
+  m[1] * n[2] + m[3] * n[3],
+  m[0] * n[4] + m[2] * n[5] + m[4],
+  m[1] * n[4] + m[3] * n[5] + m[5],
+];
+
+/** The axis-aligned bounds of `rect` mapped through `m`. */
+function mapRect(m: Matrix, [x0, y0, x1, y1]: Rect): Rect {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (const [x, y] of [
+    [x0, y0],
+    [x1, y0],
+    [x0, y1],
+    [x1, y1],
+  ] as const) {
+    xs.push(m[0] * x + m[2] * y + m[4]);
+    ys.push(m[1] * x + m[3] * y + m[5]);
+  }
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+const intersect = (a: Rect, b: Rect): Rect => [
+  Math.max(a[0], b[0]),
+  Math.max(a[1], b[1]),
+  Math.min(a[2], b[2]),
+  Math.min(a[3], b[3]),
+];
+
+const asMatrix = (value: unknown): Matrix | undefined =>
+  Array.isArray(value) &&
+  value.length === 6 &&
+  value.every(n => typeof n === 'number')
+    ? (value as Matrix)
+    : undefined;
+
+const asRect = (value: unknown): Rect | undefined => {
+  const values = ArrayBuffer.isView(value)
+    ? Array.from(value as Float32Array)
+    : value;
+  return Array.isArray(values) &&
+    values.length === 4 &&
+    values.every(n => typeof n === 'number' && Number.isFinite(n)) &&
+    values[0] <= values[2] &&
+    values[1] <= values[3]
+    ? (values as Rect)
+    : undefined;
+};
+
+interface GraphicsState {
+  ctm: Matrix;
+  clip: Rect;
+  lineWidth: number;
+  /** Constant alpha of fills (and images) and of strokes: 0 paints nothing. */
+  fillAlpha: number;
+  strokeAlpha: number;
+}
+
+/**
+ * The boxes of the images, paths and clips in a page's operator list
+ * (pdf.js 6: `constructPath` carries its paint operator and its bounds).
+ * `view` is the MediaBox; boxes come out in the text items' frame.
+ */
+function readMarks(
+  operators: { fnArray: number[]; argsArray: unknown[] },
+  OPS: Record<string, number>,
+  view: Rect,
+): PdfMark[] {
+  const [left, , , top] = view;
+  const filled = new Set(
+    [
+      'fill',
+      'eoFill',
+      'fillStroke',
+      'eoFillStroke',
+      'closeFillStroke',
+      'closeEOFillStroke',
+    ].map(name => OPS[name]),
+  );
+  const stroked = new Set(
+    [
+      'stroke',
+      'closeStroke',
+      'fillStroke',
+      'eoFillStroke',
+      'closeFillStroke',
+      'closeEOFillStroke',
+    ].map(name => OPS[name]),
+  );
+  const images = new Set(
+    [
+      'paintImageXObject',
+      'paintInlineImageXObject',
+      'paintImageMaskXObject',
+      'paintSolidColorImageMask',
+    ].map(name => OPS[name]),
+  );
+  const marks: PdfMark[] = [];
+  const stack: GraphicsState[] = [];
+  let state: GraphicsState = {
+    ctm: identity,
+    clip: view,
+    lineWidth: 1,
+    fillAlpha: 1,
+    strokeAlpha: 1,
+  };
+  let clipping = false;
+  const push = () => stack.push({ ...state });
+  const pop = () => {
+    state = stack.pop() ?? state;
+  };
+  const mark = (kind: PdfMark['kind'], rect: Rect) => {
+    const [x0, y0, x1, y1] = intersect(rect, state.clip);
+    if (x0 > x1 || y0 > y1) return;
+    marks.push({ kind, box: [x0 - left, top - y1, x1 - left, top - y0] });
+  };
+  operators.fnArray.forEach((fn, i) => {
+    const args = (operators.argsArray[i] ?? []) as unknown[];
+    if (fn === OPS.save) push();
+    else if (fn === OPS.restore) pop();
+    else if (fn === OPS.transform) {
+      const m = asMatrix(args);
+      if (m) state.ctm = multiply(state.ctm, m);
+    } else if (fn === OPS.setLineWidth) {
+      if (typeof args[0] === 'number') state.lineWidth = args[0];
+    } else if (fn === OPS.setGState) {
+      for (const entry of (args[0] ?? []) as unknown[]) {
+        if (!Array.isArray(entry) || typeof entry[1] !== 'number') continue;
+        if (entry[0] === 'LW') state.lineWidth = entry[1];
+        else if (entry[0] === 'ca') state.fillAlpha = entry[1];
+        else if (entry[0] === 'CA') state.strokeAlpha = entry[1];
+      }
+    } else if (fn === OPS.clip || fn === OPS.eoClip) clipping = true;
+    else if (fn === OPS.constructPath) {
+      const bounds = asRect(args[2]);
+      const op = args[0] as number;
+      if (bounds) {
+        const rect = mapRect(state.ctm, bounds);
+        // Only paint at some opacity is a mark.
+        const stroke = stroked.has(op) && state.strokeAlpha > 0;
+        const fill = filled.has(op) && state.fillAlpha > 0;
+        if (stroke || fill) {
+          // A stroke reaches half its width beyond the path: on each axis,
+          // as far as the CTM stretches a circle of that radius.
+          const [a, b, c, d] = state.ctm;
+          const half = stroke ? state.lineWidth / 2 : 0;
+          const hx = half * Math.hypot(a, c);
+          const hy = half * Math.hypot(b, d);
+          mark('path', [
+            rect[0] - hx,
+            rect[1] - hy,
+            rect[2] + hx,
+            rect[3] + hy,
+          ]);
+        }
+        if (clipping) {
+          mark('clip', rect);
+          state.clip = intersect(state.clip, rect);
+        }
+      }
+      clipping = false;
+    } else if (images.has(fn)) {
+      if (state.fillAlpha > 0) mark('image', mapRect(state.ctm, [0, 0, 1, 1]));
+    } else if (fn === OPS.shadingFill) mark('path', state.clip);
+    else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
+      push();
+      const group = args[0] as { matrix?: unknown; bbox?: unknown } | undefined;
+      const m =
+        fn === OPS.paintFormXObjectBegin
+          ? asMatrix(args[0])
+          : asMatrix(group?.matrix);
+      if (m) state.ctm = multiply(state.ctm, m);
+      const bbox = asRect(
+        fn === OPS.paintFormXObjectBegin ? args[1] : group?.bbox,
+      );
+      if (bbox) state.clip = intersect(state.clip, mapRect(state.ctm, bbox));
+    } else if (fn === OPS.paintFormXObjectEnd || fn === OPS.endGroup) pop();
+  });
+  return marks;
 }

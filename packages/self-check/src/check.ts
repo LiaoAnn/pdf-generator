@@ -1,5 +1,10 @@
 import type { GroundTruth, GtBlock } from '@pdf-generator/contract';
-import { type PdfPage, type PdfTextItem, readPdf } from './pdf.ts';
+import {
+  type PdfMark,
+  type PdfPage,
+  type PdfTextItem,
+  readPdf,
+} from './pdf.ts';
 import { normaliseText } from './text.ts';
 
 /** `[x0, y0, x1, y1]` in PDF points from the page's top-left corner. */
@@ -36,6 +41,13 @@ export type Difference = { message: string } & (
   | { kind: 'page'; page: number; blockId: string; actualPage: number }
   /** PDF text inside no block's box. */
   | { kind: 'unmarked_text'; page: number; text: string; textBox: Box }
+  /**
+   * A block with no printed text whose box doesn't fit what the PDF draws
+   * there: nothing (`inkBox` absent), a drawing not anchored to its box, or
+   * one spilling out of it. `inkBox` is the union of the marks inside or
+   * spilling.
+   */
+  | { kind: 'ink'; page: number; blockId: string; bbox: Box; inkBox?: Box }
   /** The block's order does not fit the page it is printed on. */
   | { kind: 'order'; page: number; blockId: string; order: number }
   /** The PDF's text inside a table cell's box is not the cell's text. */
@@ -105,6 +117,11 @@ const boxTolerancePt = 1;
 // Noto Sans TC's tall metrics (ascent 1.16, descent 0.288 em: the line box
 // starts 0.936 em above the baseline), so tight leading is no false alarm.
 const glyphBodyEm = 0.7;
+
+// How far a text-free block's drawing may be off its box. On the 5 packs'
+// logos, figure and barcode (local Chrome 1xx) it was at most 0.35 pt off an
+// edge and 0.53 pt off centre; 1 pt still catches a box moved by more.
+const inkTolerancePt = 1;
 
 type Item = PdfTextItem & { index: number };
 
@@ -265,12 +282,23 @@ export async function checkPdf(
       if (own.some(item => outside(item, block.bbox))) {
         report(block.page, boxDifference(block, own));
       }
+      // Without printed text, its box is checked against what is drawn.
+      const ink =
+        own.length === 0
+          ? inkDifference(block, pages[block.page - 1])
+          : undefined;
+      if (ink) report(block.page, ink);
       for (const difference of details(block, own))
         report(block.page, difference);
       continue;
     }
-    // The PDF can't show an image's text unless it is printed as text.
-    if (block.type === 'image' && own.length === 0) continue;
+    // The PDF can't show an image's text unless it is printed as text; its
+    // drawing is still checked.
+    if (block.type === 'image' && own.length === 0) {
+      const difference = inkDifference(block, pages[block.page - 1]);
+      if (difference) report(block.page, difference);
+      continue;
+    }
     // Its text elsewhere on its page: among its own and unclaimed items.
     const pageItems = items[block.page - 1] ?? [];
     const pageOwner = owner[block.page - 1] ?? [];
@@ -406,6 +434,86 @@ function boxDifference(block: GtBlock, items: readonly Item[]): Difference {
     bbox: block.bbox,
     textBox,
     message: `Block ${block.id} on page ${block.page}: its text is printed at [${textBox.join(', ')}], outside its box [${block.bbox.join(', ')}]`,
+  };
+}
+
+const unionOf = (boxes: readonly Box[]): Box => [
+  round(Math.min(...boxes.map(box => box[0]))),
+  round(Math.min(...boxes.map(box => box[1]))),
+  round(Math.max(...boxes.map(box => box[2]))),
+  round(Math.max(...boxes.map(box => box[3]))),
+];
+
+/**
+ * Whether a drawing spanning `[a0, a1]` sits in `[b0, b1]` as a box's
+ * content does on one axis: on one of its edges, or centred (a barcode's
+ * quiet zone, an inset icon).
+ */
+const anchored = (a0: number, a1: number, b0: number, b1: number) =>
+  Math.abs(a0 - b0) <= inkTolerancePt ||
+  Math.abs(a1 - b1) <= inkTolerancePt ||
+  Math.abs(a0 - b0 - (b1 - a1)) <= inkTolerancePt;
+
+/**
+ * Compares a block with no printed text with the marks its page draws. Marks
+ * covering its whole box (the page clip, a section background) say nothing
+ * about it; the rest overlapping it must lie inside it, and on each axis sit
+ * on an edge or in the middle. A block that draws nothing can't be checked
+ * and is reported too.
+ */
+function inkDifference(
+  block: GtBlock,
+  page: PdfPage | undefined,
+): Difference | undefined {
+  const t = inkTolerancePt;
+  const [x0, y0, x1, y1] = block.bbox;
+  const inside: Box[] = [];
+  const spilling: Box[] = [];
+  // A clip places a drawing but paints nothing: something must be painted.
+  let painted = false;
+  for (const { kind, box } of page?.marks ?? ([] as PdfMark[])) {
+    const [m0, n0, m1, n1] = box;
+    if (m0 >= x0 - t && n0 >= y0 - t && m1 <= x1 + t && n1 <= y1 + t) {
+      inside.push(box);
+      painted ||= kind !== 'clip';
+    } else if (
+      // Overlapping it, but not covering all of it.
+      m0 < x1 - t &&
+      m1 > x0 + t &&
+      n0 < y1 - t &&
+      n1 > y0 + t &&
+      !(m0 <= x0 + t && n0 <= y0 + t && m1 >= x1 - t && n1 >= y1 - t)
+    ) {
+      spilling.push(box);
+      painted ||= kind !== 'clip';
+    }
+  }
+  const at = `Block ${block.id} on page ${block.page}`;
+  const where = {
+    kind: 'ink' as const,
+    page: block.page,
+    blockId: block.id,
+    bbox: block.bbox,
+  };
+  if (!painted) {
+    return {
+      ...where,
+      message: `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
+    };
+  }
+  const inkBox = unionOf([...inside, ...spilling]);
+  const [u0, v0, u1, v1] = inkBox;
+  if (
+    spilling.length === 0 &&
+    anchored(u0, u1, x0, x1) &&
+    anchored(v0, v1, y0, y1)
+  ) {
+    return undefined;
+  }
+  return {
+    ...where,
+    inkBox,
+    message: `${at}: the PDF draws at [${inkBox.join(', ')}], which doesn't fit its box [${block.bbox.join(', ')}]`,
   };
 }
 

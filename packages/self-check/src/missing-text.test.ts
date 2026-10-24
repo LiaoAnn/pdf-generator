@@ -16,7 +16,7 @@ const box = { x0: 60, y0: 93, x1: 100, y1: 110 };
 
 function printed(items: PdfTextItem[]) {
   vi.spyOn(pdfReader, 'readPdf').mockResolvedValue({
-    pages: [{ width: 595, height: 842, items }],
+    pages: [{ width: 595, height: 842, items, marks: [] }],
   });
 }
 

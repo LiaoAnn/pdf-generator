@@ -411,3 +411,56 @@ describe('ROC dates for Taiwanese template packs', () => {
     },
   );
 });
+
+describe('page-box upload guard CLI acceptance', () => {
+  it.each([
+    [
+      'Paged.js offset',
+      '@page { margin: 20mm }\n  .pagedjs_page { margin-top: -20mm !important }',
+      '.pagedjs_page',
+    ],
+    [
+      'body padding',
+      '@page { margin: 20mm }\nbody {\n  padding-left: 10mm;\n}',
+      'padding-left',
+    ],
+  ])('CLI rejects the %s repro with a source location', (_name, css, token) => {
+    const directory = join(tempDirectory(), 'pack');
+    cpSync(join(fixtures, 'valid'), directory, { recursive: true });
+    writeFileSync(join(directory, 'styles/report.css'), css);
+    const result = run([directory, '--json']);
+    expect(result.error).toBeUndefined();
+    expect(result.stderr).toBe('');
+    expect.soft(result.status).toBe(1);
+    const lines = css.slice(0, css.indexOf(token)).split('\n');
+    expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: false,
+      issues: [
+        expect.objectContaining({
+          code: 'css-page-box',
+          file: 'styles/report.css',
+          line: lines.length,
+          column: (lines.at(-1)?.length ?? 0) + 1,
+        }),
+      ],
+    });
+  });
+
+  const templates = fileURLToPath(
+    new URL('../../../templates/', import.meta.url),
+  );
+  it.each(
+    readdirSync(templates).filter(name =>
+      readdirSync(join(templates, name)).includes('pack'),
+    ),
+  )(
+    'allows the shipped %s pack without rejecting its page setup or resets',
+    name => {
+      const result = run([join(templates, name, 'pack'), '--json']);
+      expect(result.error).toBeUndefined();
+      expect(result.stderr).toBe('');
+      expect(result.status).toBe(0);
+      expect(JSON.parse(result.stdout)).toEqual({ ok: true, issues: [] });
+    },
+  );
+});

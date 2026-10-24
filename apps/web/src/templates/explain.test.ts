@@ -170,6 +170,7 @@ describe('template author error explanations', () => {
     'asset-data',
     'asset-dynamic',
     'css-escape',
+    'css-page-box',
     'font-unused',
   ];
   const printCodes = [
