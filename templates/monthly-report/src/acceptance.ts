@@ -61,6 +61,7 @@ function zipPack(): Uint8Array {
 type Report = {
   company: string;
   period: { year: number; month: number };
+  preparedBy: { department: string };
   highlights: string[];
   nextSteps: string[];
   figure: { caption: string; body: string };
@@ -153,9 +154,12 @@ function compare(gt: GroundTruth, record: Report): string[] {
   const header = squash(
     `${record.company}　${record.period.year} 年 ${record.period.month} 月營運月報`,
   );
+  const footer = squash(
+    `內部資料　請勿外流　編製單位：${record.preparedBy.department}`,
+  );
   for (const [type, want] of [
     ['page_header', header],
-    ['page_footer', undefined],
+    ['page_footer', footer],
   ] as const) {
     const pages = of(type).map(b => b.page);
     same(
@@ -163,9 +167,7 @@ function compare(gt: GroundTruth, record: Report): string[] {
       pages,
       gt.pages.map((_, i) => i + 1),
     );
-    if (want !== undefined) {
-      for (const text of texts(type)) same(type, text, want);
-    }
+    for (const text of texts(type)) same(type, text, want);
   }
 
   same(

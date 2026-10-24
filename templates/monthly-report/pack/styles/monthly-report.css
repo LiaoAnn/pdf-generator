@@ -131,8 +131,11 @@ figcaption {
   margin-top: 1.5mm;
 }
 
+/* Fixed column widths (the <col>s), so every page's fragment of a split
+   table has the same columns (spec §4.2). */
 table.data {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin: 0 0 2.5mm;
   font-size: 9.5pt;
