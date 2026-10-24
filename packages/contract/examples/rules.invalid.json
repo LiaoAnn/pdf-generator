@@ -112,6 +112,21 @@
             "opening": "openingBalance",
             "add": ["transactions[].deposit"],
             "subtract": ["transactions[].withdrawal"]
+          },
+          "fee": {
+            "type": "money",
+            "min": 0,
+            "max": 30
+          },
+          "charged": {
+            "type": "sum",
+            "of": ["transactions[].withdrawal", "transactions[].fee"]
+          },
+          "depositShare": {
+            "type": "percentage",
+            "part": "transactions[].deposit",
+            "whole": "totalDeposits",
+            "decimals": 2
           }
         }
       }

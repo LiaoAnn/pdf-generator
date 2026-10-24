@@ -179,7 +179,7 @@ describe('public fake-data engine', () => {
     expect(generate({ ...rules, fields: remaining }, seed)).toEqual(expected);
   });
 
-  it('generates the whole contract example with exact transaction balances, deposits and utilization', () => {
+  it('generates the whole contract example with exact transaction balances, deposits, row shares and utilization', () => {
     const contractRules = rulesSchema.parse(example('valid'));
     // Independent decimal-digit oracle; do not accumulate binary floats.
     const cents = (value: number): bigint => {
@@ -206,6 +206,19 @@ describe('public fake-data engine', () => {
         expect(row.balance).toBe(Number(balance) / 100);
       }
       expect(record.totalDeposits).toBe(Number(deposits) / 100);
+      for (const row of record.transactions) {
+        if (row === null || typeof row !== 'object' || Array.isArray(row))
+          throw new Error('Expected transaction');
+        const numerator = cents(Number(row.deposit)) * 10_000n;
+        const rounded =
+          deposits === 0n
+            ? null
+            : numerator / deposits +
+              (2n * (numerator % deposits) >= deposits ? 1n : 0n);
+        expect(row.depositShare).toBe(
+          rounded === null ? null : Number(rounded) / 100,
+        );
+      }
       const account = record.account;
       if (
         account === null ||

@@ -130,7 +130,7 @@ describe('derived document numbers through the public engine', () => {
     expect(zeroWholes).toBeGreaterThan(0);
   });
 
-  it('resolves root paths through every nested array, including from each row of that same array', () => {
+  it('binds a nested row sum to its current row while an outside summary still aggregates every row', () => {
     const rules = rulesFor({
       groups: {
         type: 'array',
@@ -166,7 +166,7 @@ describe('derived document numbers through the public engine', () => {
       extra: { type: 'object', fields: { amount: constant(0.2) } },
     });
     const record = generate(rules, 'nested-root-paths');
-    const row = { amount: 0.1, grandTotal: 0.6 };
+    const row = { amount: 0.1, grandTotal: 0.1 };
     expect(record).toEqual({
       groups: [{ rows: [row, row, row] }, { rows: [row, row, row] }],
       summary: { total: 0.8 },
