@@ -14,7 +14,13 @@ import {
 } from './batches.ts';
 import { ApiFailure } from './errors.ts';
 import { status } from './status.ts';
-import { listTemplates } from './templates.ts';
+import {
+  downloadPack,
+  getTemplate,
+  listTemplates,
+  previewPdf,
+  uploadTemplate,
+} from './templates.ts';
 
 export interface ApiRequest {
   request: Request;
@@ -30,6 +36,12 @@ type Route = (
 const routes: Record<string, Route> = {
   'GET /api/me': ({ identity }) => Effect.succeed(Response.json({ identity })),
   'GET /api/templates': () => listTemplates,
+  'POST /api/templates': ({ request }) => uploadTemplate(request),
+  'GET /api/templates/:id': ({ params }) => getTemplate(params.id ?? ''),
+  'GET /api/templates/:id/versions/:version/pack.zip': ({ params }) =>
+    downloadPack(params.id ?? '', params.version ?? ''),
+  'GET /api/templates/:id/versions/:version/preview.pdf': ({ params }) =>
+    previewPdf(params.id ?? '', params.version ?? ''),
   'GET /api/status': () => status,
   'GET /api/batches': () => listBatches,
   'POST /api/batches': ({ request }) => createBatch(request),

@@ -9,8 +9,8 @@ import { generate } from '@pdf-generator/fake-data';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
-import { fixtureReport } from '../templates/fixture-pack.ts';
-import { fixtureTemplates, type TemplatePack } from '../templates/source.ts';
+import { fixtureReport, fixtureTemplates } from '../templates/fixture-pack.ts';
+import type { TemplatePack } from '../templates/source.ts';
 import {
   type FixtureJob,
   fixtureKey,

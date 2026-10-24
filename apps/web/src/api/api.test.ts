@@ -83,6 +83,7 @@ describe('GET /api/templates with migrated local storage', () => {
           description: '最後一份樣板',
           pageSize: 'A4',
           orientation: 'landscape',
+          packSha256: '0'.repeat(64),
           createdAt: new Date('2026-10-23T15:46:22.998Z'),
         },
         {
@@ -92,6 +93,7 @@ describe('GET /api/templates with migrated local storage', () => {
           description: '',
           pageSize: 'A4',
           orientation: 'landscape',
+          packSha256: '0'.repeat(64),
           createdAt: new Date('2026-10-22T01:02:03.004Z'),
         },
         {
@@ -101,6 +103,7 @@ describe('GET /api/templates with migrated local storage', () => {
           description: null,
           pageSize: 'A4',
           orientation: 'portrait',
+          packSha256: '0'.repeat(64),
           createdAt: new Date('2026-10-24T00:00:00.123Z'),
         },
       ]);

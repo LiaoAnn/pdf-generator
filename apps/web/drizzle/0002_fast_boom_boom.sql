@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `pack_sha256` text NOT NULL;

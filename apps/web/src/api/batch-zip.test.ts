@@ -14,6 +14,7 @@ import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { type FixtureFile, fixtureKey } from '../batch/fixture.ts';
 import * as schema from '../db/schema.ts';
+import { storeFixturePack } from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 
 let platform: Awaited<ReturnType<typeof getPlatformProxy<Env>>>;
@@ -188,6 +189,7 @@ beforeEach(async () => {
   await migrate(db(), {
     migrationsFolder: fileURLToPath(new URL('../../drizzle', import.meta.url)),
   });
+  await storeFixturePack(platform.env);
 }, 60_000);
 
 afterEach(async () => {

@@ -1,7 +1,7 @@
 // One fixture of a batch: fake data → filled template → printed PDF and
 // ground truth → R2. Same job, same bytes for data.json and gt.json.
-import { generate } from '@pdf-generator/fake-data';
-import { fill } from '../templates/fill.ts';
+import { type FakeRecord, generate } from '@pdf-generator/fake-data';
+import { fill } from '@pdf-generator/template-tools';
 import type { TemplatePack, TemplateSourceApi } from '../templates/source.ts';
 import type { Printer } from './printer.ts';
 
@@ -64,8 +64,12 @@ function inlineStyles(html: string, styles: string[]): string {
   return html.slice(0, head) + tags + html.slice(head);
 }
 
-function render(pack: TemplatePack, record: Parameters<typeof fill>[1]) {
-  return inlineStyles(fill(pack.template, record), pack.styles);
+/** The document a pack prints for a record: filled, stylesheets inlined. */
+export function render(pack: TemplatePack, record: FakeRecord): string {
+  const html = fill(pack.template, record, {
+    file: pack.manifest.files.template,
+  });
+  return inlineStyles(html, pack.styles);
 }
 
 export async function makeFixture(

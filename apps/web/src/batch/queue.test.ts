@@ -13,7 +13,10 @@ import { getPlatformProxy } from 'wrangler';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import * as schema from '../db/schema.ts';
-import { fixtureTemplates } from '../templates/source.ts';
+import {
+  fixtureTemplates,
+  storeFixturePack,
+} from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 import { type FixtureJob, fixtureKey } from './fixture.ts';
 import { type Printer, PrintFailure } from './printer.ts';
@@ -125,6 +128,7 @@ beforeEach(async () => {
   await migrate(db(), {
     migrationsFolder: fileURLToPath(new URL('../../drizzle', import.meta.url)),
   });
+  await storeFixturePack(platform.env);
   print.mockReset();
   print.mockImplementation(async job => ({
     pdf,
@@ -228,7 +232,10 @@ test('unknown batches and duplicate deliveries ack without printing, overwriting
   acknowledged(unknown);
   expect(print).not.toHaveBeenCalled();
   expect(await rows('missing')).toEqual([]);
-  expect((await platform.env.FILES.list()).objects).toEqual([]);
+  // The uploaded fixture-report zip is under templates/; fixtures are here.
+  expect(
+    (await platform.env.FILES.list({ prefix: 'batches/' })).objects,
+  ).toEqual([]);
   const id = await start(2);
   await db()
     .insert(schema.fixtures)
@@ -255,7 +262,10 @@ test('unknown batches and duplicate deliveries ack without printing, overwriting
   for (const duplicate of duplicates) acknowledged(duplicate);
   expect(print).not.toHaveBeenCalled();
   expect(await rows(id)).toEqual(before);
-  expect((await platform.env.FILES.list()).objects).toEqual([]);
+  // The uploaded fixture-report zip is under templates/; fixtures are here.
+  expect(
+    (await platform.env.FILES.list({ prefix: 'batches/' })).objects,
+  ).toEqual([]);
 });
 
 const failures = [

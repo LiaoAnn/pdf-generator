@@ -15,6 +15,13 @@
       "when": 1792784029783,
       "tag": "0001_outstanding_molten_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792801374987,
+      "tag": "0002_fast_boom_boom",
+      "breakpoints": true
     }
   ]
 }

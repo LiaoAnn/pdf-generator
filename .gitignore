@@ -131,3 +131,6 @@ dist
 
 # wrangler
 .wrangler
+
+# TanStack Router/Start dev temp files
+.tanstack

@@ -242,6 +242,9 @@ importers:
       '@pdf-generator/fake-data':
         specifier: workspace:*
         version: link:../../packages/fake-data
+      '@pdf-generator/template-tools':
+        specifier: workspace:*
+        version: link:../../packages/template-tools
       '@tanstack/react-router':
         specifier: ^1.160.0
         version: 1.170.45(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -272,6 +275,9 @@ importers:
       tailwind-merge:
         specifier: ^3.7.0
         version: 3.7.0
+      unpdf:
+        specifier: ^1.9.1
+        version: 1.9.1
     devDependencies:
       '@cloudflare/vite-plugin':
         specifier: ^1.60.0
