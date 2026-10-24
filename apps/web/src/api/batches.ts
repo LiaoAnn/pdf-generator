@@ -267,7 +267,9 @@ export const downloadBatch = (id: string) =>
       { name: 'fixtures.json', bytes: json(list) },
       ...list.fixtures
         .filter(fixture => fixture.status === 'completed')
-        .flatMap(fixture => fixtureEntries(files, id, fixture.index)),
+        .flatMap(fixture =>
+          fixtureEntries(files, id, fixture.index, fixture.check !== undefined),
+        ),
     ]);
     return new Response(body, {
       headers: {
