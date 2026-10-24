@@ -51,11 +51,15 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
   constant: field => field.value,
   object: (field, _rng, child) => generateFields(field.fields, child),
   // Items draw from their own streams, keyed by index, so item k does not
-  // depend on the drawn length.
-  array: (field, rng, child) =>
-    Array.from({ length: rng.int(field.minItems, field.maxItems) }, (_, i) =>
-      child(field.items, i),
-    ),
+  // depend on the drawn length. Sorting happens here, before fillDerived, so
+  // running balances follow the sorted rows.
+  array: (field, rng, child) => {
+    const items = Array.from(
+      { length: rng.int(field.minItems, field.maxItems) },
+      (_, i) => child(field.items, i),
+    );
+    return field.sortBy === undefined ? items : byDate(items, field.sortBy);
+  },
   checkbox: (field, rng) => rng.chance(field.probability ?? 0.5),
   text: (field, rng) =>
     fillerText(rng, field.lang, rng.int(field.minLength, field.maxLength)),
@@ -64,6 +68,21 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
   runningBalance: () => 0,
   percentage: () => 0,
 };
+
+/**
+ * Items in ascending order of their `key` date (YYYY-MM-DD compares as text),
+ * stable; a blank date or a blank item goes last.
+ */
+function byDate(items: FakeValue[], key: string): FakeValue[] {
+  const dateOf = (item: FakeValue) =>
+    (item as FakeRecord | null)?.[key] as string | null | undefined;
+  return items.toSorted((a, b) => {
+    const [x, y] = [dateOf(a), dateOf(b)];
+    if (x == null || y == null)
+      return (x == null ? 1 : 0) - (y == null ? 1 : 0);
+    return x < y ? -1 : x > y ? 1 : 0;
+  });
+}
 
 /** Ranges the contract allows but no value satisfies, as rule-file issues. */
 function impossible(field: RuleField): Issue[] {
