@@ -347,7 +347,7 @@
 - **來源**：PR #5 的 open risks
 
 ### T09-1 線上環境設定
-- **目標**：把 T09 的網站接上真的 Cloudflare 帳號：wrangler 登入加 `d1:write`（使用者操作）；建立 D1 `pdf-generator`、R2 `pdf-generator-files`；線上跑 migration；部署 `pdf-generator-web`；在後台為 workers.dev 網址開 Cloudflare Access（允許使用者 email 與一組 service token，使用者操作）；帶 Access 設定重新部署
+- **目標**：把 T09 的網站接上真的 Cloudflare 帳號：wrangler 登入加 `d1:write`（使用者操作）；建立 D1 `pdf-generator`、R2 `pdf-generator-files`；線上跑 migration；部署 `pdf-generator-web`；在後台為 workers.dev 網址開 Cloudflare Access（允許使用者 email 與一組 service token，使用者操作）；帶 Access 設定重新部署；建立 R2 `pdf-generator-print-pack-files`（T07-3 的列印暫存檔）並設定清掉孤兒檔的 lifecycle 規則
 - **Blocked by**：T09
 - **Blocks**：—（建議跟 T15、T16 第一次部署一起做，使用者只需登入與進後台各一次）
 - **撞車風險**：`apps/web/wrangler.jsonc`（database id、Access vars）
@@ -392,7 +392,7 @@
 - **來源**：PR #12
 
 ### T06-1 樣板工具強化
-- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致；T16 的 `inlineStyles` 只認字面上的 `</head>`，`</head >` 或沒有 `</head>` 的樣板包會過 `checkPack` 卻在批次失敗：兩邊對齊（接受這兩種寫法，或 `checkPack` 要求 `</head>`）
+- **目標**：勾選框與公式的後援判斷要考慮 `{{#if}}` 分支；block tag 字串內含 `}}` 時正確切分；字型使用改成依字重／樣式（face）檢查；`{{lookup}}` 用物件當 key 不丟例外；與 T13 對齊三種 checkPack 接受、但 T13 列印時會擋下的儲存格勾選框寫法；JSON 樹快取、URL 裁切與瀏覽器一致；T16 的 `inlineStyles` 只認字面上的 `</head>`，`</head >` 或沒有 `</head>` 的樣板包會過 `checkPack` 卻在批次失敗：兩邊對齊（接受這兩種寫法，或 `checkPack` 要求 `</head>`）；valid 範例包的 `assets/report.woff2` 是 27 位元組的佔位檔、永遠載不進來，換成真的子集字型（可參考 `apps/print/src/test-fixtures/pack-font/report.woff2`）
 - **Blocked by**：T06
 - **Blocks**：—（建議在 T15 之後、樣板票之前）
 - **撞車風險**：`packages/template-tools`
@@ -462,3 +462,30 @@
 - **驗收測試**：上傳不合格樣板包時，每個錯誤細節都帶 `code`；有一份自我檢查失敗的批次，`GET /api/batches/:id` 的數字正確；重新匯出的 JSON Schema 含這些欄位
 - **不做**：其他契約欄位
 - **來源**：PR #14；T16-1 的 ASK
+
+### T15-2 網頁把樣板包檔案送進印 PDF
+- **目標**：T15 預覽與 T16 批次呼叫 `/print` 時，帶上 `pack: { template: manifest.files.template, files }`（T07-3 的介面，見 `apps/print/src/request.ts`），讓自帶字型、圖片、CSS 的樣板包能預覽與批次產出；超過 T07-3 上限（單檔 16 MiB、整包 24 MiB）時回清楚的錯誤
+- **Blocked by**：T07-3、T15、T16-1
+- **Blocks**：T22、T26（帶自己字型或圖片的樣板）
+- **撞車風險**：`apps/web` 的預覽與批次程式；T16-1 merge 後再派
+- **驗收測試**：T06 的 valid 範例包（換上真字型後）預覽與批次都印得出來且字型已載入；只靠平台字型的樣板包結果不變
+- **不做**：批次間快取樣板包檔案（T07-5）
+- **來源**：PR #15
+
+### T07-5 印 PDF：同一批次共用樣板包檔案
+- **目標**：目前每次列印都重新上傳樣板包，且網址每次不同、瀏覽器無法快取；改成以內容雜湊、批次為範圍的路徑，大字型每個 session 只載一次
+- **Blocked by**：T07-3、T15-2
+- **Blocks**：—
+- **撞車風險**：`apps/print`；與 T07-2 不要同時派
+- **驗收測試**：同一批次 10 份只上傳與載入樣板包字型一次；輸出 PDF 與不快取時相同
+- **不做**：跨批次共用
+- **來源**：PR #15
+
+### T07-6 印 PDF：單一字母的公式文字不吃掉前文字母
+- **目標**：print runtime 的 `missingText` 檢查裡，單一字元的文字節點（公式的 `x`、`r`）會用掉前面英文段落的字母，造成誤報 `text_missing`；改成依位置／區塊比對
+- **Blocked by**：T07-3
+- **Blocks**：—（建議在 T25 論文之前完成）
+- **撞車風險**：`apps/print`；與 T07-2、T07-5 不要同時派
+- **驗收測試**：英文段落加單字母公式的文件不再誤報；故意刪掉公式文字仍會被擋
+- **不做**：改 T14 自我檢查
+- **來源**：PR #15（slice 3 的測試作者發現）
