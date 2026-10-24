@@ -311,6 +311,79 @@ test.each([
   15_000,
 );
 
+// rows[] holds `aCount` objects `a`, each with an array `b` of `bCount`
+// objects, and `balances` running balances over rows[].a[].b[].v.
+const belowEmptyBudgetSetup = `
+  const belowEmptyFields = (rowCount, aCount, bCount, balanceCount) => ({
+    opening: constant(0),
+    rows: array(rowCount, object({
+      a: array(aCount, object({
+        b: array(bCount, object({ v: { type: 'integer', min: 0, max: 9 } })),
+      })),
+      ...Object.fromEntries(Array.from({ length: balanceCount }, (_, i) => [
+        'bal' + i,
+        {
+          type: 'runningBalance', opening: 'opening',
+          add: ['rows[].a[].b[].v'], subtract: [],
+        },
+      ])),
+    })),
+  });
+`;
+
+test('derived budget keeps the fan-out of arrays above an empty array: 316 rows × 316 balances × 1,000 empty-below lines is rejected promptly', () => {
+  guardedDerivedBudget(
+    `
+    ${belowEmptyBudgetSetup}
+    // 316 × 316 × 1,000 ≈ 99.9M steps: every a is still walked, although each b is empty.
+    assertBudgetRejected(belowEmptyFields(316, 1_000, 0, 316));
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test('derived budget accepts exactly one million steps when 1,000 balances walk 1,000 lines with empty arrays below', () => {
+  guardedDerivedBudget(`
+    ${belowEmptyBudgetSetup}
+    const start = performance.now();
+    const record = generate(rulesFor(belowEmptyFields(1, 1_000, 0, 1_000)), 'below-empty-boundary');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 3_000, 'below-empty boundary took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 1);
+    for (let b = 0; b < 1_000; b++) assert.equal(record.rows[0]['bal' + b], 0, 'balance ' + b);
+  `);
+}, 15_000);
+
+test('derived budget rejects one step above the limit when a sum adds to an empty-below boundary', () => {
+  guardedDerivedBudget(
+    `
+    ${belowEmptyBudgetSetup}
+    assertBudgetRejected({
+      ...belowEmptyFields(1, 1_000, 0, 1_000),
+      extra: { type: 'sum', of: ['opening'] },
+    });
+  `,
+    3_000,
+  );
+}, 15_000);
+
+test('derived budget charges one step per path when an empty array sits above a 1,000-item array: 1,000 rows × 90 balances', () => {
+  guardedDerivedBudget(`
+    ${belowEmptyBudgetSetup}
+    // Fan-out [0, 1,000] is 0, so each path costs 1: 1,000 × 90 = 90,000 steps,
+    // within the 100,000 value cap (the 90,000 balances are the only values).
+    const start = performance.now();
+    const record = generate(rulesFor(belowEmptyFields(1_000, 0, 1_000, 90)), 'empty-above-boundary');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 3_000, 'empty-above run took ' + elapsed.toFixed(1) + ' ms');
+    assert.equal(record.rows.length, 1_000);
+    for (const i of [0, 499, 999]) {
+      assert.deepEqual(record.rows[i].a, []);
+      for (let b = 0; b < 90; b++) assert.equal(record.rows[i]['bal' + b], 0, 'row ' + i + ' balance ' + b);
+    }
+  `);
+}, 15_000);
+
 test.each([
   [
     'accepts exactly one million steps with repeated sum paths and identical percentage paths',

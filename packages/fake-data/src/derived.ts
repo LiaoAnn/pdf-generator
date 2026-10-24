@@ -181,22 +181,28 @@ export function derivedOrder(rules: Rules): {
   // fans out there (at least one lookup); a sum or percentage is computed
   // once (path totals are memoized).
   let steps = 0;
-  // The product of maxItems of the arrays on `path` after its first `skip`.
+  // How many nodes `path` reaches at its widest level after its first
+  // `skip` arrays: the largest running product of their maxItems. An empty
+  // array further down doesn't make the walk above it free.
   const fanOut = (path: string, skip: number) => {
     let fields: Rules['fields'] | undefined = rules.fields;
     let product = 1;
+    let widest = 1;
     let arrays = 0;
     for (const segment of path.split('.')) {
       const name = segment.replace(/(\[\])+$/, '');
       let field: RuleField | undefined = fields?.[name];
       for (let i = name.length; i < segment.length; i += 2) {
-        if (field?.type !== 'array') return product;
-        if (arrays++ >= skip) product *= field.maxItems;
+        if (field?.type !== 'array') return widest;
+        if (arrays++ >= skip) {
+          product *= field.maxItems;
+          widest = Math.max(widest, product);
+        }
         field = field.items;
       }
       fields = field?.type === 'object' ? field.fields : undefined;
     }
-    return product;
+    return widest;
   };
   const visit = (
     field: RuleField,
@@ -209,7 +215,7 @@ export function derivedOrder(rules: Rules): {
       if (field.type === 'runningBalance') {
         const skip = (rowsOf(path) ?? '').split('[]').length - 1;
         for (const each of new Set([...field.add, ...field.subtract])) {
-          steps += instances * Math.max(1, fanOut(each, skip));
+          steps += instances * fanOut(each, skip);
         }
       } else steps += new Set(references(field)).size;
     }
