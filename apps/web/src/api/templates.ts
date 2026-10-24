@@ -193,12 +193,11 @@ export const uploadTemplate = (request: Request) =>
     if (!zip) return yield* tooLarge();
 
     const limited = unzipWithinLimits(zip);
-    if (limited && 'issues' in limited) return yield* invalid(limited.issues);
+    if ('issues' in limited) return yield* invalid(limited.issues);
     // checkPack can still throw on a crafted pack (T06): that is a broken
     // pack, not a server error.
     const checked = yield* Effect.try({
-      try: () =>
-        checkPack(limited ? limited.files : zip, { maxBytes: maxPackBytes }),
+      try: () => checkPack(limited.files, { maxBytes: maxPackBytes }),
       catch: cause => {
         console.error('templates: checkPack threw', cause);
         return invalid([

@@ -10,9 +10,11 @@ import {
 import { recordSchema } from '@pdf-generator/fake-data';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import type { DrizzleD1Database } from 'drizzle-orm/d1';
-import { strFromU8, unzipSync } from 'fflate';
+import { strFromU8 } from 'fflate';
 import * as schema from '../db/schema.ts';
+import { maxPackBytes } from './limits.ts';
 import type { TemplatePack, TemplateSourceApi } from './source.ts';
+import { unzipBounded } from './unzip.ts';
 
 const { templates } = schema;
 type Db = DrizzleD1Database<typeof schema>;
@@ -104,7 +106,9 @@ export async function readPackZip(
 // The parts of a stored zip a batch needs. It passed checkPack on upload, so
 // it is only parsed here, not checked again.
 function unpack(zip: Uint8Array): TemplatePack {
-  const files = unzipSync(zip);
+  const unzipped = unzipBounded(zip, maxPackBytes);
+  if ('issue' in unzipped) throw new Error(unzipped.issue.message);
+  const { files } = unzipped;
   const text = (path: string) => {
     const bytes = files[path];
     if (bytes === undefined) throw new Error(`the stored pack has no ${path}`);

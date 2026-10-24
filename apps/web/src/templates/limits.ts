@@ -7,7 +7,7 @@
 // checkPack gets them empty: it only checks that they exist, and a stylesheet
 // that @imports or <link>s one must not make it parse megabytes of CSS.
 import type { PackFiles, PackIssue } from '@pdf-generator/template-tools';
-import { unzipSync } from 'fflate';
+import { unzipBounded } from './unzip.ts';
 
 /** Largest upload body: the zip as sent. */
 export const maxUploadBytes = 10 * 1024 * 1024;
@@ -19,13 +19,6 @@ const maxTextBytes = 256 * 1024;
 
 const binary = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
 
-/** Directory entries and macOS metadata, which checkPack ignores too. */
-const ignored = (path: string) =>
-  path.endsWith('/') ||
-  path.startsWith('__MACOSX/') ||
-  path === '.DS_Store' ||
-  path.endsWith('/.DS_Store');
-
 const whole = (code: string, message: string): PackIssue => ({
   code,
   file: '.',
@@ -34,37 +27,14 @@ const whole = (code: string, message: string): PackIssue => ({
 
 /**
  * The zip's files to check (images and fonts emptied) when it meets every
- * limit, or the issues saying which it breaks. A zip that doesn't unzip is
- * left for checkPack to describe.
+ * limit, or the issues saying which it breaks.
  */
 export function unzipWithinLimits(
   zip: Uint8Array,
-): { files: PackFiles } | { issues: PackIssue[] } | undefined {
-  let files: Record<string, Uint8Array>;
-  let declared = 0;
-  try {
-    files = unzipSync(zip, {
-      filter: entry => {
-        declared += entry.originalSize;
-        return declared <= maxPackBytes && !ignored(entry.name);
-      },
-    });
-  } catch {
-    return undefined;
-  }
-  const entries = Object.entries(files);
-  const total = entries.reduce((sum, [, bytes]) => sum + bytes.byteLength, 0);
-  if (declared > maxPackBytes || total > maxPackBytes) {
-    const size = Math.max(declared, total);
-    return {
-      issues: [
-        whole(
-          'pack-too-large',
-          `the pack is ${size} bytes uncompressed, more than the limit of ${maxPackBytes}`,
-        ),
-      ],
-    };
-  }
+): { files: PackFiles } | { issues: PackIssue[] } {
+  const unzipped = unzipBounded(zip, maxPackBytes);
+  if ('issue' in unzipped) return { issues: [unzipped.issue] };
+  const entries = Object.entries(unzipped.files);
   if (entries.length > maxFiles) {
     return {
       issues: [
