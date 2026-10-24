@@ -18,6 +18,9 @@ function boxes(markup: string) {
     ([tag]) => ({
       id: /\bdata-block-id="([^"]*)"/.exec(tag)?.[1],
       type: /\bdata-type="([^"]*)"/.exec(tag)?.[1],
+      tagName: /^<(\w+)/.exec(tag)?.[1],
+      buttonType: /\btype="([^"]*)"/.exec(tag)?.[1],
+      selected: /\bdata-selected="([^"]*)"/.exec(tag)?.[1],
       style: Object.fromEntries(
         (/\bstyle="([^"]*)"/.exec(tag)?.[1] ?? '')
           .split(';')
@@ -45,6 +48,43 @@ function renderPage(page: number, hidden: ReadonlySet<BlockType> = new Set()) {
 }
 
 describe('GtBoxes', () => {
+  it('highlights only the selected id and clears stale highlights when selection changes, disappears, or is hidden', () => {
+    const renderSelection = (
+      selectedId?: string,
+      hidden: ReadonlySet<BlockType> = new Set(),
+    ) =>
+      boxes(
+        renderToStaticMarkup(
+          <GtBoxes
+            blocks={gt.blocks}
+            page={1}
+            size={{ width: 595.28, height: 841.89 }}
+            hidden={hidden}
+            selectedId={selectedId}
+            onSelect={() => {}}
+          />,
+        ),
+      )
+        .filter(box => box.selected === 'true')
+        .map(box => box.id);
+
+    expect(renderSelection('intro')).toEqual(['intro']);
+    expect(renderSelection('title')).toEqual(['title']);
+    expect(renderSelection()).toEqual([]);
+    expect(renderSelection('missing')).toEqual([]);
+    expect(renderSelection('stamp')).toEqual([]);
+    expect(renderSelection('intro', new Set(['paragraph']))).toEqual([]);
+  });
+
+  it('renders every visible box as a non-submit button so keyboard users can select it', () => {
+    const rendered = renderPage(1);
+    expect(rendered).toHaveLength(4);
+    for (const box of rendered) {
+      expect(box.tagName).toBe('button');
+      expect(box.buttonType).toBe('button');
+    }
+  });
+
   it('draws each page-two block once, including blank fields, without drawing nested table cells as blocks', () => {
     const rendered = renderPage(2);
     expect(rendered.map(box => box.id).sort()).toEqual([

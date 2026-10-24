@@ -1,7 +1,8 @@
 import { type BlockType, gtSchema } from '@pdf-generator/contract';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { typeColor, typeCounts } from '@/batches/overlay';
+import { GtBlockList } from '@/components/gt-block-list';
 import { GtBoxes } from '@/components/gt-boxes';
 import { PdfPages } from '@/components/pdf-pages';
 import { ProblemCard } from '@/components/problem-card';
@@ -46,6 +47,13 @@ function FixturePage() {
   const { id, fixture } = Route.useParams();
   const { gt, pdf } = Route.useLoaderData();
   const [hidden, setHidden] = useState<ReadonlySet<BlockType>>(new Set());
+  // The selected block, and which side was clicked: the other side scrolls.
+  const [selected, setSelected] = useState<{
+    id: string;
+    from: 'box' | 'list';
+  }>();
+  const pages = useRef<HTMLDivElement>(null);
+  const list = useRef<HTMLDivElement>(null);
   const base = fixtureBase(id, fixture);
   const name = fixture.padStart(4, '0');
 
@@ -55,6 +63,20 @@ function FixturePage() {
       if (!next.delete(type)) next.add(type);
       return next;
     });
+
+  useEffect(() => {
+    if (!selected) return;
+    const id = CSS.escape(selected.id);
+    if (selected.from === 'box') {
+      list.current
+        ?.querySelector(`[data-block-row="${id}"]`)
+        ?.scrollIntoView({ block: 'nearest' });
+    } else {
+      pages.current
+        ?.querySelector(`[data-block-id="${id}"]`)
+        ?.scrollIntoView({ block: 'center' });
+    }
+  }, [selected]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -110,21 +132,37 @@ function FixturePage() {
           </fieldset>
         </CardContent>
       </Card>
-      <PdfPages
-        pdf={pdf}
-        title={`第 ${name} 份`}
-        overlay={page => {
-          const size = gt.pages[page - 1];
-          return size ? (
-            <GtBoxes
+      <div className="grid items-start gap-4 lg:grid-cols-[1fr_18rem]">
+        <div ref={pages}>
+          <PdfPages
+            pdf={pdf}
+            title={`第 ${name} 份`}
+            overlay={page => {
+              const size = gt.pages[page - 1];
+              return size ? (
+                <GtBoxes
+                  blocks={gt.blocks}
+                  page={page}
+                  size={size}
+                  hidden={hidden}
+                  selectedId={selected?.id}
+                  onSelect={id => setSelected({ id, from: 'box' })}
+                />
+              ) : null;
+            }}
+          />
+        </div>
+        <Card className="sticky top-4 max-h-[calc(100vh-2rem)] overflow-y-auto py-2">
+          <div ref={list}>
+            <GtBlockList
               blocks={gt.blocks}
-              page={page}
-              size={size}
               hidden={hidden}
+              selectedId={selected?.id}
+              onSelect={id => setSelected({ id, from: 'list' })}
             />
-          ) : null;
-        }}
-      />
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
