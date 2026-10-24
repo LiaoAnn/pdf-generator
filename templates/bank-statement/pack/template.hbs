@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>{{bank.name}} 綜合存款對帳單</title>
+</head>
+<body>
+<div class="running-header" data-gt="page_header">{{bank.name}}　綜合存款對帳單　對帳期間 {{periodStart}} 至 {{periodEnd}}</div>
+<div class="running-footer" data-gt="page_footer">本對帳單由電腦產生，不需蓋章。如有疑義，請於收到後 14 日內洽詢往來分行。</div>
+
+<header class="masthead">
+<img class="logo" data-gt="image" src="assets/logo.svg" alt="" width="64" height="64">
+<div class="bank">
+<p class="bank-name" data-gt="paragraph">{{bank.name}}</p>
+<p data-gt="paragraph">{{bank.branch}}　{{bank.address}}</p>
+<p data-gt="paragraph">統一編號：{{bank.businessId}}　分行電話：{{bank.branchPhone}}</p>
+</div>
+<aside class="service">
+<p class="service-title" data-gt="heading">客戶服務</p>
+<p data-gt="paragraph">24 小時客服專線：0800-089-889</p>
+<p data-gt="paragraph">手機請撥：02-2655-8000</p>
+<p data-gt="paragraph">掛失止付：0800-089-119</p>
+<p data-gt="paragraph">臨櫃服務：週一至週五 09:00-15:30</p>
+</aside>
+</header>
+
+<section class="recipient">
+<p data-gt="paragraph">{{customer.address}}</p>
+<p class="recipient-name" data-gt="paragraph">{{customer.name}} 君 台啟</p>
+</section>
+
+<h1 data-gt="title">綜合存款對帳單</h1>
+
+<table class="summary" data-gt="table">
+<colgroup><col width="16%"><col width="34%"><col width="16%"><col width="34%"></colgroup>
+<tbody>
+<tr><th>帳號</th><td>{{account.number}}</td><th>期初餘額</th><td class="num">{{number opening}}</td></tr>
+<tr><th>對帳期間</th><td>{{periodStart}} 至 {{periodEnd}}</td><th>存入合計</th><td class="num">{{number totals.deposits}}</td></tr>
+<tr><th>製表日期</th><td>{{issueDate}}</td><th>支出合計</th><td class="num">{{number totals.withdrawals}}</td></tr>
+<tr><th>幣別</th><td>新臺幣</td><th>期末餘額</th><td class="num">{{#each transactions}}{{#if @last}}{{number balance}}{{/if}}{{/each}}</td></tr>
+</tbody>
+</table>
+
+<h2 data-gt="heading">交易明細</h2>
+<table class="transactions" data-gt="table">
+<colgroup><col width="15%"><col width="17%"><col width="16%"><col width="16%"><col width="18%"><col width="18%"></colgroup>
+<thead>
+<tr><th>交易日期</th><th>摘要</th><th class="num">支出</th><th class="num">存入</th><th class="num">餘額</th><th>備註</th></tr>
+</thead>
+<tbody>
+{{#each transactions}}
+<tr><td>{{date}}</td><td>{{summary}}</td><td class="num">{{number withdrawal}}</td><td class="num">{{number deposit}}</td><td class="num">{{number balance}}</td><td>{{note}}</td></tr>
+{{/each}}
+</tbody>
+</table>
+
+<h2 data-gt="heading">注意事項</h2>
+<!-- Numbered, not ・: a ・ (U+30FB) printed in Noto Sans TC does not reach the
+     PDF text layer, and the print fails with text_missing (proposed ticket). -->
+<ul class="notes">
+<li data-gt="list_item">1. 請核對本對帳單所列交易，如有不符，請於收到後 14 日內通知往來分行，逾期視為無誤。</li>
+<li data-gt="list_item">2. 本行不會以電話或簡訊要求您操作 ATM 或提供網路銀行密碼，如接獲可疑來電請撥 165 反詐騙專線。</li>
+<li data-gt="list_item">3. 存款受中央存款保險公司存款保險之保障，每一存款人最高保額新臺幣 300 萬元。</li>
+</ul>
+</body>
+</html>

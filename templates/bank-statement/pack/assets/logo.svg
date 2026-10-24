@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label="銀行標誌">
+  <circle cx="60" cy="60" r="56" fill="#0b4f8a"/>
+  <circle cx="60" cy="60" r="44" fill="none" stroke="#f2c14e" stroke-width="6"/>
+  <path d="M60 26 L88 46 L32 46 Z" fill="#ffffff"/>
+  <rect x="38" y="52" width="8" height="30" fill="#ffffff"/>
+  <rect x="56" y="52" width="8" height="30" fill="#ffffff"/>
+  <rect x="74" y="52" width="8" height="30" fill="#ffffff"/>
+  <rect x="32" y="86" width="56" height="8" fill="#ffffff"/>
+</svg>
