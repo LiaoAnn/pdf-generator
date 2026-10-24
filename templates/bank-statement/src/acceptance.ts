@@ -1,6 +1,7 @@
 // T26 acceptance on a running stack: zips pack/, uploads it, prints a batch
 // and checks it. Passes when every fixture's self-check passes and every
-// gt.json prints the transactions in date order with each balance equal to
+// gt.json prints ROC dates matching data.json's ISO dates, in date order,
+// with each balance equal to
 // the previous one plus the row's deposit minus its withdrawal (recomputed
 // here from data.json, not read from it), the summary totals, the logo and
 // the barcode with its number.
@@ -61,6 +62,10 @@ function zipPack(): Uint8Array {
 }
 
 type Statement = {
+  bank: { name: string };
+  periodStart: string;
+  periodEnd: string;
+  issueDate: string;
   opening: number;
   statementDigits: number[];
   transactions: {
@@ -85,10 +90,32 @@ function amount(text: string): bigint {
 const cellText = (cells: Cell['table']['cells'], row: number, col: number) =>
   cells.find(cell => cell.row === row && cell.col === col)?.text ?? '';
 
+function roc(iso: string, style: 'slash' | 'text'): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    throw new Error(
+      `data.json date is not ISO YYYY-MM-DD: ${JSON.stringify(iso)}`,
+    );
+  }
+  const year = Number(iso.slice(0, 4)) - 1911;
+  const month = iso.slice(5, 7);
+  const day = iso.slice(8, 10);
+  return style === 'slash'
+    ? `${String(year).padStart(3, '0')}/${month}/${day}`
+    : `民國${year}年${Number(month)}月${Number(day)}日`;
+}
+
 /** What is wrong with one fixture's gt.json against its data.json. */
 function compare(gt: GroundTruth, record: Statement): string[] {
   const problems: string[] = [];
   const blocks = [...gt.blocks].sort((a, b) => a.order - b.order);
+  const expectedHeader = `${record.bank.name}　綜合存款對帳單　對帳期間 ${roc(record.periodStart, 'slash')} 至 ${roc(record.periodEnd, 'slash')}`;
+  for (const header of blocks.filter(block => block.type === 'page_header')) {
+    if (header.text !== expectedHeader) {
+      problems.push(
+        `page ${header.page} page_header: printed ${JSON.stringify(header.text)}, expected ${JSON.stringify(expectedHeader)}`,
+      );
+    }
+  }
   const tables = blocks.filter(
     (block): block is Cell => block.type === 'table',
   );
@@ -116,7 +143,19 @@ function compare(gt: GroundTruth, record: Statement): string[] {
     );
   }
   const dates = rows.map(row => row.date);
-  if (dates.join() !== [...dates].sort().join()) {
+  // Numeric keys keep ordering meaningful even across ROC year widths.
+  const dateKeys = dates.map(date => {
+    const match = /^(\d{3,})\/(\d{2})\/(\d{2})$/.exec(date);
+    return match
+      ? Number(match[1]) * 10_000 + Number(match[2]) * 100 + Number(match[3])
+      : Number.NaN;
+  });
+  if (
+    dateKeys.some(
+      (key, i) =>
+        !Number.isFinite(key) || (i > 0 && key < (dateKeys[i - 1] ?? 0)),
+    )
+  ) {
     problems.push(`transactions not in date order: ${dates.join(' ')}`);
   }
   // 餘額逐筆對: each printed balance is the previous balance plus the printed
@@ -127,6 +166,12 @@ function compare(gt: GroundTruth, record: Statement): string[] {
   let withdrawals = 0n;
   rows.forEach((row, i) => {
     const want = record.transactions[i];
+    const expectedDate = want && roc(want.date, 'slash');
+    if (row.date !== expectedDate) {
+      problems.push(
+        `row ${i + 1}: 交易日期 printed ${JSON.stringify(row.date)}, expected ${JSON.stringify(expectedDate)}`,
+      );
+    }
     const deposit = amount(row.deposit);
     const withdrawal = amount(row.withdrawal);
     if (
@@ -156,6 +201,20 @@ function compare(gt: GroundTruth, record: Statement): string[] {
       ? undefined
       : cellText(summaryCells, at.row, at.col + at.colSpan);
   };
+  for (const [label, want] of [
+    [
+      '對帳期間',
+      `${roc(record.periodStart, 'slash')} 至 ${roc(record.periodEnd, 'slash')}`,
+    ],
+    ['製表日期', roc(record.issueDate, 'text')],
+  ] as const) {
+    const printed = valueAfter(label)?.trim();
+    if (printed !== want) {
+      problems.push(
+        `${label}: printed ${JSON.stringify(printed)}, expected ${JSON.stringify(want)}`,
+      );
+    }
+  }
   for (const [label, want] of [
     ['期初餘額', BigInt(record.opening)],
     ['存入合計', deposits],
@@ -268,7 +327,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print every balance, total, the logo and the barcode as expected`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print every ROC date, balance, total, the logo and the barcode as expected`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,

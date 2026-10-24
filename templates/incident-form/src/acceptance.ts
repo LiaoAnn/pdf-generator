@@ -1,7 +1,7 @@
 // T23 acceptance on a running stack: zips pack/, uploads it, prints a batch
 // and checks it. Passes when every fixture's self-check passes and every
-// gt.json records the merged cells, and the checkboxes and blanks its
-// data.json asks for.
+// gt.json records the merged cells, ROC dates, checkboxes and blanks its
+// ISO-date data.json asks for.
 //   pnpm --filter @pdf-generator/incident-form acceptance -- \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t23]
 // Signs in with the local Access stand-in's service token (vite dev only).
@@ -60,8 +60,14 @@ function zipPack(): Uint8Array {
 
 type Injured = { hospitalized: boolean; note: string | null };
 type IncidentRecord = {
+  reportDate: string;
   reporter: { extension: number | null };
-  incident: { place: string | null; category: string; severity: string };
+  incident: {
+    date: string;
+    place: string | null;
+    category: string;
+    severity: string;
+  };
   hazards: Record<string, boolean>;
   actions: Record<string, boolean>;
   injured: Injured[];
@@ -114,6 +120,15 @@ const blankable = (record: IncidentRecord): [string, unknown][] => [
   ['主管簽章', null],
 ];
 
+function rocText(iso: string | null): string {
+  if (iso === null) return '';
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+    throw new Error(`data.json date must stay ISO YYYY-MM-DD: ${iso}`);
+  }
+  const [year = 0, month = 0, day = 0] = iso.split('-').map(Number);
+  return `民國${year - 1911}年${month}月${day}日`;
+}
+
 /** What is wrong with one fixture's gt.json against its data.json. */
 function compare(gt: GroundTruth, record: IncidentRecord): string[] {
   const problems: string[] = [];
@@ -135,6 +150,17 @@ function compare(gt: GroundTruth, record: IncidentRecord): string[] {
     );
   }
   const form = tables[0]?.table.cells ?? [];
+  const reportDates = gt.blocks
+    .filter(
+      block => block.type === 'field' && block.text.startsWith('通報日期：'),
+    )
+    .map(block => block.text);
+  const wantReport = `通報日期：中華${rocText(record.reportDate)}`;
+  if (JSON.stringify(reportDates) !== JSON.stringify([wantReport])) {
+    problems.push(
+      `通報日期: gt.json ${JSON.stringify(reportDates)}, expected ${JSON.stringify(wantReport)}`,
+    );
+  }
   // The merged cells: three section rows across all five columns, and
   // 事故地點 over its 地址 and 場所 rows.
   const spans = (text: string) =>
@@ -156,7 +182,12 @@ function compare(gt: GroundTruth, record: IncidentRecord): string[] {
   const injuredRows = tables
     .slice(1)
     .flatMap(table => table.table.cells.filter(cell => !cell.header));
-  for (const [label, value] of blankable(record)) {
+  const expectedCells: [string, unknown][] = [
+    ...blankable(record).filter(([label]) => label !== '簽核日期'),
+    ['發生日期', rocText(record.incident.date)],
+    ['簽核日期', rocText(record.approval.date)],
+  ];
+  for (const [label, value] of expectedCells) {
     const labelCell = form.find(cell => cell.text.replace(/\s/g, '') === label);
     const valueCell = form.find(
       cell =>
@@ -264,7 +295,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and record merged cells, checkboxes and blanks as expected`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and record merged cells, ROC dates, checkboxes and blanks as expected`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,

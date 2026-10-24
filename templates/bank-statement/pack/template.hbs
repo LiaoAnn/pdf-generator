@@ -5,7 +5,7 @@
 <title>{{bank.name}} 綜合存款對帳單</title>
 </head>
 <body>
-<div class="running-header" data-gt="page_header">{{bank.name}}　綜合存款對帳單　對帳期間 {{periodStart}} 至 {{periodEnd}}</div>
+<div class="running-header" data-gt="page_header">{{bank.name}}　綜合存款對帳單　對帳期間 {{rocDate periodStart format="slash"}} 至 {{rocDate periodEnd format="slash"}}</div>
 <div class="running-footer" data-gt="page_footer">本對帳單由電腦產生，不需蓋章。如有疑義，請於收到後 14 日內洽詢往來分行。</div>
 
 <header class="masthead">
@@ -39,8 +39,8 @@
 <colgroup><col width="16%"><col width="34%"><col width="16%"><col width="34%"></colgroup>
 <tbody>
 <tr><th>帳號</th><td>{{account.number}}</td><th>期初餘額</th><td class="num">{{number opening}}</td></tr>
-<tr><th>對帳期間</th><td>{{periodStart}} 至 {{periodEnd}}</td><th>存入合計</th><td class="num">{{number totals.deposits}}</td></tr>
-<tr><th>製表日期</th><td>{{issueDate}}</td><th>支出合計</th><td class="num">{{number totals.withdrawals}}</td></tr>
+<tr><th>對帳期間</th><td>{{rocDate periodStart format="slash"}} 至 {{rocDate periodEnd format="slash"}}</td><th>存入合計</th><td class="num">{{number totals.deposits}}</td></tr>
+<tr><th>製表日期</th><td>{{rocDate issueDate}}</td><th>支出合計</th><td class="num">{{number totals.withdrawals}}</td></tr>
 <tr><th>幣別</th><td>新臺幣</td><th>期末餘額</th><td class="num">{{#each transactions}}{{#if @last}}{{number balance}}{{/if}}{{/each}}</td></tr>
 </tbody>
 </table>
@@ -53,7 +53,7 @@
 </thead>
 <tbody>
 {{#each transactions}}
-<tr><td>{{date}}</td><td>{{summary}}</td><td class="num">{{number withdrawal}}</td><td class="num">{{number deposit}}</td><td class="num">{{number balance}}</td><td>{{note}}</td></tr>
+<tr><td>{{rocDate date format="slash"}}</td><td>{{summary}}</td><td class="num">{{number withdrawal}}</td><td class="num">{{number deposit}}</td><td class="num">{{number balance}}</td><td>{{note}}</td></tr>
 {{/each}}
 </tbody>
 </table>

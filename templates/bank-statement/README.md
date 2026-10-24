@@ -11,6 +11,7 @@ The T26 template pack: a bank's monthly deposit statement, for OCR and layout mo
 | Customer-service box | `aside.service`, a bordered box of one heading and four paragraphs | `heading` and `paragraph` blocks inside the box |
 | Account summary | `table.summary`, label / value pairs | one `table` block |
 | Borderless transactions | `table.transactions`, no rules at all; 8–32 rows sorted by date (`sortBy`), balances from `runningBalance`; long statements run onto page 2 with the header repeated | a `table` block per page, the second `continues` the first |
+| ROC dates | 交易日期 and 對帳期間 (summary and running header) `format="slash"` (115/09/02: narrow columns, the way banks print them); 製表日期 the default text form (民國115年10月3日). data.json stays ISO | cell text as printed |
 | Running header and footer | Paged.js running elements | `page_header`, `page_footer` on every page |
 
 How it stays honest:

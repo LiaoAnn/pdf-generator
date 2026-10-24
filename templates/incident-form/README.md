@@ -10,6 +10,7 @@ The T23 template pack: a form-style fixture for OCR and layout models. The pack 
 | Merged cells | section rows (`colspan="5"`), 事故地點 (`rowspan="2"`) over 地址 / 場所 | `rowSpan` / `colSpan` of the cells |
 | Blank fields | 分機, 場所, 目擊者, 目擊者電話, 備註, 簽核日期 (`blankProbability`), 主管簽章 (always empty) | cell `text: ""` |
 | Checkboxes | 事故類型, 傷害程度 (one checked), 危害因素, 已採取措施 (any), 是否送醫 (是 / 否 per row) | cell `checkboxes[]` with `checked` and the label |
+| ROC dates | 通報日期 `{{rocDate reportDate format="full"}}` (中華民國115年7月10日, the form's formal heading); 發生日期, 簽核日期 `{{rocDate …}}` (民國115年7月9日, the usual field form). data.json stays ISO | cell and `field` text as printed |
 | Rows that vary | 傷者名單, 1–8 rows; long lists run onto page 2 with the header repeated | `table` block on each page, the second `continues` the first |
 
 How it stays honest:
