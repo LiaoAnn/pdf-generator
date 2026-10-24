@@ -26,12 +26,18 @@ export interface DecompressBudget {
 }
 
 /**
- * The output limit for decompressing `bytes`: workerd's node:zlib checks the
- * buffer it grows (by doubling), not the bytes written, so a limit of exactly
- * `bytes` refuses valid data. The caller checks the exact length after.
+ * Room past the expected length we let node:zlib decompress into. workerd's
+ * sync zlib and brotli write in 40 KiB chunks and refuse to add a chunk that
+ * would pass `maxOutputLength`, so they need up to one chunk more than the
+ * data: 42,926 bytes need a limit of 81,920. Node needs only the data.
  */
-const outputLimit = (bytes: number) =>
-  2 ** Math.ceil(Math.log2(Math.max(bytes, 1)));
+const outputSlack = 64 * 1024;
+
+/**
+ * The output limit for decompressing `bytes`: at most `outputSlack` more than
+ * the font declares. The caller checks the exact length after.
+ */
+const outputLimit = (bytes: number) => bytes + outputSlack;
 
 /** Takes `bytes` from the budget, or throws if it can't cover them. */
 function spend(budget: DecompressBudget, bytes: number) {

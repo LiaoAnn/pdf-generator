@@ -34,6 +34,7 @@
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.60.0",
+    "@cloudflare/vitest-plugin": "^1.4.7",
     "@tailwindcss/vite": "^4.3.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
