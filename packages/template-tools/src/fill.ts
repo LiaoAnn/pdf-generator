@@ -41,6 +41,8 @@ const rocFormats: Record<string, (y: number, m: number, d: number) => string> =
   {
     text: (y, m, d) => `民國${y}年${m}月${d}日`,
     full: (y, m, d) => `中華民國${y}年${m}月${d}日`,
+    chinese: (y, m, d) =>
+      `中華民國${[...String(y)].map(digit => numerals[Number(digit)]).join('')}年${chinese(m)}月${chinese(d)}日`,
     slash: (y, m, d) => `${y}/${pad(m)}/${pad(d)}`,
     dot: (y, m, d) => `${y}.${pad(m)}.${pad(d)}`,
     year: y => String(y),
@@ -48,6 +50,16 @@ const rocFormats: Record<string, (y: number, m: number, d: number) => string> =
     day: (_y, _m, d) => String(d),
   };
 const pad = (value: number) => String(value).padStart(2, '0');
+const numerals = '〇一二三四五六七八九';
+/** 1-31 as in a written date: 十, 十一, 二十, 三十一. */
+const chinese = (value: number) => {
+  const tens = Math.floor(value / 10);
+  const ones = value % 10;
+  return (
+    (tens === 0 ? '' : tens === 1 ? '十' : `${numerals[tens]}十`) +
+    (ones === 0 ? '' : numerals[ones])
+  );
+};
 
 /**
  * Inline helpers a template may use, with the hash keys each accepts and, for

@@ -237,6 +237,7 @@ describe('ROC dates for Taiwanese template packs', () => {
         '{{rocDate date}}',
         '{{rocDate date format="text"}}',
         '{{rocDate date format="full"}}',
+        '{{rocDate date format="chinese"}}',
         '{{rocDate date format="slash"}}',
         '{{rocDate date format="dot"}}',
         '{{rocDate date format="year"}}',
@@ -266,9 +267,28 @@ describe('ROC dates for Taiwanese template packs', () => {
     expect(result.status).toBe(0);
     expect(checkPack(files).ok).toBe(true);
     expect(fill(template, { date: '2024-05-07' })).toBe(
-      '<p data-gt="field">民國113年5月7日|民國113年5月7日|中華民國113年5月7日|113/05/07|113.05.07|113|5|7</p>',
+      '<p data-gt="field">民國113年5月7日|民國113年5月7日|中華民國113年5月7日|中華民國一一三年五月七日|113/05/07|113.05.07|113|5|7</p>',
     );
   });
+
+  it.each([
+    ['2024-05-07', '中華民國一一三年五月七日'],
+    ['2011-10-10', '中華民國一〇〇年十月十日'],
+    ['2010-12-31', '中華民國九九年十二月三十一日'],
+    ['1912-01-01', '中華民國一年一月一日'],
+    ['2024-11-20', '中華民國一一三年十一月二十日'],
+    ['2024-02-29', '中華民國一一三年二月二十九日'],
+    ['2024-12-21', '中華民國一一三年十二月二十一日'],
+    ['2030-01-30', '中華民國一一九年一月三十日'],
+    ['2024-09-19', '中華民國一一三年九月十九日'],
+  ])(
+    'prints %s with digit-by-digit ROC years and ordinary Chinese month/day numbers',
+    (date, expected) => {
+      expect(fill('{{rocDate date format="chinese"}}', { date })).toBe(
+        expected,
+      );
+    },
+  );
 
   it.each([
     ['1912-01-01', 'text', '民國1年1月1日'],
