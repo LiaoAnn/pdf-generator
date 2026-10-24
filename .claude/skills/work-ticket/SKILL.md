@@ -103,3 +103,4 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 - Paste long output into your thread: `| tail -n 40` on test and build commands, `git diff --stat` before a full diff, `maxCharsPerItem` when reading threads. Your context length is what the ticket costs.
 - Call the real Cloudflare account without an answered `ASK`.
 - Report a step as passed when its evidence is weaker than it needs; say inconclusive.
+- End a turn waiting on a background shell command. Its completion notice can fail to wake your thread (T15-2 sat idle for 10 minutes after its acceptance run had finished). Run long commands in the foreground with a timeout, or poll the background one until it exits before you end the turn. Waiting on a `delegate_task` child or a coordinator answer is fine: those do wake you.
