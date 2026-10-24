@@ -153,6 +153,45 @@ A field with `blankProbability` that drops a whole section: put the heading and 
 - Either-or columns (支出 or 存入): the engine can't make two fields exclusive, nor tie one field's value to another's (a 摘要 that matches the column). Without a running balance, use one `choice` field `kind` and one `money` field, printed in the matching cell with `{{#if (eq kind "支出")}}…{{/if}}`. With a `runningBalance`, which needs separate `add` and `subtract` fields, give both amounts a `blankProbability` (blank counts as 0) and accept that some rows fill both or neither. Keep texts like 摘要 neutral.
 - Account numbers and other fixed-length digit strings: an `integer` with `min`/`max` of that many digits (`100000000000`..`999999999999`); print separators by splitting it into several integer fields.
 
+## Two columns
+
+A journal-style body: the title block spans the page, the rest flows in two CSS columns. Put the title block before the column wrapper, and the wrapper itself needs no mark. Blocks in the left column come before the right one in `gt.json` because CSS columns flow in document order, so write the HTML in reading order.
+
+```html pack-ok
+<p class="word-title" data-gt="title">{{company}}業務會議紀錄</p>
+<main class="columns">
+<h2 data-gt="heading">一、討論事項</h2>
+<p data-gt="paragraph">{{summary}}</p>
+<h2 data-gt="heading">二、決議</h2>
+{{#each items}}
+<p data-gt="paragraph">{{this}}</p>
+{{/each}}
+</main>
+```
+
+```css pack-ok
+.columns {
+  column-count: 2;
+  column-gap: 7mm;
+  column-fill: balance;
+}
+
+.columns h2 {
+  break-after: avoid;
+}
+
+.columns p {
+  break-inside: avoid;
+}
+```
+
+- `column-fill: balance`, never `auto`. With `auto` and `break-inside: avoid`, Paged.js can push the whole column block to the next page, leaving the first page with only the title block.
+- `break-inside: avoid` on every block in the columns (paragraphs, formulas, references). A block split across two columns gets a single gt box spanning both, which is wrong. So keep each block shorter than a column: bound `maxLength` in the rules.
+- `break-after: avoid` on headings, so a heading isn't left alone at the bottom of a column.
+- Running headers and footnotes stay outside the columns, as running elements (above).
+
+See `$PDF_GENERATOR_REPO/templates/paper/pack/styles/paper.css` (`.columns`) in context.
+
 ## Landscape
 
 `"orientation": "landscape"` in the manifest; nothing else. The manifest wins over `@page { size }`.
