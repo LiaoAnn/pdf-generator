@@ -115,12 +115,12 @@ const mapping: Group[] = (
     ...aliases.map((cp): Group => [cp, cp, 20]),
     [0x4e00, 0x4e02, 20], // consecutive code points and glyphs
     [0x2eab, 0x2eab, 30],
-    [0xfa5d, 0xfa5d, 30], // alias-only pair
-    [0xf907, 0xf907, 31], // sole alias for its glyph
+    [0xfa5d, 0xfa5d, 31], // alias-only glyphs remain mapped
+    [0xf907, 0xf907, 32], // sole alias for its glyph
     ...[
       0x2e7f, 0x2fe0, 0xf8ff, 0xfb00, 0x2f7ff, 0x2fa20, 0x2328, 0x232b, 0x301b,
       0x301d,
-    ].map((cp): Group => [cp, cp, 20]), // just outside every removal boundary
+    ].map((cp, i): Group => [cp, cp, 40 + i]), // just outside every removal boundary
   ] satisfies Group[]
 ).sort((a, b) => a[0] - b[0]);
 
@@ -205,6 +205,7 @@ test('rebuilds a single Windows format-12 cmap, preserves other table payloads, 
     expect(data, `${tag} payload`).toEqual(before);
   }
   expect(checksum(result.font)).toBe(0xb1b0afba);
+  expect(result).toHaveProperty('copied', []);
 });
 
 test('patches a format-4 input into format 12 without changing its glyph mappings', async () => {
@@ -241,3 +242,19 @@ test.each([
     expect(mapping.get(0x4e00)).toBeGreaterThan(0);
   },
 );
+
+test('refuses shared-glyph copying without CFF instead of emitting cmap references to nonexistent glyphs', async () => {
+  const { patchCmap } = await import('./fonts/sfnt.ts');
+  const source = makeFont(
+    cmap([
+      {
+        encoding: 10,
+        bytes: format12([
+          [0x2215, 0x2215, 20],
+          [0xff0f, 0xff0f, 20],
+        ]),
+      },
+    ]),
+  );
+  expect(() => patchCmap(source)).toThrow(/CFF/i);
+});

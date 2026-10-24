@@ -1,10 +1,7 @@
-// Reads and rewrites the cmap of an sfnt font (OpenType or TrueType), without
-// touching glyph data. Used to build the platform fonts (`pnpm fonts`).
-
-interface Table {
-  tag: string;
-  data: Uint8Array;
-}
+// Reads and rewrites the cmap of an sfnt font (OpenType or TrueType), adding
+// glyph copies where code points share a glyph. Used to build the platform
+// fonts (`pnpm fonts`).
+import { copyGlyphs, type Table } from './copy-glyphs.ts';
 
 const view = (bytes: Uint8Array) =>
   new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -97,6 +94,11 @@ const isAlias = (cp: number) =>
   cp === 0x232a || // 〉 (deprecated)
   cp === 0x301c; // 〜 wave dash (Taiwan uses ～)
 
+// Which code point of a shared glyph keeps it: the lowest, except the en
+// dash. Copies are outside GSUB and GPOS, and Noto Serif TC kerns the en dash
+// (shared with U+2012 figure dash) against Latin letters (T07-13).
+const keeps = (cp: number) => (cp === 0x2013 ? 1 : 0);
+
 function format12(mapping: [number, number][]): Uint8Array {
   const groups: [number, number, number][] = [];
   for (const [cp, glyph] of mapping) {
@@ -141,12 +143,15 @@ function checksum(bytes: Uint8Array): number {
 /**
  * Drops the radical and compatibility code points that share a glyph with
  * another code point, so a PDF's text layer maps that glyph back to the
- * unified ideograph (T03 Must 7). Writes a single (3,10) format 12 cmap;
- * every other table is copied byte for byte.
+ * unified ideograph (T03 Must 7). Then gives every code point still sharing
+ * a glyph a copy of its own (`copied`), since a PDF's ToUnicode has one entry
+ * per glyph (T07-13). Writes a single (3,10) format 12 cmap; tables without
+ * glyph data are copied byte for byte.
  */
 export function patchCmap(font: Uint8Array): {
   font: Uint8Array;
   dropped: number[];
+  copied: number[];
 } {
   const byGlyph = new Map<number, number[]>();
   for (const [cp, glyph] of readCmap(font)) {
@@ -154,17 +159,34 @@ export function patchCmap(font: Uint8Array): {
   }
   const kept: [number, number][] = [];
   const dropped: number[] = [];
+  const sharing: [number, number][] = []; // code point, glyph it shares
   for (const [glyph, cps] of byGlyph) {
     const shared = cps.length > 1 && cps.some(cp => !isAlias(cp));
-    for (const cp of cps) {
-      if (shared && isAlias(cp)) dropped.push(cp);
-      else kept.push([cp, glyph]);
+    const [first, ...rest] = cps
+      .filter(cp => !(shared && isAlias(cp)))
+      .sort((a, b) => keeps(b) - keeps(a) || a - b);
+    dropped.push(...cps.filter(cp => shared && isAlias(cp)));
+    if (first !== undefined) kept.push([first, glyph]);
+    for (const cp of rest) sharing.push([cp, glyph]);
+  }
+  // One code point keeps a shared glyph; each other one gets a copy of it
+  // (T07-13), numbered in code point order after the font's glyphs.
+  sharing.sort((a, b) => a[0] - b[0]);
+  let tables = readTables(font);
+  if (sharing.length > 0) {
+    const copies = copyGlyphs(
+      tables,
+      sharing.map(([, glyph]) => glyph),
+    );
+    for (const [i, [cp]] of sharing.entries()) {
+      kept.push([cp, copies.first + i]);
     }
+    tables = copies.tables;
   }
   kept.sort((a, b) => a[0] - b[0]);
   dropped.sort((a, b) => a - b);
 
-  const tables = readTables(font).map(t => {
+  tables = tables.map(t => {
     if (t.tag === 'cmap') return { tag: t.tag, data: format12(kept) };
     if (t.tag === 'head') {
       const head = new Uint8Array(t.data); // a copy, never a view of the input
@@ -194,7 +216,7 @@ export function patchCmap(font: Uint8Array): {
   if (headOffset >= 0) {
     v.setUint32(headOffset + 8, (0xb1b0afba - checksum(out)) >>> 0);
   }
-  return { font: out, dropped };
+  return { font: out, dropped, copied: sharing.map(([cp]) => cp) };
 }
 
 /**
