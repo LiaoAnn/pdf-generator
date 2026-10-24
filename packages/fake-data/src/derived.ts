@@ -150,9 +150,10 @@ function shared(path: string, reference: string): number {
   return count;
 }
 
-/** Whether a sum reads the current row of an array it is inside. */
+/** Whether a sum or percentage reads the current row of an array it is inside. */
 const rowScoped = (path: string, field: Derived) =>
-  field.type === 'sum' && field.of.some(each => shared(path, each) > 0);
+  field.type !== 'runningBalance' &&
+  references(field).some(each => shared(path, each) > 0);
 
 /** Where a running balance's paths must, or must not, go. */
 function placement({ path, rulePath, field }: DerivedField): Issue[] {
@@ -648,17 +649,21 @@ export function fillDerived(
             fillEach(path, bound => print(totals(of, bound)));
           } else fillOnce(path, () => print(totals(multiset(field.of))));
           break;
-        case 'percentage':
-          fillOnce(path, () =>
+        case 'percentage': {
+          const part = compile(field.part);
+          const whole = compile(field.whole);
+          const value = (bound?: Bound) =>
             print(
               percentage(
-                total(compile(field.part)),
-                total(compile(field.whole)),
+                total(part, bound),
+                total(whole, bound),
                 field.decimals,
               ),
-            ),
-          );
+            );
+          if (rowScoped(path, field)) fillEach(path, value);
+          else fillOnce(path, value);
           break;
+        }
         case 'runningBalance':
           fillRunning(path, field);
           break;

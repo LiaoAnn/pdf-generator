@@ -387,43 +387,79 @@ test('derived budget charges one step per path when an empty array sits above a 
 test.each([
   [
     'accepts exactly one million steps with repeated sum paths and identical percentage paths',
-    'v0',
     false,
   ],
-  [
-    'rejects one step above the limit when percentage paths are distinct',
-    'v1',
-    true,
-  ],
+  ['rejects one step above the limit including a row percentage', true],
 ])(
   'derived budget %s',
-  (_regression, whole, rejected) => {
+  (_regression, rejected) => {
     guardedDerivedBudget(
       `
       const fields = budgetFields(50, 19, 999);
       const row = fields.rows.items.fields;
       const paths = Array.from({ length: 999 }, (_, i) => 'rows[].c.v' + i);
       row.total = { type: 'sum', of: [...paths, ...paths] };
-      fields.globalTotal = { type: 'sum', of: paths };
-      row.ratio = { type: 'percentage', part: 'rows[].c.v0', whole: 'rows[].c.${whole}', decimals: 0 };
+      fields.globalTotal = { type: 'sum', of: paths.slice(0, 949) };
+      row.ratio = { type: 'percentage', part: 'rows[].c.v0', whole: 'rows[].c.v0', decimals: 0 };
+      row.unboundRatio = { type: 'percentage', part: 'globalTotal', whole: 'globalTotal', decimals: 0 };
+      if (${rejected}) fields.extra = { type: 'sum', of: ['opening'] };
       // Balances: 50 × 19 × 999 = 949,050; row sum: 50 × 999 = 49,950
-      // despite repeated paths; global sum: 999; percentage: 1 or 2.
-      // Total: exactly 1,000,000 or 1,000,001. Under 53,000 values.
+      // despite repeated paths; global sum: 949; row percentage: 50 × 1.
+      // The percentage reading no ancestor array still costs just 1, not 50.
+      // Total: exactly 1,000,000. Identical part/whole paths count once.
+      // The extra root sum adds one step. Under 53,000 values.
       if (${rejected}) {
         assertBudgetRejected(fields);
       } else {
         const record = generate(rulesFor(fields), 'mixed-budget-boundary');
         assert.equal(record.rows.length, 50);
-        assert.equal(record.globalTotal, 49_950);
+        assert.equal(record.globalTotal, 47_450);
         for (const i of [0, 24, 49]) {
           assert.equal(record.rows[i].b18, 999 * (i + 1));
           assert.equal(record.rows[i].total, 1_998);
           assert.equal(record.rows[i].ratio, 100);
+          assert.equal(record.rows[i].unboundRatio, 100);
         }
       }
     `,
       rejected ? 3_000 : 10_000,
     );
+  },
+  15_000,
+);
+
+test.each([
+  ['two bound paths', 'groups[].extra[].v', 20, 3_125],
+  ['one bound and one unrelated path', 'other[]', 31, 3_125],
+])(
+  'row-scoped percentage budget counts nested instances and fan-out for %s at exactly one million and one above',
+  (_regression, whole, lines, ratios) => {
+    guardedDerivedBudget(`
+      const fields = {
+        other: array(100, constant(1)),
+        groups: array(2, object({
+          extra: array(12, object({ v: constant(1) })),
+          rows: array(5, object({
+            sub: array(${lines}, object({ empty: array(0, object({ v: constant(1) })) })),
+            ...Object.fromEntries(Array.from({ length: ${ratios} }, (_, i) => [
+              'p' + i, {
+                type: 'percentage', part: 'groups[].rows[].sub[].empty[].v',
+                whole: '${whole}', decimals: 2,
+              },
+            ])),
+          })),
+        })),
+      };
+      // 2 × 5 instances × (20 + 12 OR 31 + 1) × 3,125 = 1,000,000.
+      // Keep the widest walk above empty[]; k=0 costs one per instance.
+      const record = generate(rulesFor(fields), 'row-percentage-budget-boundary');
+      for (const group of record.groups) {
+        for (const row of group.rows) {
+          for (const i of [0, 1_562, 3_124]) assert.equal(row['p' + i], 0);
+        }
+      }
+      assertBudgetRejected({ ...fields, extra: { type: 'sum', of: ['other[]'] } });
+    `);
   },
   15_000,
 );
