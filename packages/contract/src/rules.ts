@@ -80,7 +80,13 @@ export type RuleField = Common &
     | { type: 'checkbox'; probability?: number }
     | { type: 'constant'; value: Scalar }
     | { type: 'object'; fields: FieldMap }
-    | { type: 'array'; minItems: number; maxItems: number; items: RuleField }
+    | {
+        type: 'array';
+        minItems: number;
+        maxItems: number;
+        items: RuleField;
+        sortBy?: string;
+      }
     | { type: 'sum'; of: string[] }
     | {
         type: 'runningBalance';
@@ -103,6 +109,24 @@ const fieldMap = (): z.ZodType<FieldMap> =>
         'Field rules by key; keys are usable as Handlebars identifiers.',
       minProperties: 1,
     });
+
+const sortByMessage = 'sortBy must name a date field of the items';
+
+/** Whether an array's `sortBy` is absent or names a date field of its object items. */
+function sortsByDate({
+  items,
+  sortBy,
+}: {
+  items: RuleField;
+  sortBy?: string | undefined;
+}): boolean {
+  return (
+    sortBy === undefined ||
+    (items.type === 'object' &&
+      Object.hasOwn(items.fields, sortBy) &&
+      items.fields[sortBy]?.type === 'date')
+  );
+}
 
 const ruleFieldSchema: z.ZodType<RuleField> = z
   .discriminatedUnion('type', [
@@ -241,11 +265,18 @@ const ruleFieldSchema: z.ZodType<RuleField> = z
         get items(): z.ZodType<RuleField> {
           return ruleFieldSchema;
         },
+        sortBy: z
+          .string({ error: sortByMessage })
+          .optional()
+          .describe(
+            'Key of a date field of the items: items come out in ascending date order (stable), blank dates last.',
+          ),
       })
       .refine(field => field.minItems <= field.maxItems, {
         message: 'minItems must not exceed maxItems',
         path: ['minItems'],
       })
+      .refine(sortsByDate, { message: sortByMessage, path: ['sortBy'] })
       .describe('Array of minItems to maxItems values, e.g. table rows.'),
     z
       .strictObject({
@@ -363,7 +394,7 @@ export const rulesSchema = z
   .meta({
     title: 'Fake-data rule file',
     description:
-      'rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row.',
+      'rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.',
   });
 
 export type Rules = z.infer<typeof rulesSchema>;
