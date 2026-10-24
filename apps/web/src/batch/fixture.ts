@@ -65,7 +65,7 @@ function inlineStyles(html: string, styles: string[]): string {
 }
 
 /** The document a pack prints for a record: filled, stylesheets inlined. */
-function render(pack: TemplatePack, record: FakeRecord): string {
+export function render(pack: TemplatePack, record: FakeRecord): string {
   const html = fill(pack.template, record, {
     file: pack.manifest.files.template,
   });

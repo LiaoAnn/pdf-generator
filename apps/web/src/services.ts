@@ -3,6 +3,7 @@
 // tests and later tickets can provide stand-ins without touching the routes.
 import { type DrizzleD1Database, drizzle } from 'drizzle-orm/d1';
 import { Context, Effect } from 'effect';
+import { type PdfJob, printPdf } from './batch/printer.ts';
 import * as schema from './db/schema.ts';
 import { TemplateSource } from './templates/source.ts';
 import { templateStore } from './templates/store.ts';
@@ -22,7 +23,13 @@ export class BatchRunner extends Context.Service<
   { start: (batchId: string) => Promise<void> }
 >()('BatchRunner') {}
 
-export type Services = Database | Files | BatchRunner | TemplateSource;
+/** Prints a document to PDF through the print Worker (the PRINT binding). */
+export class Print extends Context.Service<
+  Print,
+  { pdf: (job: PdfJob) => Promise<Uint8Array<ArrayBuffer>> }
+>()('Print') {}
+
+export type Services = Database | Files | BatchRunner | TemplateSource | Print;
 
 function database(env: Env): DrizzleD1Database<typeof schema> {
   return drizzle(env.DB, { schema });
@@ -43,5 +50,8 @@ export function provideServices(env: Env) {
         },
       }),
       Effect.provideService(TemplateSource, templateStore(db, env.FILES)),
+      Effect.provideService(Print, {
+        pdf: job => printPdf(env.PRINT, env.PRINT_TOKEN, job),
+      }),
     );
 }

@@ -9,6 +9,9 @@ interface PrintJob {
   source: GroundTruth['source'];
 }
 
+/** A document to print without reading its ground truth (the preview). */
+export type PdfJob = Omit<PrintJob, 'source'>;
+
 interface Printed {
   pageCount: number;
   pdf: Uint8Array<ArrayBuffer>;
@@ -23,15 +26,25 @@ export interface Printer {
 export class PrintFailure extends Error {
   readonly status: number;
   readonly code: string;
-  constructor(status: number, code: string, message: string) {
+  /** The print Worker's own message and detail messages, when it sent them. */
+  readonly reason: string;
+  readonly details: string[];
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    { reason = message, details = [] as string[] } = {},
+  ) {
     super(message);
     this.name = 'PrintFailure';
     this.status = status;
     this.code = code;
+    this.reason = reason;
+    this.details = details;
   }
 }
 
-type Service = {
+export type Service = {
   fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 };
 
@@ -39,13 +52,23 @@ async function failure(response: Response): Promise<PrintFailure> {
   const text = await response.text().catch(() => '');
   let code = 'print_failed';
   let message = text.slice(0, 500) || `HTTP ${response.status}`;
+  let details: string[] = [];
   try {
     const body: unknown = JSON.parse(text);
-    const error = (body as { error?: { code?: unknown; message?: unknown } })
-      .error;
+    const error = (
+      body as {
+        error?: { code?: unknown; message?: unknown; details?: unknown };
+      }
+    ).error;
     if (typeof error?.code === 'string' && error.code) code = error.code;
     if (typeof error?.message === 'string' && error.message) {
       message = error.message;
+    }
+    if (Array.isArray(error?.details)) {
+      details = error.details.flatMap((detail: unknown) => {
+        const text = (detail as { message?: unknown } | null)?.message;
+        return typeof text === 'string' && text ? [text] : [];
+      });
     }
   } catch {
     // Not JSON: keep the text.
@@ -54,7 +77,38 @@ async function failure(response: Response): Promise<PrintFailure> {
     response.status,
     code,
     `print ${response.status} ${code}: ${message}`,
+    { reason: message, details },
   );
+}
+
+const unreachable = (cause: unknown) =>
+  new PrintFailure(
+    0,
+    'print_unreachable',
+    `print Worker unreachable: ${String(cause)}`,
+  );
+
+/** Prints a document to PDF bytes, without its ground truth. */
+export async function printPdf(
+  service: Service,
+  token: string,
+  job: PdfJob,
+): Promise<Uint8Array<ArrayBuffer>> {
+  let response: Response;
+  try {
+    response = await service.fetch('https://print.internal/print', {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(job),
+    });
+  } catch (cause) {
+    throw unreachable(cause);
+  }
+  if (response.status !== 200) throw await failure(response);
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 function decodeBase64(text: string): Uint8Array<ArrayBuffer> {
@@ -89,11 +143,7 @@ export function createPrinter(service: Service, token: string): Printer {
           body: JSON.stringify(job),
         });
       } catch (cause) {
-        throw new PrintFailure(
-          0,
-          'print_unreachable',
-          `print Worker unreachable: ${String(cause)}`,
-        );
+        throw unreachable(cause);
       }
       const returned = response.headers.get('x-browser-session');
       if (returned) idle.push(returned);

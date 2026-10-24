@@ -1,14 +1,17 @@
 // The template API (T15): upload a pack zip as a new version, list versions,
-// download a version's zip.
+// download a version's zip, print a version's sample as a preview.
 import type { ApiError, TemplateList } from '@pdf-generator/contract';
 import { checkPack, type PackIssue } from '@pdf-generator/template-tools';
 import { Effect } from 'effect';
-import { Database, Files } from '../services.ts';
+import { render } from '../batch/fixture.ts';
+import { PrintFailure } from '../batch/printer.ts';
+import { Database, Files, Print } from '../services.ts';
 import {
   maxPackBytes,
   maxUploadBytes,
   unzipWithinLimits,
 } from '../templates/limits.ts';
+import { TemplateSource } from '../templates/source.ts';
 import {
   readPackZip,
   readVersion,
@@ -212,4 +215,66 @@ export const uploadTemplate = (request: Request) =>
       'storage_error',
     );
     return Response.json(toSummary(row), { status: 201 });
+  });
+
+const previewFailure = (cause: unknown) => {
+  if (
+    cause instanceof PrintFailure &&
+    cause.status >= 400 &&
+    cause.status < 500
+  ) {
+    // The printer refused this document: a problem of the pack, which the
+    // template page explains from the code leading the first detail.
+    return new ApiFailure({
+      status: 422,
+      code: 'preview_failed',
+      message: `The sample could not be printed: ${cause.reason}`,
+      details: [
+        { message: `${cause.code}: ${cause.reason}` },
+        ...cause.details.map(message => ({ message })),
+      ],
+    });
+  }
+  console.error('templates: preview print failed', cause);
+  return new ApiFailure({
+    status: 503,
+    code: 'print_unavailable',
+    message: 'The print service is unavailable; try again later.',
+  });
+};
+
+/**
+ * GET /api/templates/:id/versions/:version/preview.pdf: the version's sample
+ * record, filled and printed like a batch fixture.
+ */
+export const previewPdf = (id: string, version: string) =>
+  Effect.gen(function* () {
+    const row = yield* findVersion(id, version);
+    const templates = yield* TemplateSource;
+    const pack = yield* storage(
+      'read the pack',
+      () => templates.get(row.id, row.version),
+      'storage_error',
+    );
+    if (!pack) return yield* notFound(id, version);
+    const html = yield* Effect.try({
+      try: () => render(pack, pack.sample),
+      catch: cause =>
+        new ApiFailure({
+          status: 422,
+          code: 'preview_failed',
+          message: `The sample could not be filled in: ${String(cause)}`,
+        }),
+    });
+    const print = yield* Print;
+    const pdf = yield* Effect.tryPromise({
+      try: () => print.pdf({ html, page: pack.manifest.page }),
+      catch: previewFailure,
+    });
+    return new Response(pdf, {
+      headers: {
+        'content-type': 'application/pdf',
+        'content-disposition': `inline; filename="${row.id}-v${row.version}-preview.pdf"`,
+      },
+    });
   });

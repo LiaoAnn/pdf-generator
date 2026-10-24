@@ -18,6 +18,7 @@ import {
   downloadPack,
   getTemplate,
   listTemplates,
+  previewPdf,
   uploadTemplate,
 } from './templates.ts';
 
@@ -39,6 +40,8 @@ const routes: Record<string, Route> = {
   'GET /api/templates/:id': ({ params }) => getTemplate(params.id ?? ''),
   'GET /api/templates/:id/versions/:version/pack.zip': ({ params }) =>
     downloadPack(params.id ?? '', params.version ?? ''),
+  'GET /api/templates/:id/versions/:version/preview.pdf': ({ params }) =>
+    previewPdf(params.id ?? '', params.version ?? ''),
   'GET /api/status': () => status,
   'GET /api/batches': () => listBatches,
   'POST /api/batches': ({ request }) => createBatch(request),
