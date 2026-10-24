@@ -69,8 +69,7 @@ const request = {
 const paragraphBox = { x0: 45, y0: 75, x1: 300, y1: 100 };
 const formulaBox = { x0: 345, y0: 175, x1: 450, y1: 200 };
 const block = (texts: string[], box = paragraphBox): ExpectedBlock => ({
-  box,
-  texts,
+  texts: texts.map(text => ({ text, boxes: [box] })),
 });
 
 function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
