@@ -1,5 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { gtSchema } from '@pdf-generator/contract';
+import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { expect, test } from 'vitest';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
 import { platformFonts, selfChecker } from './check.ts';
@@ -90,3 +90,118 @@ test('selfChecker rejects an unreadable PDF instead of reporting a pass', async 
     selfChecker.check(new Uint8Array([1, 2, 3, 4]), gt),
   ).rejects.toThrow();
 });
+
+// A4 MediaBox. checkPdf allows 1 pt; these are the exact values both the PDF
+// and gt.json use, so a size mismatch cannot hide a font result.
+const pageWidth = 595.28;
+const pageHeight = 841.89;
+
+// 12 pt runs at y = 780 (PDF origin, bottom). Their ink stays inside the
+// ground-truth box: baseline ≈ 61.89 pt from the top, width under 50 pt.
+const textX = 36;
+const textGap = 120;
+
+const platformRun = 'Allowed';
+const fallbackFont = 'Helvetica';
+const fallbackRun = 'Outside';
+
+function asciiPdf(objects: readonly string[]): Uint8Array {
+  let body = '%PDF-1.4\n';
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(body.length);
+    body += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const startxref = body.length;
+  let xref = `xref\n0 ${objects.length + 1}\n`;
+  for (const [id, offset] of offsets.entries()) {
+    xref +=
+      id === 0
+        ? '0000000000 65535 f \n'
+        : `${String(offset).padStart(10, '0')} 00000 n \n`;
+  }
+  body += `${xref}trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${startxref}\n%%EOF\n`;
+  return new TextEncoder().encode(body);
+}
+
+/** One page of WinAnsi Type 1 text. No embedded font program and no browser. */
+function textInFonts(
+  runs: readonly { font: string; text: string }[],
+): Uint8Array {
+  const stream = runs
+    .map((run, index) => {
+      const x = textX + index * textGap;
+      return `BT /F${index + 1} 12 Tf ${x} 780 Td (${run.text}) Tj ET`;
+    })
+    .join('\n');
+  const fonts = runs
+    .map((_run, index) => `/F${index + 1} ${index + 5} 0 R`)
+    .join(' ');
+  const length = new TextEncoder().encode(stream).byteLength;
+  return asciiPdf([
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    [
+      '<< /Type /Page /Parent 2 0 R',
+      `/MediaBox [0 0 ${pageWidth} ${pageHeight}]`,
+      '/Contents 4 0 R',
+      `/Resources << /Font << ${fonts} >> >> >>`,
+    ].join(' '),
+    `<< /Length ${length} >>\nstream\n${stream}\nendstream`,
+    ...runs.map(
+      run =>
+        `<< /Type /Font /Subtype /Type1 /BaseFont /${run.font} /Encoding /WinAnsiEncoding >>`,
+    ),
+  ]);
+}
+
+function lineGroundTruth(text: string): GroundTruth {
+  return gtSchema.parse({
+    schemaVersion: 1,
+    source: {
+      templateId: 'font-allow-list',
+      templateVersion: 1,
+      seed: 'T16-font',
+      index: 0,
+    },
+    pages: [{ width: pageWidth, height: pageHeight }],
+    blocks: [
+      {
+        id: 'line',
+        type: 'paragraph',
+        page: 1,
+        bbox: [20, 40, 560, 90],
+        order: 0,
+        text,
+      },
+    ],
+  } satisfies GroundTruth);
+}
+
+test.each(platformFonts)(
+  'selfChecker flags Helvetica and accepts text set in %s',
+  async font => {
+    // Regression: selfChecker must call checkPdf with platformFonts. Dropping
+    // the fonts option leaves this PDF with no font difference, so the fixture
+    // is stored as passed. Another list either allows Helvetica or flags this
+    // platform face.
+    expect(platformFonts).not.toContain(fallbackFont);
+    const pdf = textInFonts([
+      { font, text: platformRun },
+      { font: fallbackFont, text: fallbackRun },
+    ]);
+    const report = await selfChecker.check(
+      pdf,
+      lineGroundTruth(platformRun + fallbackRun),
+    );
+    expect(report.ok).toBe(false);
+    expect(report.differences).toEqual([
+      expect.objectContaining({
+        kind: 'font',
+        page: 1,
+        font: fallbackFont,
+        text: fallbackRun,
+      }),
+    ]);
+  },
+);
