@@ -1,8 +1,12 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // The collector runs in the browser; the tests drive Playwright from Node.
+    // The collector (collect.js) runs in the browser; the tests drive
+    // Playwright from Node. tsconfig.consumer.json checks that callers need no
+    // DOM lib.
     "lib": ["ESNext", "DOM"],
+    "allowJs": true,
+    "checkJs": true,
     "types": ["node"]
   },
   "include": ["src"]
