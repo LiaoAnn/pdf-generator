@@ -10,14 +10,22 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as BatchesIndexRouteImport } from './routes/batches/index'
 import { Route as TemplatesIndexRouteImport } from './routes/templates/index'
 import { Route as TemplatesUploadRouteImport } from './routes/templates/upload'
+import { Route as BatchesIdIndexRouteImport } from './routes/batches/$id/index'
+import { Route as BatchesIdFixtureRouteImport } from './routes/batches/$id/$fixture'
 import { Route as TemplatesIdIndexRouteImport } from './routes/templates/$id/index'
 import { Route as TemplatesIdVersionRouteImport } from './routes/templates/$id/$version'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BatchesIndexRoute = BatchesIndexRouteImport.update({
+  id: '/batches/',
+  path: '/batches/',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
@@ -28,6 +36,16 @@ const TemplatesIndexRoute = TemplatesIndexRouteImport.update({
 const TemplatesUploadRoute = TemplatesUploadRouteImport.update({
   id: '/templates/upload',
   path: '/templates/upload',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BatchesIdIndexRoute = BatchesIdIndexRouteImport.update({
+  id: '/batches/$id/',
+  path: '/batches/$id/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const BatchesIdFixtureRoute = BatchesIdFixtureRouteImport.update({
+  id: '/batches/$id/$fixture',
+  path: '/batches/$id/$fixture',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TemplatesIdIndexRoute = TemplatesIdIndexRouteImport.update({
@@ -44,23 +62,32 @@ const TemplatesIdVersionRoute = TemplatesIdVersionRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/templates/upload': typeof TemplatesUploadRoute
+  '/batches/': typeof BatchesIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/batches/$id/$fixture': typeof BatchesIdFixtureRoute
   '/templates/$id/$version': typeof TemplatesIdVersionRoute
+  '/batches/$id/': typeof BatchesIdIndexRoute
   '/templates/$id/': typeof TemplatesIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/templates/upload': typeof TemplatesUploadRoute
+  '/batches': typeof BatchesIndexRoute
   '/templates': typeof TemplatesIndexRoute
+  '/batches/$id/$fixture': typeof BatchesIdFixtureRoute
   '/templates/$id/$version': typeof TemplatesIdVersionRoute
+  '/batches/$id': typeof BatchesIdIndexRoute
   '/templates/$id': typeof TemplatesIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/templates/upload': typeof TemplatesUploadRoute
+  '/batches/': typeof BatchesIndexRoute
   '/templates/': typeof TemplatesIndexRoute
+  '/batches/$id/$fixture': typeof BatchesIdFixtureRoute
   '/templates/$id/$version': typeof TemplatesIdVersionRoute
+  '/batches/$id/': typeof BatchesIdIndexRoute
   '/templates/$id/': typeof TemplatesIdIndexRoute
 }
 export interface FileRouteTypes {
@@ -68,30 +95,42 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/templates/upload'
+    | '/batches/'
     | '/templates/'
+    | '/batches/$id/$fixture'
     | '/templates/$id/$version'
+    | '/batches/$id/'
     | '/templates/$id/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/templates/upload'
+    | '/batches'
     | '/templates'
+    | '/batches/$id/$fixture'
     | '/templates/$id/$version'
+    | '/batches/$id'
     | '/templates/$id'
   id:
     | '__root__'
     | '/'
     | '/templates/upload'
+    | '/batches/'
     | '/templates/'
+    | '/batches/$id/$fixture'
     | '/templates/$id/$version'
+    | '/batches/$id/'
     | '/templates/$id/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   TemplatesUploadRoute: typeof TemplatesUploadRoute
+  BatchesIndexRoute: typeof BatchesIndexRoute
   TemplatesIndexRoute: typeof TemplatesIndexRoute
+  BatchesIdFixtureRoute: typeof BatchesIdFixtureRoute
   TemplatesIdVersionRoute: typeof TemplatesIdVersionRoute
+  BatchesIdIndexRoute: typeof BatchesIdIndexRoute
   TemplatesIdIndexRoute: typeof TemplatesIdIndexRoute
 }
 
@@ -102,6 +141,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/batches/': {
+      id: '/batches/'
+      path: '/batches'
+      fullPath: '/batches/'
+      preLoaderRoute: typeof BatchesIndexRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates/': {
@@ -116,6 +162,20 @@ declare module '@tanstack/react-router' {
       path: '/templates/upload'
       fullPath: '/templates/upload'
       preLoaderRoute: typeof TemplatesUploadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/batches/$id/': {
+      id: '/batches/$id/'
+      path: '/batches/$id'
+      fullPath: '/batches/$id/'
+      preLoaderRoute: typeof BatchesIdIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/batches/$id/$fixture': {
+      id: '/batches/$id/$fixture'
+      path: '/batches/$id/$fixture'
+      fullPath: '/batches/$id/$fixture'
+      preLoaderRoute: typeof BatchesIdFixtureRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/templates/$id/': {
@@ -138,8 +198,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   TemplatesUploadRoute: TemplatesUploadRoute,
+  BatchesIndexRoute: BatchesIndexRoute,
   TemplatesIndexRoute: TemplatesIndexRoute,
+  BatchesIdFixtureRoute: BatchesIdFixtureRoute,
   TemplatesIdVersionRoute: TemplatesIdVersionRoute,
+  BatchesIdIndexRoute: BatchesIdIndexRoute,
   TemplatesIdIndexRoute: TemplatesIdIndexRoute,
 }
 export const routeTree = rootRouteImport
