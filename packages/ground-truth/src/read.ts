@@ -260,6 +260,12 @@ function collect(): Measurement {
                     name === 'data-gt-checked' &&
                     inner.parentElement?.closest('td, th')?.closest('table') ===
                       element
+                  ) &&
+                  // A slot the print runtime filled with a page number (T02-5).
+                  !(
+                    (name === 'data-gt-page-number' ||
+                      name === 'data-gt-page-count') &&
+                    element.getAttribute('data-gt') === 'page_number'
                   ),
               )
               .map(({ name }) => ({ tag: inner.tagName.toLowerCase(), name })),
