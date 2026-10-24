@@ -109,6 +109,8 @@ const packIssues: Record<string, string> = {
 const printIssues: Record<string, string> = {
   font_not_loaded:
     '列印時有字型載入失敗：可能是字型檔損壞或路徑錯誤，或列印服務還不支援樣板包自帶的字型。請先改用平台內建的中文字型試試。',
+  page_count_mismatch:
+    '印出來的 PDF 頁數和 Paged.js 排出的頁數不同，標準答案的頁碼會對不上。常見原因是樣板 CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的版面（例如邊界、內距、高度、定位或分頁），讓內容跑出 Paged.js 排好的頁面。請用 @page 設定頁面大小與邊界，不要改 .pagedjs_* 與 body 的版面。',
   pagination_timeout:
     '分頁花太久，列印逾時。請檢查是否有極長的表格或無法分頁的大區塊。',
   row_fragmented:
@@ -191,4 +193,15 @@ export function explainError(error: ErrorBody): Explanation {
     };
   }
   return { title: titles[error.code] ?? '操作沒有完成', issues };
+}
+
+/**
+ * A failed fixture's stored error explained, when a print refusal wrote it
+ * (`print 422 page_count_mismatch: …`); undefined for any other error.
+ */
+export function explainFixtureError(error: string): string | undefined {
+  const code = /^print \d+ ([a-z_]+):/.exec(error)?.[1];
+  return code !== undefined && Object.hasOwn(printIssues, code)
+    ? printIssues[code]
+    : undefined;
 }
