@@ -130,20 +130,22 @@ export async function publishFiles(
   const files = Object.entries(pack?.files ?? {}).filter(
     ([path]) => path !== documentPath,
   );
-  try {
-    await Promise.all([
-      put(documentPath, document, htmlType),
-      ...files.map(([path, base64]) =>
-        put(
-          path,
-          new Uint8Array(Buffer.from(base64, 'base64')),
-          contentType(path),
-        ),
+  // Every write settles before any is judged, so a failed print deletes
+  // writes that were still running when another one failed.
+  const writes = await Promise.allSettled([
+    put(documentPath, document, htmlType),
+    ...files.map(([path, base64]) =>
+      put(
+        path,
+        new Uint8Array(Buffer.from(base64, 'base64')),
+        contentType(path),
       ),
-    ]);
-  } catch (error) {
+    ),
+  ]);
+  const failed = writes.find(write => write.status === 'rejected');
+  if (failed) {
     await remove();
-    throw error;
+    throw failed.reason;
   }
   const paths = new Set([documentPath, ...files.map(([path]) => path)]);
   return {
