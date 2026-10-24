@@ -297,6 +297,38 @@ A `page_number` block holds its fixed text and two kinds of empty slot (no value
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
 - **Columns** (`column-count`): use `column-fill: balance`. With `column-fill: auto`, `break-inside: avoid` can push the whole column block to the next page. Give every block in the columns `break-inside: avoid`: a block split across two columns gets one gt box spanning both. See the recipe "Two columns" in `skill/references/recipes.md` and `templates/paper`.
+- **Leave the page box alone** (`css-page-box`). The ground truth is measured from the page Paged.js lays out, and CSS that moves that page prints everything somewhere else. `checkPack` refuses, in every stylesheet in `files.styles` and every `<style>` in the template (also inside `@media`, `@supports` and `@layer`):
+  - any rule with `pagedjs` anywhere in a selector (`.pagedjs_page`, `.pagedjs_pages > div`, `[class*=pagedjs]`), whatever it declares: those elements are the platform's;
+  - on `html`, `body`, `:root` or `*` as the element a selector styles (`body.report`, `html > body`, `p, body` too), a `margin`, `padding` or `border` width other than 0 (`margin: auto` and `var(--x)` count as nonzero), a `border` that isn't `none`, `hidden` or 0, `position` other than `static`, `transform`, `translate`, `rotate` or `scale` other than `none`, and `zoom` other than `normal`, `1` or `100%`. A Word-style reset `* { margin: 0 }` is fine; `* { margin: 2px }` is not.
+
+  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. CSS that slips past it still fails the self-check: every text-free block then reports `ink` (§9).
+
+```css pack-error css-page-box
+body {
+  padding: 20mm;
+}
+```
+
+```css pack-error css-page-box
+.pagedjs_page {
+  margin: 20mm;
+}
+```
+
+```css pack-ok
+@page {
+  margin: 20mm;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+.report-section {
+  padding: 4mm;
+}
+```
 
 ## 6. Fonts
 
@@ -384,6 +416,8 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `html-active`, `html-unsupported` | The allowlist (§3) |
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `css-escape` | Files the template or CSS loads |
 | `font-unused` | Fonts (§6) |
+| `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |
 | `gt-unmarked`, `gt-nested`, `gt-type`, `gt-attribute`, `gt-id`, `gt-branch`, `gt-table`, `gt-checkbox`, `gt-formula`, `gt-image-text` | Marking (§4) |
 
 Passing the check is not the end: print a few records (the web app's preview, then a small batch) and read the self-check report. Something it flags is a defect of the pack.
+
