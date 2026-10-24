@@ -1,0 +1,176 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "reportNo": { "type": "integer", "min": 100000, "max": 999999 },
+    "reportDate": { "type": "date", "min": "2026-01-01", "max": "2026-12-31" },
+    "company": { "type": "company" },
+    "businessId": { "type": "businessId" },
+    "reporter": {
+      "type": "object",
+      "fields": {
+        "name": { "type": "name" },
+        "nationalId": { "type": "nationalId" },
+        "department": {
+          "type": "choice",
+          "options": [
+            "生產部",
+            "品管部",
+            "倉儲物流部",
+            "設備維修部",
+            "總務部",
+            "研發部"
+          ]
+        },
+        "jobTitle": {
+          "type": "choice",
+          "options": ["作業員", "組長", "課長", "工程師", "專員", "主任"]
+        },
+        "phone": { "type": "phone", "kind": "mobile" },
+        "extension": {
+          "type": "integer",
+          "min": 100,
+          "max": 899,
+          "blankProbability": 0.4
+        }
+      }
+    },
+    "incident": {
+      "type": "object",
+      "fields": {
+        "date": { "type": "date", "min": "2026-01-01", "max": "2026-12-31" },
+        "time": {
+          "type": "choice",
+          "options": [
+            "07:40",
+            "08:15",
+            "09:30",
+            "10:05",
+            "11:20",
+            "13:10",
+            "14:45",
+            "15:30",
+            "16:50",
+            "18:25",
+            "20:10",
+            "22:35"
+          ]
+        },
+        "address": { "type": "address" },
+        "place": {
+          "type": "choice",
+          "options": [
+            "一號廠房",
+            "二號廠房",
+            "原料倉庫",
+            "成品倉庫",
+            "裝卸區",
+            "辦公大樓",
+            "員工停車場"
+          ],
+          "blankProbability": 0.25
+        },
+        "category": {
+          "type": "choice",
+          "options": [
+            "跌倒",
+            "墜落",
+            "被夾被捲",
+            "切割擦傷",
+            "感電",
+            "化學品接觸",
+            "其他"
+          ]
+        },
+        "severity": {
+          "type": "choice",
+          "options": ["輕傷", "重傷", "死亡"],
+          "weights": [7, 2, 1]
+        },
+        "description": {
+          "type": "text",
+          "lang": "zh",
+          "minLength": 40,
+          "maxLength": 120
+        }
+      }
+    },
+    "hazards": {
+      "type": "object",
+      "fields": {
+        "machinery": { "type": "checkbox", "probability": 0.35 },
+        "electrical": { "type": "checkbox", "probability": 0.35 },
+        "chemical": { "type": "checkbox", "probability": 0.35 },
+        "height": { "type": "checkbox", "probability": 0.35 },
+        "fire": { "type": "checkbox", "probability": 0.35 }
+      }
+    },
+    "injured": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "fields": {
+          "name": { "type": "name" },
+          "gender": { "type": "choice", "options": ["男", "女"] },
+          "age": { "type": "integer", "min": 18, "max": 65 },
+          "injury": {
+            "type": "choice",
+            "options": [
+              "頭部挫傷",
+              "手部割傷",
+              "腳踝扭傷",
+              "背部拉傷",
+              "手指壓傷",
+              "眼睛灼傷",
+              "骨折",
+              "擦傷"
+            ]
+          },
+          "hospitalized": { "type": "checkbox", "probability": 0.5 },
+          "note": {
+            "type": "text",
+            "lang": "zh",
+            "minLength": 4,
+            "maxLength": 10,
+            "blankProbability": 0.5
+          }
+        }
+      }
+    },
+    "actions": {
+      "type": "object",
+      "fields": {
+        "stopWork": { "type": "checkbox", "probability": 0.6 },
+        "laborInspection": { "type": "checkbox", "probability": 0.5 },
+        "police": { "type": "checkbox", "probability": 0.2 },
+        "family": { "type": "checkbox", "probability": 0.5 }
+      }
+    },
+    "witness": {
+      "type": "object",
+      "fields": {
+        "name": { "type": "name", "blankProbability": 0.5 },
+        "phone": { "type": "phone", "kind": "mobile", "blankProbability": 0.5 }
+      }
+    },
+    "remarks": {
+      "type": "text",
+      "lang": "zh",
+      "minLength": 10,
+      "maxLength": 60,
+      "blankProbability": 0.5
+    },
+    "approval": {
+      "type": "object",
+      "fields": {
+        "date": {
+          "type": "date",
+          "min": "2026-01-01",
+          "max": "2026-12-31",
+          "blankProbability": 0.4
+        }
+      }
+    }
+  }
+}

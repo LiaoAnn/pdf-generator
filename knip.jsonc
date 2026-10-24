@@ -16,5 +16,8 @@
     "packages/*": {
       "project": ["src/**/*.ts"],
     },
+    "templates/*": {
+      "project": ["src/**/*.ts"],
+    },
   },
 }
