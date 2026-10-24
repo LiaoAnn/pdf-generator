@@ -33,6 +33,7 @@ function expectIssue(input: unknown, path: (string | number)[]) {
 describe('rules consumed by the seeded data engine', () => {
   test('bank statement round-trips every variant without defaults or transforms', () => {
     const input = example('valid');
+    expect(input).toHaveProperty('fields.transactions.sortBy', 'date');
     expect(rulesSchema.parse(input)).toEqual(input);
     const minimal = document({ type: 'name' });
     expect(rulesSchema.parse(minimal)).toEqual(minimal);
@@ -47,9 +48,17 @@ describe('rules consumed by the seeded data engine', () => {
   test('invalid fixture differs only by a missing phone kind', () => {
     const invalid = example('invalid');
     const valid = example('valid') as Rules;
+    // The invalid fixture keeps its legacy unsorted array; only the valid
+    // fixture is updated to demonstrate date sorting.
+    const transactions = { ...valid.fields.transactions };
+    Reflect.deleteProperty(transactions, 'sortBy');
     expect(invalid).toEqual({
       ...valid,
-      fields: { ...valid.fields, mobile: { type: 'phone' } },
+      fields: {
+        ...valid.fields,
+        transactions,
+        mobile: { type: 'phone' },
+      },
     });
     const result = rulesSchema.safeParse(invalid);
     expect(result.success).toBe(false);
@@ -209,6 +218,164 @@ describe('rules consumed by the seeded data engine', () => {
       expect(rulesSchema.parse(input)).toEqual(input);
     },
   );
+});
+
+describe('date-sorted array rules', () => {
+  const date: RuleField = {
+    type: 'date',
+    min: '2026-01-01',
+    max: '2026-12-31',
+  };
+  const items: RuleField = {
+    type: 'object',
+    fields: {
+      date,
+      amount: { type: 'money', min: 0, max: 100 },
+      label: { type: 'constant', value: 'date' },
+      detail: { type: 'object', fields: { date } },
+    },
+  };
+
+  test('preserves sorting with blank dates and derived balances while leaving legacy rules unchanged', () => {
+    const legacy = example('valid') as Rules;
+    const transactions = legacy.fields.transactions;
+    if (
+      transactions?.type !== 'array' ||
+      transactions.items.type !== 'object'
+    ) {
+      throw new Error('Expected bank-statement transaction objects');
+    }
+    const sorted: RuleField = {
+      ...transactions,
+      sortBy: 'date',
+      items: {
+        ...transactions.items,
+        fields: {
+          ...transactions.items.fields,
+          date: { ...date, blankProbability: 0.5 },
+        },
+      },
+    };
+    const input: Rules = {
+      ...legacy,
+      fields: { ...legacy.fields, transactions: sorted },
+    };
+    expect(rulesSchema.parse(input)).toEqual(input);
+    Reflect.deleteProperty(transactions, 'sortBy');
+    expect(rulesSchema.parse(legacy)).toEqual(legacy);
+  });
+
+  test.each([
+    ['missing item key', 'missing', items],
+    ['money field', 'amount', items],
+    ['constant containing the word date', 'label', items],
+    ['object field', 'detail', items],
+    ['scalar date items', 'date', date],
+    ['array items', 'date', { type: 'array', minItems: 0, maxItems: 2, items }],
+    ['numeric sortBy', 1, items],
+    ['null sortBy', null, items],
+    ['boolean sortBy', true, items],
+    ['array sortBy', ['date'], items],
+    ['object sortBy', { key: 'date' }, items],
+    ['empty key', '', items],
+    ['digit-leading key', '1date', items],
+    ['hyphenated key', 'posted-date', items],
+    ['nested field path', 'detail.date', items],
+    ['array field path', 'date[]', items],
+    ['non-ASCII key', '日期', items],
+    ['whitespace-padded key', ' date ', items],
+  ])(
+    'rejects %s with one actionable issue at transactions.sortBy',
+    (_label, sortBy, items) => {
+      const result = rulesSchema.safeParse({
+        schemaVersion: 1,
+        fields: {
+          transactions: {
+            type: 'array',
+            minItems: 0,
+            maxItems: 2,
+            items,
+            sortBy,
+          },
+        },
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(
+          result.error.issues.map(({ path, message }) => ({ path, message })),
+        ).toEqual([
+          {
+            path: ['fields', 'transactions', 'sortBy'],
+            message: 'sortBy must name a date field of the items',
+          },
+        ]);
+      }
+    },
+  );
+
+  test('preserves independent sort keys on nested arrays including underscore and digit identifiers', () => {
+    const input = {
+      schemaVersion: 1,
+      fields: {
+        rows: {
+          type: 'array',
+          minItems: 0,
+          maxItems: 2,
+          sortBy: 'date',
+          items: {
+            type: 'object',
+            fields: {
+              date,
+              sub: {
+                type: 'array',
+                minItems: 0,
+                maxItems: 2,
+                sortBy: '_Date2',
+                items: { type: 'object', fields: { _Date2: date } },
+              },
+            },
+          },
+        },
+      },
+    };
+    expect(rulesSchema.parse(input)).toEqual(input);
+  });
+
+  test('reports a nested invalid sortBy at the nested array rather than the root', () => {
+    const result = rulesSchema.safeParse({
+      schemaVersion: 1,
+      fields: {
+        rows: {
+          type: 'array',
+          minItems: 0,
+          maxItems: 2,
+          items: {
+            type: 'object',
+            fields: {
+              sub: {
+                type: 'array',
+                minItems: 0,
+                maxItems: 2,
+                sortBy: 'missing',
+                items,
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(
+        result.error.issues.map(({ path, message }) => ({ path, message })),
+      ).toEqual([
+        {
+          path: ['fields', 'rows', 'items', 'fields', 'sub', 'sortBy'],
+          message: 'sortBy must name a date field of the items',
+        },
+      ]);
+    }
+  });
 });
 
 describe('zod-only relationships', () => {

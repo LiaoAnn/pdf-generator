@@ -88,6 +88,7 @@
       "type": "array",
       "minItems": 0,
       "maxItems": 20,
+      "sortBy": "date",
       "items": {
         "type": "object",
         "fields": {
