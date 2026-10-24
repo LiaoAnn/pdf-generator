@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "id": "monthly-report",
+  "name": "公司月報",
+  "description": "公司月報：重點摘要列點、圖文段落、部門營收與專案進度表格，每頁有頁首頁尾。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "templates/monthly-report.hbs",
+    "styles": ["styles/monthly-report.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": ["assets/figure.svg"]
+  }
+}

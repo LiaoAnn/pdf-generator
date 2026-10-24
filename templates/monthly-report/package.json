@@ -1,0 +1,22 @@
+{
+  "name": "@pdf-generator/monthly-report",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "acceptance": "node src/acceptance.ts",
+    "check-pack": "INIT_CWD=\"$PWD\" node ../../packages/template-tools/src/cli.ts pack",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@pdf-generator/contract": "workspace:*",
+    "@pdf-generator/fake-data": "workspace:*",
+    "@pdf-generator/template-tools": "workspace:*",
+    "@types/node": "^24.13.6",
+    "fflate": "^0.8.3",
+    "parse5": "^8.0.1",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

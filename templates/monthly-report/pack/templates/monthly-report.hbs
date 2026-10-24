@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>{{company}} {{period.year}} 年 {{period.month}} 月營運月報</title>
+</head>
+<body>
+<div class="running-header" data-gt="page_header">{{company}}　{{period.year}} 年 {{period.month}} 月營運月報</div>
+<div class="running-footer" data-gt="page_footer">內部資料　請勿外流　編製單位：{{preparedBy.department}}</div>
+
+<h1 data-gt="title">{{company}}<br>{{period.year}} 年 {{period.month}} 月營運月報</h1>
+<p class="meta" data-gt="paragraph">統一編號：{{businessId}}　編製人：{{preparedBy.name}}　聯絡電話：{{preparedBy.phone}}</p>
+
+<h2 data-gt="heading">本月摘要</h2>
+<p data-gt="paragraph">{{summary}}</p>
+
+<h2 data-gt="heading">重點事項</h2>
+<ul class="bullets">
+{{#each highlights}}
+<li data-gt="list_item">{{this}}</li>
+{{/each}}
+</ul>
+
+<h2 data-gt="heading">各部門營運概況</h2>
+<div class="figure-block">
+<figure>
+<img data-gt="image" src="../assets/figure.svg" alt="" width="200" height="140">
+<figcaption data-gt="caption">{{figure.caption}}</figcaption>
+</figure>
+<p data-gt="paragraph">{{figure.body}}</p>
+</div>
+<table class="data" data-gt="table">
+<colgroup><col width="22%"><col width="30%"><col width="30%"><col width="18%"></colgroup>
+<thead>
+<tr><th>部門</th><th>營收（元）</th><th>成本（元）</th><th>人數</th></tr>
+</thead>
+<tbody>
+{{#each departments}}
+<tr><td>{{name}}</td><td class="num">{{number revenue}}</td><td class="num">{{number cost}}</td><td class="num">{{headcount}}</td></tr>
+{{/each}}
+</tbody>
+<tfoot>
+<tr><td>合計</td><td class="num">{{number totals.revenue}}</td><td class="num">{{number totals.cost}}</td><td class="num">{{totals.headcount}}</td></tr>
+</tfoot>
+</table>
+<p data-gt="paragraph">本月成本率為 {{totals.costRatio}}%。</p>
+
+<h2 data-gt="heading">重點專案進度</h2>
+<table class="data" data-gt="table">
+<colgroup><col width="34%"><col width="16%"><col width="20%"><col width="12%"><col width="18%"></colgroup>
+<thead>
+<tr><th>專案名稱</th><th>負責人</th><th>預計完成</th><th>進度</th><th>狀態</th></tr>
+</thead>
+<tbody>
+{{#each projects}}
+<tr><td>{{title}}</td><td>{{owner}}</td><td>{{due}}</td><td class="num">{{progress}}%</td><td>{{status}}</td></tr>
+{{/each}}
+</tbody>
+</table>
+
+<h2 data-gt="heading">下月工作重點</h2>
+<ul class="bullets">
+{{#each nextSteps}}
+<li data-gt="list_item">{{this}}</li>
+{{/each}}
+</ul>
+
+{{#if remarks}}
+<h2 data-gt="heading">備註</h2>
+<p data-gt="paragraph">{{remarks}}</p>
+{{/if}}
+</body>
+</html>
