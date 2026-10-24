@@ -258,9 +258,17 @@
   }
 
   // The pages Paged.js generated, not elements of the template that happen to
-  // use its class names.
+  // use its class names: the `.pagedjs_page` children of the last
+  // `.pagedjs_pages` child of <body>. The same rule as ground-truth's
+  // collect() (packages/ground-truth/README.md, "Generated pages"), so the
+  // slots, the text guard and gt.json agree on which pages exist.
   function pagedPages() {
-    return [...document.querySelectorAll('.pagedjs_pages > .pagedjs_page')];
+    const container = [...(document.body?.children ?? [])]
+      .filter(child => child.classList.contains('pagedjs_pages'))
+      .at(-1);
+    return [...(container?.children ?? [])].filter(child =>
+      child.classList.contains('pagedjs_page'),
+    );
   }
 
   // Faces that did not load: Paged.js only warns about them (T03 Must 5).
