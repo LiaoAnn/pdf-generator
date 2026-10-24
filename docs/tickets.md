@@ -428,7 +428,7 @@
 - **來源**：PR #13
 
 ### T14-1 自我檢查：相鄰的行內區塊
-- **目標**：兩個相鄰、中間無空白、同字型的行內 `data-gt` 區塊，Chrome 會把文字合併成一個 PDF 文字項目，造成誤判；改成可以拆分比對。順帶：旋轉文字的框、公式結尾容差收緊
+- **目標**：兩個相鄰、中間無空白、同字型的行內 `data-gt` 區塊，Chrome 會把文字合併成一個 PDF 文字項目，造成誤判；改成可以拆分比對。順帶：旋轉文字的框、公式結尾容差收緊；`bbox` 差異在文字延伸出去時的訊息不對（PR #17 的 flawed fixture：說文字在框外，但回報的 `textBox` 其實在框內；差異本身是真的，後面跟著 `unmarked_text`）
 - **Blocked by**：T14
 - **Blocks**：—（表單類樣板 T23 可能碰到）
 - **撞車風險**：`packages/self-check`
@@ -464,7 +464,7 @@
 - **來源**：PR #14；T16-1 的 ASK
 
 ### T15-2 網頁把樣板包檔案送進印 PDF
-- **目標**：T15 預覽與 T16 批次呼叫 `/print` 時，帶上 `pack: { template: manifest.files.template, files }`（T07-3 的介面，見 `apps/print/src/request.ts`），讓自帶字型、圖片、CSS 的樣板包能預覽與批次產出；超過 T07-3 上限（單檔 16 MiB、整包 24 MiB）時回清楚的錯誤
+- **目標**：T15 預覽與 T16 批次呼叫 `/print` 時，帶上 `pack: { template: manifest.files.template, files }`（T07-3 的介面，見 `apps/print/src/request.ts`），讓自帶字型、圖片、CSS 的樣板包能預覽與批次產出；超過 T07-3 上限（單檔 16 MiB、整包 24 MiB）時回清楚的錯誤；批次自我檢查的字型允許清單（T16-1 的 `platformFonts`）加上樣板包自帶字型的 PostScript 名稱，否則這類樣板包每一份都會有 `font` 差異
 - **Blocked by**：T07-3、T15、T16-1
 - **Blocks**：T22、T26（帶自己字型或圖片的樣板）
 - **撞車風險**：`apps/web` 的預覽與批次程式；T16-1 merge 後再派

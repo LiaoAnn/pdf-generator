@@ -51,7 +51,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 ## Commands
 
-Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
+Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Stopping dev servers: killing the tmux session doesn't stop what `wt-exec` started, and `wrangler dev` leaves `workerd` and Chrome children (GBs of RAM). Stop them with `wt-exec bash -lc "pkill -f '[w]rangler-dist/cli.js'; pkill -f '[w]orkerd'; pkill -f '[c]hrome-linux64'"` (wrangler first: a surviving wrangler respawns `workerd`, and the next `dev:print` fails with `Address already in use`) (the bracket keeps `pkill` from matching its own shell). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
 | Command | Purpose |
 | --- | --- |
