@@ -166,6 +166,9 @@ const tagged = (node: Node, tag: string) =>
 const printed = (value: number | null) =>
   value === null ? '' : String(value).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 
+const rocSlash = (iso: string) =>
+  `${String(Number(iso.slice(0, 4)) - 1911).padStart(3, '0')}/${iso.slice(5, 7)}/${iso.slice(8, 10)}`;
+
 function expectSummary(document: Node, label: string, value: number) {
   // Match label + value in a small containing element. This supports inline
   // labels and separate label/value cells without fixing an unpromised layout.
@@ -213,7 +216,25 @@ describe('bank statement pack, slice 1', () => {
     }
   });
 
-  it('prints every sample and generated transaction in order with exact formatted amounts, blank nulls, closing balance and totals', () => {
+  it('prints the running page header with the matching ROC slash period for the sample and generated statements', () => {
+    const { files } = manifest();
+    const template = read(files.template);
+    for (const { seed, record } of records()) {
+      const document = parse(fill(template, record, { file: files.template }));
+      const headers = elements(document, node =>
+        hasClass(node, 'running-header'),
+      );
+      expect(headers, seed).toHaveLength(1);
+      const header = headers[0];
+      if (!header) throw new Error(`Missing running page header: ${seed}`);
+      expect(attr(header, 'data-gt'), seed).toBe('page_header');
+      expect(rawText(header), seed).toBe(
+        `${record.bank.name}　綜合存款對帳單　對帳期間 ${rocSlash(record.periodStart)} 至 ${rocSlash(record.periodEnd)}`,
+      );
+    }
+  });
+
+  it('prints every sample and generated transaction with ROC slash dates in order, exact amounts, blank nulls, closing balance and totals', () => {
     const { files } = manifest();
     const template = read(files.template);
     for (const { seed, record } of records()) {
@@ -247,7 +268,7 @@ describe('bank statement pack, slice 1', () => {
           tagged(row, 'td').map(text),
           `${seed}: row ${index + 1}`,
         ).toEqual([
-          transaction.date,
+          rocSlash(transaction.date),
           transaction.summary,
           printed(transaction.withdrawal),
           printed(transaction.deposit),
@@ -262,6 +283,37 @@ describe('bank statement pack, slice 1', () => {
       expectSummary(document, '支出合計', record.totals.withdrawals);
     }
   });
+
+  it.each([
+    ['對帳期間', '115/09/01 至 115/09/30'],
+    ['製表日期', '民國115年10月3日'],
+  ])(
+    'prints %s in ROC format while preserving ISO source dates',
+    (label, expected) => {
+      const { files } = manifest();
+      const template = read(files.template);
+      for (const { seed, record } of records()) {
+        const before = structuredClone(record);
+        const document = parse(
+          fill(template, record, { file: files.template }),
+        );
+        const labels = elements(
+          document,
+          node => node.tagName === 'th' && text(node) === label,
+        );
+        expect(labels, seed).toHaveLength(1);
+        const heading = labels[0];
+        if (!heading?.parentNode) throw new Error(`Missing ${label}: ${seed}`);
+        expect(tagged(heading.parentNode, 'td').map(text), seed).toContain(
+          expected,
+        );
+        expect(record, `${seed}: fill must preserve ISO data`).toEqual(before);
+        expect(record.periodStart).toBe('2026-09-01');
+        expect(record.periodEnd).toBe('2026-09-30');
+        expect(record.issueDate).toBe('2026-10-03');
+      }
+    },
+  );
 
   it('keeps the marked SVG logo and all resources pack-local and customer-service text inside ground-truth blocks', () => {
     const { files } = manifest();
