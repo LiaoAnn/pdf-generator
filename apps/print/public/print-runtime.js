@@ -284,19 +284,24 @@
     return rows;
   }
 
-  // Per page, the text of every visible text node inside a [data-gt] element
-  // but outside KaTeX's MathML copy, as the PDF's text layer should contain
-  // it (T03 Must 4, PDF part).
+  // Per page, each [data-gt] element's border box (PDF points from the page's
+  // top left) and the text of its visible text nodes outside KaTeX's MathML
+  // copy, as the PDF's text layer should contain it there (T03 Must 4, PDF
+  // part). Text is matched per box, so a formula's single letters can't use
+  // up the letters of another block (T07-6).
   function expectedText() {
+    const ptPerPx = 0.75;
     return pagedPages().map(page => {
-      /** @type {string[]} */
-      const texts = [];
+      const origin = page.getBoundingClientRect();
+      /** @type {Map<Element, string[]>} */
+      const blocks = new Map();
       const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-        if (!node.parentElement?.closest('[data-gt]')) continue;
+        const block = node.parentElement?.closest('[data-gt]');
+        if (!block) continue;
         // KaTeX's MathML copy is clipped to 1px for screen readers; only its
         // visible .katex-html is printed, which is also what T13 reads.
-        if (node.parentElement.closest('.katex-mathml')) continue;
+        if (node.parentElement?.closest('.katex-mathml')) continue;
         const text = (node.textContent ?? '')
           .normalize('NFKC')
           .replace(/\s/g, '');
@@ -306,13 +311,27 @@
         const visible = [...range.getClientRects()].some(
           rect => rect.width > 0 && rect.height > 0,
         );
-        if (visible) texts.push(text);
+        if (!visible) continue;
+        const texts = blocks.get(block) ?? [];
+        texts.push(text);
+        blocks.set(block, texts);
       }
-      return texts;
+      return [...blocks].map(([block, texts]) => {
+        const box = block.getBoundingClientRect();
+        return {
+          box: {
+            x0: (box.left - origin.left) * ptPerPx,
+            y0: (box.top - origin.top) * ptPerPx,
+            x1: (box.right - origin.left) * ptPerPx,
+            y1: (box.bottom - origin.top) * ptPerPx,
+          },
+          texts,
+        };
+      });
     });
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: string[][] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: { box: { x0: number, y0: number, x1: number, y1: number }, texts: string[] }[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;

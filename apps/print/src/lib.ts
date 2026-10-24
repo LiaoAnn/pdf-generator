@@ -2,7 +2,7 @@
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect` before the PDF is printed (T03 Must 3).
 import type { Browser, Page } from '@cloudflare/puppeteer';
-import { missingText } from '@pdf-generator/self-check';
+import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
 import {
   type PrintStore,
   type PublishedFiles,
@@ -39,10 +39,11 @@ export interface PrintReadyState {
   /** `"page <n>: <row text>"` of every table row split or outside its page. */
   fragmentedRows: string[];
   /**
-   * Per page, the text of every visible text node inside a `[data-gt]`
-   * element (NFKC, no whitespace): what the PDF's text layer must contain.
+   * Per page, each `[data-gt]` element's box and the text of its visible text
+   * nodes (NFKC, no whitespace): what the PDF's text layer must contain
+   * there.
    */
-  expectedText?: string[][];
+  expectedText?: ExpectedBlock[][];
 }
 
 /**
@@ -250,7 +251,11 @@ async function print<T>(
     printBackground: true,
   });
   // The PDF is the authority on what was printed (T03 Must 4, PDF part).
-  if (ready.expectedText?.some(texts => texts.length > 0)) {
+  if (
+    ready.expectedText?.some(blocks =>
+      blocks.some(block => block.texts.length > 0),
+    )
+  ) {
     const missing = await missingText(pdf, ready.expectedText);
     if (missing.length > 0) {
       throw new RenderError(

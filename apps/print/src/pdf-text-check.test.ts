@@ -1,4 +1,5 @@
 import type { Browser } from '@cloudflare/puppeteer';
+import { type ExpectedBlock, readPdf } from '@pdf-generator/self-check';
 import { extractText } from 'unpdf';
 import { beforeAll, expect, test, vi } from 'vitest';
 import { RenderError, renderPdf } from './lib.ts';
@@ -6,7 +7,9 @@ import { RenderError, renderPdf } from './lib.ts';
 // A genuine, tiny two-page PDF, not fake "%PDF" bytes. A ToUnicode map
 // deliberately exposes A as fullwidth Ａ so skipping NFKC causes a false alarm.
 // Building it here avoids Chromium launches for every missing-text case.
-function fixturePdf() {
+function fixturePdf(
+  firstPage = 'BT /F1 12 Tf 50 750 Td (A B C TOKEN TOKEN) Tj ET',
+) {
   const stream = (text: string) =>
     `<< /Length ${Buffer.byteLength(text)} >>\nstream\n${text}\nendstream`;
   const cmap = `/CIDInit /ProcSet findresource begin
@@ -28,7 +31,7 @@ endbfchar endcmap CMapName currentdict /CMap defineresource pop end end`;
         /Resources << /Font << /F1 5 0 R >> >> /Contents ${content} 0 R >>`,
     ),
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding /ToUnicode 8 0 R >>',
-    stream('BT /F1 12 Tf 50 750 Td (A B C TOKEN TOKEN) Tj ET'),
+    stream(firstPage),
     stream('BT /F1 12 Tf 50 750 Td (SECOND) Tj ET'),
     stream(cmap),
   ];
@@ -62,7 +65,15 @@ const request = {
   page: { size: 'A4', orientation: 'portrait' },
 } as const;
 
-function fakeBrowser(expectedText?: string[][], bytes = fixturePdf()) {
+// Baseline 92 pt from the top; the 12 pt text anchor is at y = 87.8.
+const paragraphBox = { x0: 45, y0: 75, x1: 300, y1: 100 };
+const formulaBox = { x0: 345, y0: 175, x1: 450, y1: 200 };
+const block = (texts: string[], box = paragraphBox): ExpectedBlock => ({
+  box,
+  texts,
+});
+
+function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
   const calls: string[] = [];
   const page = {
     setRequestInterception: vi.fn(async () => {}),
@@ -93,23 +104,28 @@ function fakeBrowser(expectedText?: string[][], bytes = fixturePdf()) {
 test.each([
   {
     name: 'a DOM-visible row absent from the PDF',
-    expected: [['LOST_ROW'], []],
+    expected: [[block(['LOST_ROW'])], []],
     detail: 'page 1: LOST_ROW',
   },
   {
     name: 'a third duplicate backed by only two PDF occurrences',
-    expected: [['TOKEN', 'TOKEN', 'TOKEN'], []],
+    expected: [[block(['TOKEN', 'TOKEN', 'TOKEN'])], []],
     detail: 'page 1: TOKEN',
   },
   {
     name: 'text printed on the wrong page',
-    expected: [['SECOND'], []],
+    expected: [[block(['SECOND'])], []],
     detail: 'page 1: SECOND',
   },
   {
     name: 'missing text on page two with a bounded diagnostic',
-    expected: [[], ['X'.repeat(65)]],
+    expected: [[], [block(['X'.repeat(65)])]],
     detail: `page 2: ${'X'.repeat(40)}`,
+  },
+  {
+    name: 'a letter printed only in the neighbouring paragraph box',
+    expected: [[block(['C'], formulaBox)], []],
+    detail: 'page 1: C',
   },
 ])(
   'rejects $name after inspection and still closes the tab',
@@ -140,7 +156,10 @@ test.each([
 );
 
 test('PDF normalization tolerates compatibility glyphs and whitespace while consuming repeated text once per occurrence', async () => {
-  const fake = fakeBrowser([['ABC', 'TOKEN', 'TOKEN'], ['SECOND']]);
+  const fake = fakeBrowser([
+    [block(['abc', 'TOKEN', 'TOKEN'])],
+    [block(['SECOND'])],
+  ]);
   const result = await renderPdf(fake.browser, request, {
     store: { put: async () => {}, delete: async () => {} },
     assetOrigin: 'https://print-assets.example.test',
@@ -153,7 +172,7 @@ test('PDF normalization tolerates compatibility glyphs and whitespace while cons
 test.each([
   { name: 'absent', expectedText: undefined },
   { name: 'empty page list', expectedText: [] },
-  { name: 'pages with no strings', expectedText: [[], []] },
+  { name: 'pages with no blocks', expectedText: [[], []] },
 ])(
   '$name expectations skip extraction of legacy fake PDF bytes',
   async ({ expectedText }) => {
@@ -168,3 +187,49 @@ test.each([
     expect(fake.page.close).toHaveBeenCalledTimes(1);
   },
 );
+
+// Stream order deliberately differs from expectation order: page-wide greedy
+// consumption steals x/y/r out of the prose before reaching the formula.
+test.each(['formula first', 'paragraph first'] as const)(
+  '%s expectations keep later formula glyphs from consuming paragraph letters',
+  async order => {
+    const bytes = fixturePdf(
+      'BT /F1 12 Tf 50 750 Td (Let x be any real number) Tj ET\n' +
+        'BT /F1 12 Tf 350 650 Td (y) Tj 25 0 Td (x) Tj 25 0 Td (r) Tj ET',
+    );
+    const { pages } = await readPdf(bytes);
+    expect(pages[0]?.items.map(item => item.text)).toEqual([
+      'Let x be any real number',
+      'y',
+      'x',
+      'r',
+    ]);
+    const paragraph = block(['Let x be any real number']);
+    const formula = block(['y', 'x', 'r'], formulaBox);
+    const expected =
+      order === 'formula first' ? [formula, paragraph] : [paragraph, formula];
+    const fake = fakeBrowser([expected, []], bytes);
+    const result = await renderPdf(fake.browser, request, {
+      store: { put: async () => {}, delete: async () => {} },
+      assetOrigin: 'https://print-assets.example.test',
+    });
+    expect(result.pdf).toEqual(bytes);
+    expect(fake.page.close).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('within a block a leading expected letter does not steal its occurrence from a longer word printed first', async () => {
+  const bytes = fixturePdf(
+    'BT /F1 12 Tf 50 750 Td (the radius) Tj 100 0 Td (r) Tj ET',
+  );
+  const { pages } = await readPdf(bytes);
+  expect(pages[0]?.items.map(item => item.text)).toEqual(['the radius', 'r']);
+  const fake = fakeBrowser([[block(['r', 'the radius'])], []], bytes);
+  await expect(
+    renderPdf(fake.browser, request, {
+      store: { put: async () => {}, delete: async () => {} },
+      assetOrigin: 'https://print-assets.example.test',
+    }),
+  ).resolves.toMatchObject({ pdf: bytes });
+  expect(fake.page.close).toHaveBeenCalledTimes(1);
+});
