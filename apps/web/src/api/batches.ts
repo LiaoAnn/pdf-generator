@@ -9,7 +9,7 @@ import {
 } from '@pdf-generator/contract';
 import { and, eq } from 'drizzle-orm';
 import { Effect } from 'effect';
-import { fixtureKey } from '../batch/fixture.ts';
+import { type FixtureFile, fixtureKey } from '../batch/fixture.ts';
 import {
   readBatch,
   readBatches,
@@ -198,8 +198,9 @@ export const listFixtures = (id: string) =>
     Effect.map(list => Response.json(list)),
   );
 
-/** GET /api/batches/:id/fixtures/:index/check */
-export const getFixtureCheck = (id: string, index: string) =>
+// Batch `id` and the number of its fixture `index`, or 404 for an index that
+// isn't a fixture of the batch (only canonical decimals count).
+const fixtureIndex = (id: string, index: string) =>
   Effect.gen(function* () {
     const batch = yield* found(id);
     const number = Number(index);
@@ -214,34 +215,81 @@ export const getFixtureCheck = (id: string, index: string) =>
         message: `No fixture ${index} in batch ${id}.`,
       });
     }
+    return number;
+  });
+
+// A completed fixture's stored file from R2; undefined when the fixture
+// isn't completed or the file isn't stored.
+const completedFile = (id: string, index: number, file: FixtureFile) =>
+  Effect.gen(function* () {
     const db = yield* Database;
     const [row] = yield* database('read the fixture', () =>
       db
         .select()
         .from(fixtures)
-        .where(and(eq(fixtures.batchId, id), eq(fixtures.index, number))),
+        .where(and(eq(fixtures.batchId, id), eq(fixtures.index, index))),
     );
-    const missing = new ApiFailure({
-      status: 404,
-      code: 'check_not_found',
-      message: `No check for fixture ${index} in batch ${id}.`,
-    });
-    if (row?.status !== 'completed') return yield* missing;
+    if (row?.status !== 'completed') return undefined;
     const files = yield* Files;
     const object = yield* Effect.tryPromise({
-      try: () => files.get(fixtureKey(id, number, 'check.json')),
+      try: () => files.get(fixtureKey(id, index, file)),
       catch: cause => {
-        console.error('batches: reading the fixture check failed', cause);
+        console.error(`batches: reading the fixture's ${file} failed`, cause);
         return new ApiFailure({
           status: 500,
           code: 'storage_error',
-          message: 'Could not read the fixture check.',
+          message: `Could not read the fixture's ${file}.`,
         });
       },
     });
-    if (!object) return yield* missing;
+    return object ?? undefined;
+  });
+
+/** GET /api/batches/:id/fixtures/:index/check */
+export const getFixtureCheck = (id: string, index: string) =>
+  Effect.gen(function* () {
+    const number = yield* fixtureIndex(id, index);
+    const object = yield* completedFile(id, number, 'check.json');
+    if (!object) {
+      return yield* new ApiFailure({
+        status: 404,
+        code: 'check_not_found',
+        message: `No check for fixture ${index} in batch ${id}.`,
+      });
+    }
     return new Response(object.body, {
       headers: { 'content-type': 'application/json' },
+    });
+  });
+
+const fileTypes: Record<FixtureFile, string> = {
+  'fixture.pdf': 'application/pdf',
+  'gt.json': 'application/json',
+  'data.json': 'application/json',
+  'check.json': 'application/json',
+};
+
+const isFixtureFile = (file: string): file is FixtureFile =>
+  Object.hasOwn(fileTypes, file);
+
+/** GET /api/batches/:id/fixtures/:index/:file: one file of one fixture. */
+export const downloadFixtureFile = (id: string, index: string, file: string) =>
+  Effect.gen(function* () {
+    const number = yield* fixtureIndex(id, index);
+    const missing = new ApiFailure({
+      status: 404,
+      code: 'file_not_found',
+      message: `No file ${file} for fixture ${index} in batch ${id}.`,
+    });
+    if (!isFixtureFile(file)) return yield* missing;
+    const object = yield* completedFile(id, number, file);
+    if (!object) return yield* missing;
+    const name = `${id}-${String(number).padStart(4, '0')}-${file}`;
+    return new Response(object.body, {
+      headers: {
+        'content-type': fileTypes[file],
+        'content-disposition': `attachment; filename="${name}"`,
+      },
     });
   });
 

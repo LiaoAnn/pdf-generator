@@ -7,6 +7,7 @@ import type { Services } from '../services.ts';
 import {
   createBatch,
   downloadBatch,
+  downloadFixtureFile,
   getBatch,
   getFixtureCheck,
   listBatches,
@@ -51,6 +52,8 @@ const routes: Record<string, Route> = {
     listFixtures(params.id ?? ''),
   'GET /api/batches/:id/fixtures/:index/check': ({ params }) =>
     getFixtureCheck(params.id ?? '', params.index ?? ''),
+  'GET /api/batches/:id/fixtures/:index/:file': ({ params }) =>
+    downloadFixtureFile(params.id ?? '', params.index ?? '', params.file ?? ''),
   'POST /api/batches/:id/rerun': ({ params }) => rerunBatch(params.id ?? ''),
   'GET /api/batches/:id/zip': ({ params }) => downloadBatch(params.id ?? ''),
 };
