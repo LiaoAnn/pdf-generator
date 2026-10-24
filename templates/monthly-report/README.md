@@ -24,8 +24,6 @@ How it stays honest:
 - No page number: `counter(page)` prints text no `data-gt` element holds, and a number written into the DOM can't know how many pages the record fills (spec §5).
 - Fonts are platform fonts only (Noto Sans TC, Noto Serif TC for the title), named on the printed elements; no pack fonts.
 
-Known platform issue: the print runtime can choose fonts before the linked stylesheet applies, and then the whole PDF falls back to system fonts and fails self-check (backlog T07-7). Until T07-7 merges, a batch of 10 passes self-check for 7–8 fixtures; the pack doesn't work around it.
-
 ## Tests
 
 ```bash
