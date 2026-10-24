@@ -1,0 +1,175 @@
+{
+  "journal": {
+    "name": "臺灣計算語言學期刊",
+    "volume": 18,
+    "issue": 4,
+    "year": 2022
+  },
+  "title": "應用自監督預訓練於歷史文獻影像之文字偵測",
+  "authors": [
+    {
+      "name": "陳子宗",
+      "affiliation": "國立清華大學資訊工程學系"
+    },
+    {
+      "name": "江婷美",
+      "affiliation": "國立成功大學電機工程學系"
+    },
+    {
+      "name": "盧信信",
+      "affiliation": "國立陽明交通大學資訊科學與工程研究所"
+    },
+    {
+      "name": "梁宗振",
+      "affiliation": "國立成功大學電機工程學系"
+    }
+  ],
+  "received": "2024-01-07",
+  "accepted": "2024-07-28",
+  "grant": {
+    "school": 336,
+    "serial": 304
+  },
+  "abstract": "客戶滿意度待下次會議討論；本月營收列入年度重點，訂單數完成。品質檢驗列入年度重點；供應商調整；品質檢驗請各單位配合；客戶滿意度完成；物流費用已送交審核；行銷活動延後。設備維護尚在評估中。品質檢驗延後。本季完成。網站流量待下次會議討論，庫存數量有效降低；退貨率調整，出貨時程詳見附件，庫存數量略有下滑，會員人數維持穩定。業務部較上月提升。",
+  "keywords": "表格結構辨識、圖神經網路、文件理解",
+  "abstractEn": "Each branch office needs further review. Sales grew. The quarterly report will be updated in the third quarter. The marketing budget was reviewed as expected. The quarterly report needs further review for all departments. Sales remains stable. Monthly revenue fell after the audit. Inventory rose.",
+  "intro": [
+    "退貨率延後。物流費用需要追蹤，庫存數量列入年度重點。訂單數延後；本月營收待下次會議討論；新產品調整。資訊安全較上月提升，退貨率需要追蹤，本季完成，本季明顯增加，訂單數延後，訂單數延後，本月營收延後，業務部待下次會議討論；訂單數維持穩定，教育訓練已完成驗收，業務部大幅縮短，年度預算待下次會議討論，物流費用完成。",
+    "供應商完成，本季完成。客戶滿意度待下次會議討論，本季延後，本季符合預期，網站流量完成，營運成本待下次會議討論。客戶滿意度待下次會議討論，業務部仍待改善；人力成本由專人處理；品質檢驗列入年度重點；本季調整，庫存數量維持穩定；新產品較上月提升。年度預算持續成長。"
+  ],
+  "related": [
+    {
+      "cite": "文獻 [3]",
+      "text": "研發團隊待下次會議討論；客戶滿意度待下次會議討論，庫存數量待下次會議討論，出貨時程完成，研發團隊延後；門市業績有效降低；營運成本已送交審核，本季延後，客戶滿意度待下次會議討論，本月營收待下次會議討論。設備維護明顯增加。研發團隊由專人處理，網站流量完成。出貨時程待下次會議討論。"
+    },
+    {
+      "cite": "文獻 [1]",
+      "text": "訂單數明顯增加，人力成本延後；資訊安全待下次會議討論；新產品調整，本季依計畫執行，供應商需要追蹤，行銷活動逐步回升。新產品有效降低。訂單數略有下滑；本季調整，客戶滿意度列入年度重點，業務部大幅縮短。客戶滿意度待下次會議討論；客戶滿意度待下次會議討論；專案進度待下次會議討論，出貨時程完成；研發團隊由專人處理。"
+    },
+    {
+      "cite": "文獻 [2]",
+      "text": "營運成本有效降低。退貨率明顯增加，客戶滿意度待下次會議討論，會員人數由專人處理。人力成本需要追蹤。人力成本依計畫執行；客戶滿意度維持穩定，客戶滿意度尚在評估中。客戶滿意度待下次會議討論；系統效能列入年度重點，庫存數量完成，設備維護待下次會議討論。人力成本待下次會議討論；營運成本待下次會議討論。營運成本待下次會議討論；營運成本調整。"
+    }
+  ],
+  "method": [
+    "網站流量調整，本月營收待下次會議討論，供應商待下次會議討論，客戶滿意度待下次會議討論。系統效能略有下滑，本季完成；出貨時程待下次會議討論；本季調整；出貨時程待下次會議討論，採購金額已完成驗收。品質檢驗仍待改善，新產品完成，本月營收尚在評估中，新產品維持穩定。教育訓練維持穩定。年度預算延後，系統效能已送交審核，本季延後，網站流量待下次會議討論。",
+    "本季延後，品質檢驗維持穩定；庫存數量持續成長；退貨率調整。本季完成。業務部延後，會員人數調整。客戶滿意度待下次會議討論，教育訓練完成。本季完成；客戶滿意度請各單位配合；出貨時程待下次會議討論；本季調整，專案進度列入年度重點，物流費用待下次會議討論。品質檢驗尚在評估中，供應商詳見附件。",
+    "本季完成。研發團隊有效降低。供應商延後，本季完成；本月營收持續成長，本季延後，教育訓練延後，業務部調整；本季需要追蹤。客戶滿意度請各單位配合。退貨率完成；營運成本請各單位配合，教育訓練待下次會議討論，訂單數延後。新產品完成，資訊安全待下次會議討論。"
+  ],
+  "training": [
+    "人力成本列入年度重點。供應商明顯增加；客戶滿意度待下次會議討論；本月營收請各單位配合，本季完成，客戶滿意度待下次會議討論。新產品完成；行銷活動已送交審核，年度預算有效降低，新產品略有下滑。物流費用逐步回升；客戶滿意度已完成驗收；年度預算維持穩定，人力成本待下次會議討論，本季完成，門市業績列入年度重點。",
+    "客戶滿意度待下次會議討論，網站流量請各單位配合，資訊安全依計畫執行，本月營收仍待改善；本季完成，營運成本待下次會議討論，客戶滿意度待下次會議討論，客戶滿意度待下次會議討論。退貨率待下次會議討論，研發團隊完成；客戶滿意度待下次會議討論，供應商列入年度重點。網站流量提前達成目標。網站流量尚在評估中；系統效能調整，行銷活動列入年度重點，網站流量完成。"
+  ],
+  "experiments": [
+    "客戶滿意度待下次會議討論。客戶滿意度待下次會議討論；本月營收調整，研發團隊仍待改善；本季完成，退貨率完成，營運成本明顯增加；客戶滿意度待下次會議討論；採購金額由專人處理。退貨率仍待改善，業務部完成。門市業績完成，行銷活動持續成長，供應商完成。",
+    "供應商符合預期，年度預算尚在評估中，本季延後，品質檢驗完成，客戶滿意度待下次會議討論，本季完成，研發團隊完成。業務部有效降低，門市業績調整，本月營收完成，本季完成，供應商完成。訂單數待下次會議討論，客戶滿意度尚在評估中，門市業績有效降低；教育訓練延後。",
+    "訂單數延後；訂單數調整，訂單數調整；網站流量符合預期。客戶滿意度列入年度重點。供應商調整。業務部略有下滑，客戶滿意度待下次會議討論。訂單數已送交審核，退貨率較上月提升，業務部完成，退貨率延後；庫存數量尚在評估中，客戶滿意度待下次會議討論；供應商延後。"
+  ],
+  "conclusion": [
+    "品質檢驗提前達成目標。客戶滿意度大幅縮短；訂單數延後。客戶滿意度逐步回升。本季完成。本季延後，供應商請各單位配合，新產品仍待改善。客戶滿意度詳見附件，本季延後，客戶滿意度待下次會議討論，專案進度明顯增加，業務部逐步回升，新產品明顯增加，採購金額詳見附件。採購金額待下次會議討論。本季延後。客戶滿意度提前達成目標。"
+  ],
+  "eq1": 1,
+  "eq2": 0,
+  "eq3": 1,
+  "eq4": 1,
+  "references": [
+    {
+      "kind": "en",
+      "year": 2020,
+      "volume": 11,
+      "issue": 1,
+      "pages": "101-118",
+      "authorZh": "魏婷珮",
+      "coauthorZh": "楊彥信",
+      "titleZh": "中文手寫字辨識之卷積網路架構研究",
+      "venueZh": "臺灣計算語言學期刊",
+      "authorsEn": "Wang, C.-H.",
+      "titleEn": "Table structure recognition with graph neural networks.",
+      "venueEn": "International Journal on Document Analysis and Recognition"
+    },
+    {
+      "kind": "en",
+      "year": 2023,
+      "volume": 26,
+      "issue": 6,
+      "pages": "1023-1040",
+      "authorZh": "楊婷筱",
+      "coauthorZh": "潘秀靜",
+      "titleZh": "基於深度學習的印章偵測方法",
+      "venueZh": "電腦視覺與圖形識別期刊",
+      "authorsEn": "Chen, Y., & Lin, H.",
+      "titleEn": "Attention is all you need.",
+      "venueEn": "Computational Linguistics"
+    },
+    {
+      "kind": "en",
+      "year": 2021,
+      "volume": 7,
+      "issue": 8,
+      "pages": "101-118",
+      "authorZh": "徐婷宜",
+      "coauthorZh": null,
+      "titleZh": "古籍影像文字行切割之研究",
+      "venueZh": "電腦視覺與圖形識別期刊",
+      "authorsEn": "Chen, Y., & Lin, H.",
+      "titleEn": "End-to-end mathematical expression recognition.",
+      "venueEn": "Computational Linguistics"
+    },
+    {
+      "kind": "en",
+      "year": 2011,
+      "volume": 34,
+      "issue": 3,
+      "pages": "233-250",
+      "authorZh": "呂子軒",
+      "coauthorZh": null,
+      "titleZh": "中文手寫字辨識之卷積網路架構研究",
+      "venueZh": "臺灣計算語言學期刊",
+      "authorsEn": "Chen, Y., & Lin, H.",
+      "titleEn": "End-to-end mathematical expression recognition.",
+      "venueEn": "Computational Linguistics"
+    },
+    {
+      "kind": "zh",
+      "year": 2014,
+      "volume": 39,
+      "issue": 4,
+      "pages": "1023-1040",
+      "authorZh": "司馬宏",
+      "coauthorZh": "劉惠怡",
+      "titleZh": "表格影像之儲存格切割演算法",
+      "venueZh": "中華民國人工智慧學刊",
+      "authorsEn": "Wu, K.-L., & Hsu, Y.",
+      "titleEn": "LayoutLM: Pre-training of text and layout for document image understanding.",
+      "venueEn": "International Journal on Document Analysis and Recognition"
+    },
+    {
+      "kind": "zh",
+      "year": 2022,
+      "volume": 17,
+      "issue": 10,
+      "pages": "101-118",
+      "authorZh": "楊傑信",
+      "coauthorZh": null,
+      "titleZh": "基於深度學習的印章偵測方法",
+      "venueZh": "資訊科學學報",
+      "authorsEn": "Wang, C.-H.",
+      "titleEn": "Robust reading order detection for multi-column documents.",
+      "venueEn": "IEEE Transactions on Image Processing"
+    },
+    {
+      "kind": "zh",
+      "year": 2019,
+      "volume": 33,
+      "issue": 5,
+      "pages": "23-41",
+      "authorZh": "施冠強",
+      "coauthorZh": null,
+      "titleZh": "古籍影像文字行切割之研究",
+      "venueZh": "電腦視覺與圖形識別期刊",
+      "authorsEn": "Lee, J., & Chang, S.",
+      "titleEn": "LayoutLM: Pre-training of text and layout for document image understanding.",
+      "venueEn": "International Journal on Document Analysis and Recognition"
+    }
+  ]
+}

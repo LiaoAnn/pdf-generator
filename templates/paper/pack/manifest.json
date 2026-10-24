@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "paper",
+  "name": "學術論文",
+  "description": "期刊論文：LaTeX 風格的標題區與摘要、雙欄內文、KaTeX 編號公式、首頁註腳與參考文獻。",
+  "page": { "size": "A4", "orientation": "portrait" },
+  "files": {
+    "template": "templates/paper.hbs",
+    "styles": ["styles/katex.css", "styles/paper.css"],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": [
+      "fonts/KaTeX_Caligraphic-Regular.ttf",
+      "fonts/KaTeX_Main-Bold.ttf",
+      "fonts/KaTeX_Main-Regular.ttf",
+      "fonts/KaTeX_Math-Italic.ttf",
+      "fonts/KaTeX_Size1-Regular.ttf",
+      "fonts/KaTeX_Size2-Regular.ttf",
+      "fonts/KaTeX_Size3-Regular.ttf"
+    ]
+  }
+}
