@@ -524,6 +524,102 @@ describe('T13 checkbox state and markup validation', () => {
 });
 
 describe('T13 formula sources and declared image text', () => {
+  test('removes every KaTeX U+200B filler while preserving whitespace, LaTeX and text outside visible formula parts', async () => {
+    await withPage(async page => {
+      const latex = 'x^2 + \\text{a\u200bb}';
+      await paginate(
+        page,
+        `<div data-gt="formula" data-gt-id="with-fillers"><span class="katex-mathml"><math><semantics><annotation encoding="application/x-tex">${latex}</annotation></semantics></math></span><span class="katex-html">x\n\t<span class="vlist-s">\u200b</span>\n\t²</span><span class="katex-html">y<span class="vlist-s">\u200b</span>+<span class="vlist-s">\u200b</span>z</span></div>
+         <div data-gt="formula" data-gt-id="without-fillers" data-gt-latex="a+b"><span class="katex-html">a  +\n\tb</span></div>
+         <div data-gt="formula" data-gt-id="fallback" data-gt-latex="c+d">c\u200b + d</div>
+         <p data-gt="paragraph" data-gt-id="paragraph">備\u200b註</p>
+         <table data-gt="table" data-gt-id="table"><tbody><tr><td>金\u200b額</td></tr></tbody></table>`,
+        `[data-gt] { width: 300pt; height: 60pt; margin: 0; padding: 0; }
+         .katex-html { white-space: pre; }
+         .katex-mathml { position: absolute; clip: rect(1px,1px,1px,1px); width: 1px; height: 1px; overflow: hidden; }
+         table { border-collapse: collapse; }
+         td { width: 300pt; height: 60pt; padding: 0; }`,
+      );
+      // The browser must actually expose the filler and surrounding newlines
+      // and tabs: a CSS workaround would make this regression test vacuous.
+      expect(
+        await page
+          .locator('.pagedjs_page [data-gt-id="with-fillers"] .katex-html')
+          .allInnerTexts(),
+      ).toEqual(['x\n\t\u200b\n\t²', 'y\u200b+\u200bz']);
+
+      const result = await readGroundTruth(page, source);
+      // Hand-derived page/boxes/order stay identical; only visible KaTeX
+      // fillers disappear. In particular, do not normalize internal whitespace
+      // or strip U+200B globally from other block types, cells or LaTeX.
+      expect(result).toEqual({
+        schemaVersion: 1,
+        source,
+        pages: [{ width: 600, height: 800 }],
+        blocks: [
+          {
+            id: 'with-fillers',
+            type: 'formula',
+            page: 1,
+            bbox: [48, 60, 348, 120],
+            order: 0,
+            text: 'x\n\t\n\t² y+z',
+            latex,
+          },
+          {
+            id: 'without-fillers',
+            type: 'formula',
+            page: 1,
+            bbox: [48, 120, 348, 180],
+            order: 1,
+            text: 'a  +\n\tb',
+            latex: 'a+b',
+          },
+          {
+            id: 'fallback',
+            type: 'formula',
+            page: 1,
+            bbox: [48, 180, 348, 240],
+            order: 2,
+            text: 'c\u200b + d',
+            latex: 'c+d',
+          },
+          {
+            id: 'paragraph',
+            type: 'paragraph',
+            page: 1,
+            bbox: [48, 240, 348, 300],
+            order: 3,
+            text: '備\u200b註',
+          },
+          {
+            id: 'table',
+            type: 'table',
+            page: 1,
+            bbox: [48, 300, 348, 360],
+            order: 4,
+            text: '金\u200b額',
+            table: {
+              rows: 1,
+              cols: 1,
+              cells: [
+                {
+                  row: 0,
+                  col: 0,
+                  rowSpan: 1,
+                  colSpan: 1,
+                  header: false,
+                  text: '金\u200b額',
+                  bbox: [48, 300, 348, 360],
+                },
+              ],
+            },
+          },
+        ],
+      } satisfies GroundTruth);
+    });
+  }, 30_000);
+
   test.each([
     {
       name: 'missing LaTeX rather than inferring it from visible glyphs',

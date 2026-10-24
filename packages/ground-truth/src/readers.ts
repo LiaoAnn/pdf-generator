@@ -59,7 +59,8 @@ function readCheckbox(element: MeasuredElement): { checked: boolean } {
 /**
  * A formula's LaTeX, from `data-gt-latex` or its single KaTeX x-tex
  * annotation (both trimmed; when both exist they must agree), and its text:
- * the visible KaTeX rendering, not the MathML copy KaTeX hides.
+ * the visible KaTeX rendering, not the MathML copy KaTeX hides, without its
+ * zero-width filler.
  */
 function readFormula(element: MeasuredElement): {
   latex: string;
@@ -94,9 +95,11 @@ function readFormula(element: MeasuredElement): {
     }
     latex = source;
   }
+  // KaTeX's `.vlist-s` holds a U+200B (a Safari fix) that the PDF doesn't
+  // print; it is KaTeX's only zero-width filler outside the MathML (T14-3).
   return visibleParts.length === 0
     ? { latex }
-    : { latex, text: visibleParts.join(' ').trim() };
+    : { latex, text: visibleParts.join(' ').replaceAll('​', '').trim() };
 }
 
 /**
