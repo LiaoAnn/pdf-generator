@@ -3,8 +3,9 @@
 // (T06, PR #12): measured on this VM, a 256 KB template of nested {{#if}}
 // took 57 s and 256 KB of `@font-face{` 5 s, while at 64 KiB per text file
 // the worst crafted pack took under 2 s. So text files are limited one by one
-// and together; images and fonts are not parsed and only count toward the
-// total size.
+// and together. Images and fonts only count toward the total size, and
+// checkPack gets them empty: it only checks that they exist, and a stylesheet
+// that @imports or <link>s one must not make it parse megabytes of CSS.
 import type { PackFiles, PackIssue } from '@pdf-generator/template-tools';
 import { unzipSync } from 'fflate';
 
@@ -32,8 +33,9 @@ const whole = (code: string, message: string): PackIssue => ({
 });
 
 /**
- * The zip's files when it meets every limit, or the issues saying which it
- * breaks. A zip that doesn't unzip is left for checkPack to describe.
+ * The zip's files to check (images and fonts emptied) when it meets every
+ * limit, or the issues saying which it breaks. A zip that doesn't unzip is
+ * left for checkPack to describe.
  */
 export function unzipWithinLimits(
   zip: Uint8Array,
@@ -94,5 +96,11 @@ export function unzipWithinLimits(
       ),
     );
   }
-  return issues.length > 0 ? { issues } : { files };
+  if (issues.length > 0) return { issues };
+  const empty = new Uint8Array();
+  return {
+    files: Object.fromEntries(
+      entries.map(([path, bytes]) => [path, binary.test(path) ? empty : bytes]),
+    ),
+  };
 }

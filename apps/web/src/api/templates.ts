@@ -1,6 +1,10 @@
 // The template API (T15): upload a pack zip as a new version, list versions,
 // download a version's zip, print a version's sample as a preview.
-import type { ApiError, TemplateList } from '@pdf-generator/contract';
+import {
+  type ApiError,
+  relativePathSchema,
+  type TemplateList,
+} from '@pdf-generator/contract';
 import { checkPack, type PackIssue } from '@pdf-generator/template-tools';
 import { Effect } from 'effect';
 import { render } from '../batch/fixture.ts';
@@ -154,12 +158,14 @@ type Detail = NonNullable<ApiError['error']['details']>[number];
 /**
  * An issue as an error detail. The contract's detail has no code field, so
  * the code leads the message (`file-missing: …`); the upload page reads it
- * back to explain the issue.
+ * back to explain the issue. A file that is not a path inside the pack (the
+ * whole pack `.`, or the bad path a path-invalid issue names, which its
+ * message repeats) is left out: the contract's file is a relative path.
  */
 function toDetail({ code, file, message, ...location }: PackIssue): Detail {
   return {
     message: `${code}: ${message}`,
-    ...(file === '.' ? {} : { file }),
+    ...(relativePathSchema.safeParse(file).success ? { file } : {}),
     ...location,
   };
 }
