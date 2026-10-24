@@ -595,3 +595,69 @@ describe('T12 derived fields over rule objects shared by identity', () => {
     expect(differing).toBeGreaterThan(0);
   });
 });
+
+describe('T12 derived fields inside one array rule reused for two fields', () => {
+  const seeds = ['alias-a', 'alias-b', 'alias-c', 'alias-d', 'alias-e'];
+  // One object, used for both `a` and `b`.
+  const balances: RuleField = {
+    type: 'array',
+    minItems: 2,
+    maxItems: 2,
+    items: {
+      type: 'object',
+      fields: {
+        bal: {
+          type: 'runningBalance',
+          opening: 'b[].v',
+          add: [],
+          subtract: [],
+        },
+      },
+    },
+  };
+  const items: RuleField = {
+    type: 'array',
+    minItems: 3,
+    maxItems: 3,
+    items: {
+      type: 'object',
+      fields: { v: { type: 'integer', min: 1, max: 9 }, r: balances },
+    },
+  };
+  const aliased = { schemaVersion: 1, fields: { a: items, b: items } } as const;
+
+  type Item = { v: number; r: { bal: number }[] };
+
+  // Regression: the evaluator resolves a path through an array the field is
+  // not inside by the *current* index of the enclosing array that the shared
+  // rule object also appears under, so a's balances read b's item at a's index.
+  it('sums the other field’s items and reads its own item for its ancestor array', () => {
+    let unevenB = 0;
+    for (const seed of seeds) {
+      const record = generate(aliased satisfies Rules, seed);
+      const a = record.a as Item[];
+      const b = record.b as Item[];
+      const sumOfB = b.reduce((sum, item) => sum + item.v, 0);
+      if (new Set(b.map(item => item.v)).size > 1) unevenB++;
+      for (const item of a) {
+        expect(item.r.map(row => row.bal)).toEqual([sumOfB, sumOfB]);
+      }
+      for (const item of b) {
+        expect(item.r.map(row => row.bal)).toEqual([item.v, item.v]);
+      }
+    }
+    // Distinguishes "item i of b" from "all of b" only when b's items differ.
+    expect(unevenB).toBeGreaterThan(0);
+  });
+
+  // Regression: aliasing changes the answer relative to two separate copies of
+  // the same rule.
+  it('generates the same record as the rules deep-cloned through JSON', () => {
+    const cloned = JSON.parse(JSON.stringify(aliased)) as Rules;
+    for (const seed of seeds) {
+      expect(generate(aliased satisfies Rules, seed)).toEqual(
+        generate(cloned, seed),
+      );
+    }
+  });
+});

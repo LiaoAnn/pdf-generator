@@ -269,25 +269,24 @@ type Container = { [key: string]: FakeValue } | FakeValue[];
 const isContainer = (value: FakeValue | undefined): value is Container =>
   typeof value === 'object' && value !== null;
 
-/** An array field of the rules → the index of the item it stands for. */
-type Bound = ReadonlyMap<RuleField, number>;
+/** An array's items prefix (`a[].b[]`) → the index of the item it stands for. */
+type Bound = ReadonlyMap<Prefix, number>;
 type Slot = { holder: Container; key: string | number; bound: Bound };
 
 /**
  * A field path compiled once against the rules: one step per key and per
  * `[]` (a derived field's own path may hold several, for an array of
- * arrays). An item step names its array by the array's rule, so binding
- * and lookups never depend on how long the names are. Each step also names
- * its prefix (`at`, the same object for every path with that prefix, even
- * when the rules reuse one rule object in two places) and the arrays
- * passed so far.
+ * arrays). Each step names its prefix (`at`, the same object for every
+ * path with that prefix, even when the rules reuse one rule object in two
+ * places) and the item prefixes of the arrays passed so far, so binding
+ * and lookups never depend on how long the names are.
  */
 type Prefix = Map<string, Prefix>;
-type Step = ({ key: string } | { items: RuleField }) & {
+type Step = ({ key: string } | { items: true }) & {
   at: Prefix;
-  arrays: RuleField[];
+  arrays: Prefix[];
 };
-type Compiled = { steps: Step[]; arrays: RuleField[] };
+type Compiled = { steps: Step[]; arrays: Prefix[] };
 
 function compiler(rules: Rules) {
   const compiled = new Map<string, Compiled>();
@@ -305,7 +304,7 @@ function compiler(rules: Rules) {
     const known = compiled.get(path);
     if (known) return known;
     const steps: Step[] = [];
-    const arrays: RuleField[] = [];
+    const arrays: Prefix[] = [];
     let fields: Rules['fields'] | undefined = rules.fields;
     let at = root;
     for (const segment of path.split('.')) {
@@ -316,9 +315,9 @@ function compiler(rules: Rules) {
       steps.push({ key: name, at, arrays: [...arrays] });
       for (let i = name.length; i < segment.length; i += 2) {
         if (field.type !== 'array') throw new Error(`no array at ${path}`);
-        arrays.push(field);
         at = below(at, '[]');
-        steps.push({ items: field, at, arrays: [...arrays] });
+        arrays.push(at);
+        steps.push({ items: true, at, arrays: [...arrays] });
         field = field.items;
       }
       fields = field.type === 'object' ? field.fields : undefined;
@@ -349,11 +348,11 @@ function advance(nodes: Node[], step: Step, bound: Bound, last: boolean) {
       continue;
     }
     if (!Array.isArray(value)) continue;
-    const only = bound.get(step.items);
+    const only = bound.get(step.at);
     const indices =
       only === undefined ? value.keys() : only < value.length ? [only] : [];
     for (const index of indices) {
-      const itemBound = new Map(node.bound).set(step.items, index);
+      const itemBound = new Map(node.bound).set(step.at, index);
       if (last) found.push({ holder: value, key: index, bound: itemBound });
       else next.push({ value: value[index] ?? null, bound: itemBound });
     }
@@ -469,27 +468,77 @@ export function fillDerived(
     for (const { holder, key } of targets) write(holder, key, result);
   };
 
-  // Row by row through each rows array; paths through the arrays around the
-  // rows, and through the rows themselves, refer to the current item.
+  // The values of `steps` below one row: every item of any array on the
+  // way. Paths below the same row share their prefixes through `seen`,
+  // which lives only while that row is filled.
+  const below = (
+    row: Slot,
+    steps: Step[],
+    seen: Map<Prefix, Node[]>,
+  ): Slot[] => {
+    if (steps.length === 0) return [row];
+    let nodes: Node[] = [
+      { value: read(row.holder, row.key) ?? null, bound: new Map() },
+    ];
+    for (const step of steps.slice(0, -1)) {
+      const known = seen.get(step.at);
+      if (known === undefined) {
+        nodes = advance(nodes, step, new Map(), false).next;
+        seen.set(step.at, nodes);
+      } else nodes = known;
+    }
+    return advance(nodes, steps[steps.length - 1] as Step, new Map(), true)
+      .found;
+  };
+  const sumBelow = (
+    row: Slot,
+    paths: [Step[], number][],
+    seen: Map<Prefix, Node[]>,
+  ) => {
+    let sum = zero;
+    for (const [steps, count] of paths) {
+      for (const { holder, key } of below(row, steps, seen)) {
+        const value = read(holder, key);
+        if (typeof value === 'number') {
+          const { units, scale } = toDecimal(value);
+          sum = add(sum, { units: units * BigInt(count), scale });
+        }
+      }
+    }
+    return sum;
+  };
+
+  // Row by row through each rows array. The add, subtract and target paths
+  // go through the rows (placement checks that), so they are resolved below
+  // the current row; the opening is computed once per rows array, with the
+  // arrays around the rows bound to the current item.
   const fillRunning = (
     path: string,
     field: Extract<Derived, { type: 'runningBalance' }>,
   ) => {
-    const target = compile(path);
+    const rows = compile(rowsOf(path) as string);
+    const depth = rows.steps.length;
+    const relative = (paths: string[]): [Step[], number][] =>
+      multiset(paths).map(([compiled, count]) => [
+        compiled.steps.slice(depth),
+        count,
+      ]);
+    const target = compile(path).steps.slice(depth);
     const opening = compile(field.opening);
-    const adds = multiset(field.add);
-    const subtracts = multiset(field.subtract);
+    const adds = relative(field.add);
+    const subtracts = relative(field.subtract);
     let holder: Container | undefined;
     let balance = zero;
-    for (const row of slots(compile(rowsOf(path) as string))) {
+    for (const row of slots(rows)) {
       if (row.holder !== holder) {
         holder = row.holder;
         balance = total(opening, row.bound);
       }
       if (read(row.holder, row.key) === null) continue;
-      balance = add(balance, totals(adds, row.bound));
-      balance = add(balance, negate(totals(subtracts, row.bound)));
-      for (const slot of slots(target, row.bound)) {
+      const seen = new Map<Prefix, Node[]>();
+      balance = add(balance, sumBelow(row, adds, seen));
+      balance = add(balance, negate(sumBelow(row, subtracts, seen)));
+      for (const slot of below(row, target, seen)) {
         if (read(slot.holder, slot.key) !== null) {
           write(slot.holder, slot.key, print(balance));
         }

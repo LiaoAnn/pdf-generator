@@ -526,3 +526,57 @@ test.each([
   },
   15_000,
 );
+
+test('running balances deep inside nested arrays stay fast for 99000 rows × 10 paths × 31 levels', () => {
+  guardedGeneration(`
+    // 13 single-item wrappers + the rows array put each balance at level 31
+    // and its z leaves at level 32: 99,000 values, 990,000 derived steps.
+    const prefix = Array(14).fill('a[]').join('.');
+    const paths = Array.from({ length: 10 }, (_, i) => prefix + '.z[].v' + i);
+    let nest = array(99_000, object({
+      bal: { type: 'runningBalance', opening: 'o', add: paths, subtract: [] },
+      z: array(0, object(Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => ['v' + i, constant(1)])))),
+    }));
+    for (let i = 0; i < 13; i++) nest = array(1, object({ a: nest }));
+    const rules = rulesFor({ o: constant(0), a: nest });
+    const start = performance.now();
+    const record = generate(rules, 'deep-balance-lookup');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 3_000, 'deep balance lookups took ' + elapsed.toFixed(1) + ' ms');
+    let rows = record.a;
+    for (let i = 0; i < 13; i++) {
+      assert.equal(rows.length, 1);
+      rows = rows[0].a;
+    }
+    assert.equal(rows.length, 99_000);
+    for (const [i, row] of rows.entries()) assert.equal(row.bal, 0, 'row ' + i);
+  `);
+}, 15_000);
+
+test('running balances deep inside nested arrays keep every prefix over non-empty inner arrays', () => {
+  guardedGeneration(`
+    const prefix = Array(14).fill('a[]').join('.');
+    const paths = Array.from({ length: 10 }, (_, i) => prefix + '.z[].v' + i);
+    let nest = array(9_000, object({
+      bal: { type: 'runningBalance', opening: 'o', add: paths, subtract: [] },
+      z: array(1, object(Object.fromEntries(
+        Array.from({ length: 10 }, (_, i) => ['v' + i, constant(1)])))),
+    }));
+    for (let i = 0; i < 13; i++) nest = array(1, object({ a: nest }));
+    const rules = rulesFor({ o: constant(0), a: nest });
+    const start = performance.now();
+    const record = generate(rules, 'deep-balance-prefixes');
+    const elapsed = performance.now() - start;
+    assert.ok(elapsed < 3_000, 'deep balance prefixes took ' + elapsed.toFixed(1) + ' ms');
+    let rows = record.a;
+    for (let i = 0; i < 13; i++) {
+      assert.equal(rows.length, 1);
+      rows = rows[0].a;
+    }
+    assert.equal(rows.length, 9_000);
+    for (const [i, row] of rows.entries()) {
+      assert.equal(row.bal, 10 * (i + 1), 'wrong balance at row ' + i);
+    }
+  `);
+}, 15_000);
