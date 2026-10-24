@@ -18,6 +18,11 @@ export default defineProject({
     env: browserEnv,
     // Installs Chrome once before the test files start (see the file).
     globalSetup: ['src/test-browser-setup.ts'],
+    // One test file at a time: each file's Worker keeps local R2 state in the
+    // same .wrangler/state, whose store fails writes ("put: Unspecified
+    // error") when several workerd processes use it at once. It also keeps a
+    // single local Chrome running.
+    fileParallelism: false,
     testTimeout: 120_000,
     hookTimeout: 120_000,
   },

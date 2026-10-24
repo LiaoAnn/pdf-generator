@@ -46,6 +46,7 @@ test.each([
   const browser = { newPage: vi.fn(async () => page) };
   const inspect = vi.fn(async () => 'ground truth');
   const outcome = await renderPdf(browser as unknown as Browser, request, {
+    store: { put: async () => {}, delete: async () => {} },
     assetOrigin: 'https://print-assets.example.test',
     inspect,
   }).then(

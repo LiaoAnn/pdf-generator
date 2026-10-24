@@ -1,11 +1,19 @@
-// The print Worker. Static assets (fonts, Paged.js, /blank) are served before
-// this handler runs. `POST /print` turns a document into a PDF;
-// `DELETE /session/<id>` closes a kept-alive browser session.
+// The print Worker. Static assets (fonts, Paged.js, the print runtime) are
+// served before this handler runs. `POST /print` turns a document into a PDF;
+// `GET /pack/<id>/<path>` serves a print's document and pack files to its
+// browser tab; `DELETE /session/<id>` closes a kept-alive browser session.
 import { Buffer } from 'node:buffer';
 import puppeteer from '@cloudflare/puppeteer';
 import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
-import { openBrowser, RenderError, renderPdf } from './lib.ts';
+import {
+  openBrowser,
+  packLimits,
+  packSizeIssues,
+  RenderError,
+  renderPdf,
+  servePackFile,
+} from './lib.ts';
 import { printRequestSchema } from './request.ts';
 
 interface PrintEnv extends Env {
@@ -60,10 +68,41 @@ async function denied(
   return undefined;
 }
 
+const tooLarge = (details: string[]) =>
+  apiError(
+    413,
+    'pack_too_large',
+    'The request or its pack files are too large',
+    details.map(message => ({ message })),
+  );
+
+/** The body as text, or undefined once it exceeds `limit` bytes. */
+async function readBody(
+  request: Request,
+  limit: number,
+): Promise<string | undefined> {
+  if (Number(request.headers.get('content-length') ?? 0) > limit) return;
+  if (!request.body) return '';
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for await (const chunk of request.body) {
+    size += chunk.byteLength;
+    if (size > limit) return;
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 async function print(request: Request, env: PrintEnv): Promise<Response> {
+  const body = await readBody(request, packLimits.bodyBytes);
+  if (body === undefined) {
+    return tooLarge([
+      `the request body is more than the limit of ${packLimits.bodyBytes} bytes`,
+    ]);
+  }
   let json: unknown;
   try {
-    json = await request.json();
+    json = JSON.parse(body);
   } catch {
     return apiError(400, 'invalid_request', 'Body is not valid JSON');
   }
@@ -81,6 +120,8 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
       })),
     );
   }
+  const sizeIssues = packSizeIssues(parsed.data.pack);
+  if (sizeIssues.length > 0) return tooLarge(sizeIssues);
   // X-Browser-Session: `new` or a session id keeps the browser for the next
   // request (a batch); the response names the session to send next time.
   const session = request.headers.get('x-browser-session') ?? undefined;
@@ -93,6 +134,7 @@ async function print(request: Request, env: PrintEnv): Promise<Response> {
     // before it is printed (T03 Must 3).
     const result = await renderPdf(browser, parsed.data, {
       assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
+      store: env.PACK_FILES,
       ...(source ? { inspect: page => readGroundTruth(page, source) } : {}),
     });
     if (result.inspected) {
@@ -153,7 +195,14 @@ async function closeSession(env: PrintEnv, id: string): Promise<Response> {
 
 export default {
   async fetch(request, env: PrintEnv) {
-    const { pathname } = new URL(request.url);
+    const url = new URL(request.url);
+    const { pathname } = url;
+    if (pathname.startsWith('/pack/') && request.method === 'GET') {
+      return (
+        (await servePackFile(env.PACK_FILES, url)) ??
+        apiError(404, 'not_found', `No file at ${pathname}`)
+      );
+    }
     const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
     if (pathname === '/print' && request.method === 'POST') {
       return (await denied(request, env)) ?? print(request, env);

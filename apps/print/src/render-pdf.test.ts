@@ -51,6 +51,7 @@ afterEach(() => {
 
 test('inspection sees the completed page on the printing tab before PDF and its result reaches the caller', async () => {
   const fake = fakeBrowser();
+  const put = vi.fn(async (_key: string, _value: string | Uint8Array) => {});
   const inspected = { pages: 3, blocks: ['one', 'two'] };
   const inspect = vi.fn(async (page: unknown) => {
     fake.calls.push('inspect');
@@ -58,17 +59,30 @@ test('inspection sees the completed page on the printing tab before PDF and its 
     return inspected;
   });
   const result = await renderPdf(fake.browser, request, {
+    store: { put, delete: async () => {} },
     assetOrigin,
     inspect,
   });
   expect(fake.newPage).toHaveBeenCalledTimes(1);
-  expect(fake.page.goto.mock.calls[0]?.[0]).toBe(`${assetOrigin}/blank`);
-  expect(fake.page.setContent).toHaveBeenCalledTimes(1);
-  expect(fake.page.setContent.mock.calls[0]?.[0]).toContain('一月');
+  expect(fake.page.goto).toHaveBeenCalledTimes(1);
+  const documentUrl = new URL(
+    fake.page.goto.mock.calls[0]?.[0] ?? 'about:blank',
+  );
+  expect(documentUrl.origin).toBe(assetOrigin);
+  expect(documentUrl.pathname).toMatch(/^\/pack\/[^/]+\/.+$/);
+  expect(put).toHaveBeenCalled();
+  expect(
+    put.mock.calls.some(([, value]) =>
+      (typeof value === 'string'
+        ? value
+        : new TextDecoder().decode(value)
+      ).includes('一月'),
+    ),
+  ).toBe(true);
+  expect(fake.page.setContent).not.toHaveBeenCalled();
   expect(fake.calls).toEqual([
     'newPage',
     'goto',
-    'setContent',
     'ready',
     'inspect',
     'pdf',
@@ -90,7 +104,10 @@ test('inspection sees the completed page on the printing tab before PDF and its 
 test('a caller without an inspect hook still receives the ready page count and PDF', async () => {
   const fake = fakeBrowser();
   await expect(
-    renderPdf(fake.browser, request, { assetOrigin }),
+    renderPdf(fake.browser, request, {
+      assetOrigin,
+      store: { put: async () => {}, delete: async () => {} },
+    }),
   ).resolves.toEqual({ pdf: fake.bytes, pageCount: 3, inspected: undefined });
   expect(fake.page.close).toHaveBeenCalledTimes(1);
 });
@@ -110,7 +127,11 @@ test('a pending pagination promise prevents inspection and printing until it res
       }),
   );
   const inspect = vi.fn(async () => 'boxes');
-  const rendering = renderPdf(fake.browser, request, { assetOrigin, inspect });
+  const rendering = renderPdf(fake.browser, request, {
+    assetOrigin,
+    inspect,
+    store: { put: async () => {}, delete: async () => {} },
+  });
   await vi.advanceTimersByTimeAsync(0);
   expect(fake.page.evaluate).toHaveBeenCalledTimes(1);
   expect(inspect).not.toHaveBeenCalled();
@@ -132,6 +153,7 @@ test('an inspect failure closes the tab and never prints an uninspected page', a
   const failure = new Error('ground truth could not be read');
   await expect(
     renderPdf(fake.browser, request, {
+      store: { put: async () => {}, delete: async () => {} },
       assetOrigin,
       inspect: async () => {
         throw failure;
@@ -142,14 +164,17 @@ test('an inspect failure closes the tab and never prints an uninspected page', a
   expect(fake.page.close).toHaveBeenCalledTimes(1);
 });
 
-test.each(['goto', 'setContent', 'evaluate', 'pdf'] as const)(
+test.each(['goto', 'evaluate', 'pdf'] as const)(
   'a %s failure closes the opened tab',
   async stage => {
     const fake = fakeBrowser();
     const failure = new Error(`${stage} failed`);
     fake.page[stage].mockRejectedValueOnce(failure);
     await expect(
-      renderPdf(fake.browser, request, { assetOrigin }),
+      renderPdf(fake.browser, request, {
+        assetOrigin,
+        store: { put: async () => {}, delete: async () => {} },
+      }),
     ).rejects.toThrow();
     expect(fake.page.close).toHaveBeenCalledTimes(1);
     if (stage !== 'pdf') expect(fake.page.pdf).not.toHaveBeenCalled();
@@ -167,6 +192,7 @@ test.each([
     fake.page.evaluate.mockImplementationOnce(() => new Promise(() => {}));
     const inspect = vi.fn();
     const rendering = renderPdf(fake.browser, request, {
+      store: { put: async () => {}, delete: async () => {} },
       assetOrigin,
       inspect,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),

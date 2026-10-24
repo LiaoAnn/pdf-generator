@@ -3,9 +3,20 @@
 // tab through `inspect` before the PDF is printed (T03 Must 3).
 import type { Browser } from '@cloudflare/puppeteer';
 import { missingText } from '@pdf-generator/self-check';
+import {
+  type PrintStore,
+  type PublishedFiles,
+  publishFiles,
+} from './pack-files.ts';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
 
+export {
+  type PrintStore,
+  packLimits,
+  packSizeIssues,
+  servePackFile,
+} from './pack-files.ts';
 export { prepareHtml } from './prepare.ts';
 export {
   type PageSettings,
@@ -104,8 +115,13 @@ export async function waitForPrintReady(
 }
 
 export interface RenderOptions<T> {
-  /** Origin the browser loads `/blank`, `/fonts/…` and Paged.js from. */
+  /**
+   * Origin of the print Worker, which the browser loads the document, the
+   * pack files (`/pack/…`), `/fonts/…` and Paged.js from.
+   */
   assetOrigin: string;
+  /** Keeps the document and pack files while the tab loads them. */
+  store: PrintStore;
   /** Runs on the paginated tab, before it is printed. */
   inspect?: (page: PrintPage) => Promise<T>;
   timeoutMs?: number;
@@ -117,16 +133,25 @@ export interface RenderResult<T> {
   inspected: T | undefined;
 }
 
-/** Prints one document on a new tab of `browser`, then closes the tab. */
+/**
+ * Prints one document on a new tab of `browser`, then closes the tab and
+ * deletes the print's files from the store.
+ */
 export async function renderPdf<T = undefined>(
   browser: Browser,
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
   const page = await browser.newPage();
+  let files: PublishedFiles | undefined;
   try {
-    await page.goto(`${options.assetOrigin}/blank`);
-    await page.setContent(prepareHtml(request.html, { page: request.page }));
+    files = await publishFiles(
+      options.store,
+      options.assetOrigin,
+      prepareHtml(request.html, { page: request.page }),
+      request.pack,
+    );
+    await page.goto(files.documentUrl);
     const ready = await waitForPrintReady(page, options.timeoutMs);
     if (ready.unloadedFaces.length > 0) {
       throw new RenderError(
@@ -161,5 +186,6 @@ export async function renderPdf<T = undefined>(
     return { pdf, pageCount: ready.pageCount, inspected };
   } finally {
     await page.close().catch(() => undefined);
+    await files?.remove();
   }
 }
