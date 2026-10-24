@@ -15,7 +15,7 @@ if (!report.ok) for (const difference of report.differences) console.log(differe
 
 `report.differences` is a list of `Difference`s (see `src/check.ts`): each has a `kind`, the page, the block id where there is one, what gt.json says and what the PDF has, and a `message` for people. The list is deterministic: page count and sizes first, then page by page the blocks' differences in reading order, then text outside every block, then fonts.
 
-The package also exports `readPdf` (each page's MediaBox and text items with positions and font names) and `missingText`, the print Worker's check that every `data-gt` text is in the PDF (T03 Must 4), which moved here from `apps/print`.
+The package also exports `readPdf` (each page's MediaBox and text items with positions and font names) and `missingText`, the print Worker's check that every `data-gt` text is in the PDF (T03 Must 4), which moved here from `apps/print`. The print runtime reports each `data-gt` element's box (its border box and its visible text) with its texts, and `missingText` looks for them only in the PDF items whose anchor height (as below) lies in that box and whose x range overlaps it, both give or take 1 pt (an untagged print holds adjacent same-font spans as one item, which counts for each block it crosses), longest text first, so a formula's single letters can't use up another block's letters (T07-6).
 
 ## How it compares
 

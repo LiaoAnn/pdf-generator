@@ -13,4 +13,4 @@ export {
   type PdfTextItem,
   readPdf,
 } from './pdf.ts';
-export { missingText, normaliseText } from './text.ts';
+export { type ExpectedBlock, missingText, normaliseText } from './text.ts';
