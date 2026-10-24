@@ -132,18 +132,26 @@ function unpack(zip: Uint8Array): TemplatePack {
         ),
       ]),
     ),
-    fonts: [
-      ...new Set(
-        Object.entries(files).flatMap(([path, bytes]) => {
-          const name = fontFile.test(path) ? postScriptName(bytes) : undefined;
-          return name === undefined ? [] : [name];
-        }),
-      ),
-    ].sort(),
+    fonts: fontNames(files),
   };
 }
 
 const fontFile = /\.(?:woff2?|ttf|otf)$/i;
+/** What a pack's fonts may decompress together to read their names. */
+const maxFontBytes = 64 * 1024 * 1024;
+
+/** PostScript names of the pack's fonts, sorted; unreadable ones left out. */
+function fontNames(files: Record<string, Uint8Array>): string[] {
+  const budget = { bytes: maxFontBytes };
+  const names = new Set<string>();
+  for (const [path, bytes] of Object.entries(files)) {
+    const name = fontFile.test(path)
+      ? postScriptName(bytes, budget)
+      : undefined;
+    if (name !== undefined) names.add(name);
+  }
+  return [...names].sort();
+}
 
 const packBytes = (pack: TemplatePack) =>
   Object.values(pack.files).reduce((sum, file) => sum + file.length, 0);

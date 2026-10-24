@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { brotliCompressSync, constants } from 'node:zlib';
 import {
   apiErrorSchema,
   type Manifest,
@@ -109,6 +110,40 @@ function addAssets(files: Files, assets: Files) {
   });
 }
 
+// A tiny compressed file whose name-only stream has a known decompression
+// cost. No outlines are needed: upload treats font assets as opaque bytes.
+function budgetFont(name: string, outputLength: number): Uint8Array {
+  const stream = Buffer.alloc(outputLength);
+  const text = Buffer.from(name, 'utf16le').swap16();
+  stream.writeUInt16BE(1, 2);
+  stream.writeUInt16BE(18, 4);
+  stream.writeUInt16BE(3, 6);
+  stream.writeUInt16BE(1, 8);
+  stream.writeUInt16BE(0x409, 10);
+  stream.writeUInt16BE(6, 12);
+  stream.writeUInt16BE(text.length, 14);
+  text.copy(stream, 18);
+  const compressed = brotliCompressSync(stream, {
+    params: { [constants.BROTLI_PARAM_QUALITY]: 0 },
+  });
+  const length = [outputLength & 127];
+  for (
+    let rest = Math.floor(outputLength / 128);
+    rest;
+    rest = Math.floor(rest / 128)
+  ) {
+    length.unshift((rest & 127) | 128);
+  }
+  const directory = Buffer.from([5, ...length]);
+  const header = Buffer.alloc(48);
+  header.write('wOF2');
+  header.writeUInt32BE(0x00010000, 4);
+  header.writeUInt32BE(48 + directory.length + compressed.length, 8);
+  header.writeUInt16BE(1, 12);
+  header.writeUInt32BE(compressed.length, 20);
+  return Buffer.concat([header, directory, compressed]);
+}
+
 async function upload(bytes: Uint8Array) {
   const response = await request('/api/templates', bytes);
   expect(response.status).toBe(201);
@@ -191,6 +226,33 @@ afterAll(async () => {
 }, 30_000);
 
 describe('template upload HTTP acceptance with local D1 and R2', () => {
+  test('stored pack stops discovering font names after 64 MiB of cumulative decompressed font output', async () => {
+    const files = pack({ id: 'font-decompression-budget' });
+    addAssets(files, {
+      'assets/first.woff2': budgetFont('First-Within-Budget', 32 * 1024 * 1024),
+      'assets/second.woff2': budgetFont(
+        'Second-Within-Budget',
+        32 * 1024 * 1024,
+      ),
+      'assets/beyond.woff2': budgetFont('Beyond-Pack-Budget', 256),
+    });
+    const summary = await upload(zipSync(files));
+    const stored = await templateStore(
+      drizzle(platform.env.DB, { schema }),
+      platform.env.FILES,
+    ).get(summary.id, summary.version);
+    expect(stored?.fonts).toEqual([
+      'First-Within-Budget',
+      'Second-Within-Budget',
+    ]);
+    // Exhausting name discovery must not discard assets used by rendering.
+    expect(stored?.files['assets/beyond.woff2']).toBe(
+      Buffer.from(requiredBytes(files['assets/beyond.woff2'])).toString(
+        'base64',
+      ),
+    );
+  });
+
   test('uploaded pack read-back preserves every zip file as base64 and discovers its real WOFF2 PostScript name', async () => {
     const files = pack({ id: 'real-pack-font' });
     files['assets/report.woff2'] = new Uint8Array(
