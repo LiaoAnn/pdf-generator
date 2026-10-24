@@ -18,6 +18,7 @@ import {
 } from '../templates/fixture-pack.ts';
 import { createFetchHandler } from '../worker.ts';
 import type { FixtureJob } from './fixture.ts';
+import type { Printer } from './printer.ts';
 import { handleFixtureMessages } from './queue.ts';
 import { type BatchSteps, runBatch } from './workflow.ts';
 
@@ -158,12 +159,15 @@ test('a started 100-fixture batch exposes rising HTTP progress and finishes with
       db: db(),
       files: platform.env.FILES,
       templates: fixtureTemplates,
-      printer: {
-        print: async job => ({
-          pageCount: 1,
-          pdf: new Uint8Array([37, 80, 68, 70]),
-          gt: gtSchema.parse({ ...gtExample, source: job.source }),
+      printers: {
+        for: (_batchId: string): Printer => ({
+          print: async job => ({
+            pageCount: 1,
+            pdf: new Uint8Array([37, 80, 68, 70]),
+            gt: gtSchema.parse({ ...gtExample, source: job.source }),
+          }),
         }),
+        close: async (_batchId: string) => {},
       },
       workflow: { get: async () => ({ sendEvent: async () => {} }) },
       checker: {

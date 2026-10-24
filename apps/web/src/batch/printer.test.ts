@@ -2,7 +2,12 @@ import { Buffer } from 'node:buffer';
 import { gtSchema } from '@pdf-generator/contract';
 import { describe, expect, test, vi } from 'vitest';
 import gtExample from '../../../../packages/contract/examples/gt.valid.json';
-import { createPrinter, type Printer, PrintFailure } from './printer.ts';
+import {
+  createBatchPrinters,
+  createPrinter,
+  type Printer,
+  PrintFailure,
+} from './printer.ts';
 
 const gt = gtSchema.parse(gtExample);
 const request: Parameters<Printer['print']>[0] = {
@@ -181,5 +186,165 @@ describe('browser session reuse', () => {
     for (const entry of pending.slice(5))
       entry.resolve(answer(entry.session ?? undefined));
     await Promise.all([sixth.result, seventh.result, eighth.result]);
+  });
+});
+
+describe('browser session cleanup', () => {
+  test.each([200, 422])(
+    'closes all idle HTTP %s sessions with authenticated encoded DELETEs exactly once',
+    async status => {
+      const ids = ['session/a?x=1', 'session-b'];
+      const calls: Request[] = [];
+      const fetch: Fetch = async (input, init) => {
+        const sent = new Request(input, init);
+        calls.push(sent);
+        if (sent.method === 'DELETE')
+          return new Response(null, { status: 204 });
+        const id = ids.shift();
+        return status === 200
+          ? answer(id)
+          : Response.json(
+              { error: { code: 'invalid_layout', message: 'bad layout' } },
+              { status, headers: { 'x-browser-session': id ?? '' } },
+            );
+      };
+      const printer = createPrinter({ fetch }, 'cleanup-token');
+      const results = await Promise.allSettled([
+        printer.print(request),
+        printer.print(request),
+      ]);
+      expect(results.map(result => result.status)).toEqual(
+        status === 200 ? ['fulfilled', 'fulfilled'] : ['rejected', 'rejected'],
+      );
+      await printer.close();
+      await printer.close();
+      const deletes = calls.filter(call => call.method === 'DELETE');
+      expect(deletes.map(call => call.url).sort()).toEqual(
+        [
+          'https://print.internal/session/session%2Fa%3Fx%3D1',
+          'https://print.internal/session/session-b',
+        ].sort(),
+      );
+      for (const sent of deletes)
+        expect(sent.headers.get('authorization')).toBe('Bearer cleanup-token');
+    },
+  );
+
+  test.each([200, 422])(
+    'deletes a session returned by an in-flight HTTP %s print after close',
+    async status => {
+      const deletes: string[] = [];
+      let respond: ((response: Response) => void) | undefined;
+      const fetch: Fetch = async (input, init) => {
+        const sent = new Request(input, init);
+        if (sent.method === 'DELETE') {
+          deletes.push(sent.url);
+          return new Response(null, { status: 204 });
+        }
+        return new Promise(resolve => {
+          respond = resolve;
+        });
+      };
+      const printer = createPrinter({ fetch }, 'token');
+      const result = Promise.allSettled([printer.print(request)]);
+      await vi.waitFor(() => expect(respond).toBeDefined());
+      await printer.close();
+      expect(deletes).toEqual([]);
+      respond?.(
+        status === 200
+          ? answer('late-session')
+          : Response.json(
+              { error: { code: 'invalid_layout', message: 'bad layout' } },
+              { status, headers: { 'x-browser-session': 'late-session' } },
+            ),
+      );
+      expect((await result)[0]?.status).toBe(
+        status === 200 ? 'fulfilled' : 'rejected',
+      );
+      await vi.waitFor(() =>
+        expect(deletes).toEqual([
+          'https://print.internal/session/late-session',
+        ]),
+      );
+      await printer.close();
+      expect(deletes).toHaveLength(1);
+    },
+  );
+
+  test.each(['throw', '404'] as const)(
+    'cleanup %s does not reject, skip other sessions, or DELETE twice',
+    async failure => {
+      const deletes: string[] = [];
+      let next = 0;
+      const fetch: Fetch = async (input, init) => {
+        const sent = new Request(input, init);
+        if (sent.method !== 'DELETE') return answer(`session-${next++}`);
+        deletes.push(sent.url);
+        if (deletes.length === 1) {
+          if (failure === 'throw') throw new Error('connection lost');
+          return Response.json(
+            { error: { code: 'session_not_found' } },
+            { status: 404 },
+          );
+        }
+        return new Response(null, { status: 204 });
+      };
+      const printer = createPrinter({ fetch }, 'token');
+      await Promise.all([printer.print(request), printer.print(request)]);
+      await expect(printer.close()).resolves.toBeUndefined();
+      await expect(printer.close()).resolves.toBeUndefined();
+      expect(deletes.sort()).toEqual([
+        'https://print.internal/session/session-0',
+        'https://print.internal/session/session-1',
+      ]);
+    },
+  );
+});
+
+describe('batch-owned printers', () => {
+  test('reuses within a batch, isolates other batches, and forgets a closed batch without closing its neighbor', async () => {
+    const calls: Request[] = [];
+    let next = 0;
+    const fetch: Fetch = async (input, init) => {
+      const sent = new Request(input, init);
+      calls.push(sent);
+      if (sent.method === 'DELETE') return new Response(null, { status: 204 });
+      const session = sent.headers.get('x-browser-session');
+      return answer(
+        session === 'new' ? `session-${next++}` : (session ?? undefined),
+      );
+    };
+    const batches = createBatchPrinters({ fetch }, 'token');
+    await batches.for('a').print(request);
+    await batches.for('a').print(request);
+    await batches.for('b').print(request);
+    await batches.close('a');
+    await batches.close('a');
+    await batches.close('unknown');
+    await batches.for('b').print(request);
+    await batches.for('a').print(request);
+    expect(
+      calls
+        .filter(call => call.method === 'POST')
+        .map(call => call.headers.get('x-browser-session')),
+    ).toEqual(['new', 'session-0', 'new', 'session-1', 'new']);
+    expect(
+      calls.filter(call => call.method === 'DELETE').map(call => call.url),
+    ).toEqual(['https://print.internal/session/session-0']);
+  });
+
+  test('forgets a batch even when its session DELETE throws', async () => {
+    const sessions: (string | null)[] = [];
+    const fetch: Fetch = async (input, init) => {
+      const sent = new Request(input, init);
+      if (sent.method === 'DELETE') throw new Error('offline');
+      sessions.push(sent.headers.get('x-browser-session'));
+      return answer('old-session');
+    };
+    const batches = createBatchPrinters({ fetch }, 'token');
+    await batches.for('a').print(request);
+    await expect(batches.close('a')).resolves.toBeUndefined();
+    await batches.for('a').print(request);
+    expect(sessions).toEqual(['new', 'new']);
   });
 });

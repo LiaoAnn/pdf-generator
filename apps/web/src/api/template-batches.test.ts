@@ -243,7 +243,10 @@ test('uploaded v1 and v2 batches reach the queue printer with their own text eve
       db: db(),
       files: platform.env.FILES,
       templates: templateStore(db(), platform.env.FILES),
-      printer: { print },
+      printers: {
+        for: (_batchId: string) => ({ print }),
+        close: async (_batchId: string) => {},
+      },
       workflow: { get: async () => ({ sendEvent: async () => {} }) },
       checker: {
         check: async () => ({ ok: true, differences: [] }),

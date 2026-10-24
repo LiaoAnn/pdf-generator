@@ -9,7 +9,7 @@ import type { TemplateSourceApi } from '../templates/source.ts';
 import { templateStore } from '../templates/store.ts';
 import { type Checker, selfChecker } from './check.ts';
 import { type FixtureJob, makeFixture } from './fixture.ts';
-import { createPrinter, type Printer } from './printer.ts';
+import { type BatchPrinters, createBatchPrinters } from './printer.ts';
 import { countFinished, readBatchRow } from './store.ts';
 
 /** Tries per fixture; wrangler.jsonc's max_retries must allow at least this. */
@@ -22,7 +22,7 @@ export interface FixtureDeps {
   db: DrizzleD1Database<typeof schema>;
   files: R2Bucket;
   templates: TemplateSourceApi;
-  printer: Printer;
+  printers: BatchPrinters;
   checker: Checker;
   workflow: {
     get(id: string): Promise<{
@@ -39,13 +39,23 @@ const describe = (error: unknown) =>
   (error instanceof Error ? error.message : String(error)).slice(0, 2000) ||
   'failed';
 
+// Browser sessions left open end at the print Worker's idle cap anyway.
+async function closePrinter(deps: FixtureDeps, batchId: string) {
+  try {
+    await deps.printers.close(batchId);
+  } catch (error) {
+    console.warn(`batch ${batchId}: browser sessions not closed`, error);
+  }
+}
+
 async function handle(message: Message<FixtureJob>, deps: FixtureDeps) {
   const job = message.body;
   const { db } = deps;
   const batch = await readBatchRow(db, job.batchId);
   if (!batch) {
-    // Deleted (retention) or never existed: nothing to do.
+    // Deleted (retention) or never existed: nothing to print.
     message.ack();
+    await closePrinter(deps, job.batchId);
     return;
   }
   const [existing] = await db
@@ -65,7 +75,10 @@ async function handle(message: Message<FixtureJob>, deps: FixtureDeps) {
 
   let row: typeof schema.fixtures.$inferInsert;
   try {
-    const files = await makeFixture(job, deps);
+    const files = await makeFixture(job, {
+      ...deps,
+      printer: deps.printers.for(job.batchId),
+    });
     row = {
       batchId: job.batchId,
       index: job.index,
@@ -95,6 +108,8 @@ async function handle(message: Message<FixtureJob>, deps: FixtureDeps) {
   message.ack();
 
   if ((await countFinished(db, job.batchId)) >= batch.count) {
+    // Its last fixture is done: its browser sessions are no longer needed.
+    await closePrinter(deps, job.batchId);
     try {
       const instance = await deps.workflow.get(job.batchId);
       await instance.sendEvent({ type: fixturesDone });
@@ -122,18 +137,19 @@ export async function handleFixtureMessages(
   );
 }
 
-// One printer per isolate, so its kept browser sessions outlive a delivery.
-let printer: { token: string; printer: Printer } | undefined;
+// One set of batch printers per isolate, so a batch's kept browser sessions
+// outlive a delivery.
+let printers: { token: string; printers: BatchPrinters } | undefined;
 
 /** The Worker's `queue` handler. */
 export async function consumeFixtures(
   batch: MessageBatch<FixtureJob>,
   env: Env,
 ): Promise<void> {
-  if (printer?.token !== env.PRINT_TOKEN) {
-    printer = {
+  if (printers?.token !== env.PRINT_TOKEN) {
+    printers = {
       token: env.PRINT_TOKEN,
-      printer: createPrinter(env.PRINT, env.PRINT_TOKEN),
+      printers: createBatchPrinters(env.PRINT, env.PRINT_TOKEN),
     };
   }
   const db = drizzle(env.DB, { schema });
@@ -141,7 +157,7 @@ export async function consumeFixtures(
     db,
     files: env.FILES,
     templates: templateStore(db, env.FILES),
-    printer: printer.printer,
+    printers: printers.printers,
     checker: selfChecker,
     workflow: env.BATCH_WORKFLOW,
   });
