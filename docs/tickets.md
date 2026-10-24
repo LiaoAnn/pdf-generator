@@ -699,7 +699,7 @@
 - **來源**：PR #38（T25；該樣板目前改帶 TTF）
 
 ### T10-1 規格書：雙欄與 KaTeX 公式的寫法
-- **目標**：`packages/pack-spec` 的 SPEC §5 或 `skill/references/recipes.md` 補上「雙欄」與「KaTeX 公式」兩則寫法，指向 `templates/paper`：用 `build.ts` 預先渲染、帶 TTF 字型、兩個 CSS 修正、公式的留白；雙欄要用 `column-fill: balance`（`auto` 配 `break-inside: avoid` 會把整個多欄區塊推到下一頁）
+- **目標**：`packages/pack-spec` 的 SPEC §5 或 `skill/references/recipes.md` 補上「雙欄」與「KaTeX 公式」兩則寫法，指向 `templates/paper`：用 `build.ts` 預先渲染、帶 KaTeX 字型（T15-3 後 woff2 可用）、兩個 CSS 修正（T14-3 後可能不再需要）、公式的留白；雙欄要用 `column-fill: balance`（`auto` 配 `break-inside: avoid` 會把整個多欄區塊推到下一頁）
 - **Blocked by**：T25
 - **Blocks**：—
 - **撞車風險**：`packages/pack-spec`；T14-3、T15-3 合併後要同步改寫法
@@ -733,3 +733,12 @@
 - **驗收測試**：上述 decoy 與 T08-1／T14-4 的位移 fixture 都得 422；5 個既有樣板各一批 10 份不受影響（無誤擋）
 - **不做**：改區塊讀取規則、加「無主墨跡」檢查
 - **來源**：T14-4 的 Security review
+
+### T25-1 樣板：論文改回 KaTeX 的 woff2 字型
+- **目標**：T25 因為 T15-3 的問題改帶 KaTeX 的 TTF；T15-3 修好後，`templates/paper` 改回 `katex` 套件的 woff2（樣板包變小）
+- **Blocked by**：T15-3、T14-3（T14-3 也會改 `templates/paper`）
+- **Blocks**：—
+- **撞車風險**：`templates/paper`
+- **驗收測試**：批次 10 份自我檢查與 `compare.ts` 全過；樣板包大小前後對照
+- **不做**：改平台程式
+- **來源**：PR #43（T15-3）
