@@ -4,13 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check-pack": "INIT_CWD=\"$PWD\" node ../../packages/template-tools/src/cli.ts pack",
     "test": "vitest run",
     "typecheck": "tsc"
   },
   "devDependencies": {
     "@pdf-generator/contract": "workspace:*",
     "@pdf-generator/fake-data": "workspace:*",
+    "@pdf-generator/template-tools": "workspace:*",
     "@types/node": "^24.13.6",
+    "parse5": "^8.0.1",
     "typescript": "catalog:",
     "vitest": "catalog:"
   }
