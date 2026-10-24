@@ -24,7 +24,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
 ## Read first
 
 1. The spec, whole: `$PDF_GENERATOR_REPO/packages/pack-spec/SPEC.md`. It is the contract the checker enforces; this skill only adds the working method and the traps.
-2. The example nearest your document, as a model to copy from:
+2. The example nearest your document, as a model to copy from (open its `manifest.json`, `data/rules.json`, then the template and its own stylesheet). None is a ledger or landscape; take the closest parts from each:
    - `$PDF_GENERATOR_REPO/templates/minimal-example/pack/`: one-page minutes; label/value pairs, a table with checkbox cells, a list, a checkbox, a blank field, a footer.
    - `$PDF_GENERATOR_REPO/templates/monthly-report/pack/`: multi-page report; running header and footer, bullet lists, a figure with text, tables that break across pages, sums and percentages.
    - `$PDF_GENERATOR_REPO/templates/incident-form/pack/`: a one-page form built as one big table; merged cells, blank cells, checkbox options in cells.

@@ -148,7 +148,10 @@ A field with `blankProbability` that drops a whole section: put the heading and 
 - `date` fields print `YYYY-MM-DD`; there is no date helper. For 民國 dates, use `integer` fields (`year` 110-115, `month` 1-12, `day` 1-28) and print `民國{{year}}年{{month}}月{{day}}日`.
 - Dates that must agree (start ≤ end, rows within a trip): each `date` field is drawn on its own, so give them ranges that can't cross instead of pinning them to one day: start in `2026-03-02`..`2026-03-06`, end in `2026-03-09`..`2026-03-13`, row dates in `2026-03-06`..`2026-03-09`. Rows of an array are not sorted by date.
 - Money: `money` with `decimals: 0` and `{{number amount}}`; amounts with cents: `decimals=2`.
-- Derived values (`sum`, `percentage`, `runningBalance`) come from the rules, never from the template: there is no arithmetic in templates.
+- Derived values (`sum`, `percentage`, `runningBalance`) come from the rules, never from the template: there is no arithmetic in templates. `{{number x}}` of a `null` prints nothing.
+- A closing balance is the last row's `runningBalance`: `{{#each rows}}{{#if @last}}{{number balance}}{{/if}}{{/each}}` in the closing cell.
+- Either-or columns (支出 or 存入): the engine can't make two fields exclusive, nor tie one field's value to another's (a 摘要 that matches the column). Without a running balance, use one `choice` field `kind` and one `money` field, printed in the matching cell with `{{#if (eq kind "支出")}}…{{/if}}`. With a `runningBalance`, which needs separate `add` and `subtract` fields, give both amounts a `blankProbability` (blank counts as 0) and accept that some rows fill both or neither. Keep texts like 摘要 neutral.
+- Account numbers and other fixed-length digit strings: an `integer` with `min`/`max` of that many digits (`100000000000`..`999999999999`); print separators by splitting it into several integer fields.
 
 ## Landscape
 
