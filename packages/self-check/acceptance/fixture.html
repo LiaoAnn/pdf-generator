@@ -1,0 +1,52 @@
+<!doctype html>
+<!--
+T14 acceptance document: printed by the print Worker with the platform fonts,
+its gt.json read on the same tab. Two pages: a running header, a title, a
+label and field, paragraphs, a ☑ checkbox, a table with checkboxes in its
+cells, a formula (without KaTeX's MathML copy, which the print runtime
+wrongly expects in the PDF too) and a blank field.
+-->
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>T14 acceptance</title>
+<style>
+@page { size: A4; margin: 30mm 20mm 20mm 20mm; @top-center { content: element(header); } }
+html { font-family: "Noto Sans TC", "Noto Sans Symbols 2", sans-serif; font-size: 11pt; line-height: 1.6; }
+header {
+  /* biome-ignore lint/correctness/noUnknownFunction: Paged.js implements running elements. */
+  position: running(header);
+  font-size: 9pt;
+}
+h1 { font-size: 18pt; margin: 0 0 4mm; }
+p { margin: 0 0 3mm; }
+.row { display: flex; gap: 4mm; margin-bottom: 3mm; }
+.field { min-width: 60mm; border-bottom: 0.5pt solid #000; }
+.blank { width: 60mm; height: 7mm; border: 0.5pt solid #000; }
+table { border-collapse: collapse; width: 120mm; margin-bottom: 4mm; }
+td, th { border: 0.5pt solid #000; padding: 1mm 2mm; text-align: left; font-weight: normal; }
+section + section { break-before: page; }
+</style>
+</head>
+<body>
+<header data-gt="page_header" data-gt-id="header">青禾實業股份有限公司｜事故通報單</header>
+<section>
+<h1 data-gt="title" data-gt-id="title">民國一一五年十月事故通報單</h1>
+<div class="row"><span data-gt="label" data-gt-id="unit-label">通報單位</span><span class="field" data-gt="field" data-gt-id="unit">臺北市信義區營運處</span></div>
+<p data-gt="paragraph" data-gt-id="summary">十月二十三日下午三時，二樓倉庫因漏水造成部分紙箱受潮，已移至一樓暫存，無人員受傷。</p>
+<p data-gt="checkbox" data-gt-id="reported" data-gt-checked="true">☑ 已通報主管</p>
+<table data-gt="table" data-gt-id="choices">
+<thead><tr><th>項目</th><th>勾選</th></tr></thead>
+<tbody>
+<tr><td>是否受理</td><td><span data-gt-checked="true">☑</span>是 <span data-gt-checked="false">☐</span>否</td></tr>
+<tr><td>事故類型</td><td><span data-gt-checked="false">☐</span>火災 <span data-gt-checked="true">☑</span>漏水</td></tr>
+</tbody>
+</table>
+<div data-gt="formula" data-gt-id="loss" data-gt-latex="L = 12 \times 350"><span class="katex"><span class="katex-html" aria-hidden="true">L = 12 × 350</span></span></div>
+</section>
+<section>
+<p data-gt="paragraph" data-gt-id="followup">後續處理：十月二十四日完成屋頂防水修繕，受潮紙箱共四十二箱已報廢。</p>
+<div class="row"><span data-gt="label" data-gt-id="sign-label">主管簽核</span><div class="blank" data-gt="field" data-gt-id="sign"></div></div>
+</section>
+</body>
+</html>

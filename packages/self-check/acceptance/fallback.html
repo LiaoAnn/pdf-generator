@@ -1,0 +1,18 @@
+<!doctype html>
+<!--
+T14 acceptance: 㵾 is in none of the platform fonts (docs/findings/T03.md
+§2.3), so Chrome prints it in a system font. Only the PDF shows that.
+-->
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<title>T14 acceptance: font fallback</title>
+<style>
+@page { size: A4; margin: 20mm; }
+html { font-family: "Noto Sans TC", sans-serif; font-size: 11pt; line-height: 1.6; }
+</style>
+</head>
+<body>
+<p data-gt="paragraph" data-gt-id="rare">罕用字：㵾</p>
+</body>
+</html>
