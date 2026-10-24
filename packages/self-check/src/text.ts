@@ -16,8 +16,11 @@ export interface ExpectedBlock {
   texts: string[];
 }
 
-// An item is printed inside a block when its anchor (T03 §1, as in check.ts)
-// lies in the block's box, give or take 1 pt for subpixel layout.
+// An item is printed inside a block when its anchor's height (T03 §1, as in
+// check.ts) lies in the block's box and its x range overlaps the box's, both
+// by 1 pt for subpixel layout. Overlap rather than the anchor's x: an
+// untagged print holds adjacent spans in one font as one item ("Meeting
+// date:2026-10-24"), which then counts for each block it crosses.
 const anchorEm = 0.35;
 const tolerancePt = 1;
 
@@ -40,11 +43,11 @@ export async function missingText(
       let printed = normaliseText(
         items
           .filter(item => {
-            const x = (item.x0 + item.x1) / 2;
+            const overlap =
+              Math.min(item.x1, box.x1) - Math.max(item.x0, box.x0);
             const y = item.baseline - anchorEm * item.size;
             return (
-              x >= box.x0 - tolerancePt &&
-              x <= box.x1 + tolerancePt &&
+              overlap > tolerancePt &&
               y >= box.y0 - tolerancePt &&
               y <= box.y1 + tolerancePt
             );
