@@ -21,7 +21,7 @@ How it stays honest:
 - Every marked block is a block element on its own line: no two inline `data-gt` blocks share a line, so the merged-text-item false positive (backlog T14-1) can't happen.
 - Bullets are drawn (an empty `::before` with a background), so no marker text prints outside a `list_item` box and the item's text is exactly the data.
 - The figure and its text sit side by side (flex, not float), so no block's box covers another block's text. The SVG has no `<text>` and loads nothing.
-- No page number: `counter(page)` prints text no `data-gt` element holds, and a number written into the DOM can't know how many pages the record fills (spec §5).
+- The page number (`第 n 頁，共 N 頁`, bottom right) is a running `page_number` block whose slots the print runtime fills on each page (spec §4.4). It uses `，`, not `／`, which doesn't reach the PDF text layer (backlog T07-13).
 - Fonts are platform fonts only (Noto Sans TC, Noto Serif TC for the title), named on the printed elements; no pack fonts.
 
 ## Tests

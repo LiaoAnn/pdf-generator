@@ -298,7 +298,7 @@ describe('monthly report pack, slice 1', () => {
     expect(result.pack?.manifest.files.assets).toContain('assets/figure.svg');
   });
 
-  it('repeats marked headers and footers through page margins without unmarked counters, bullets or custom fonts', () => {
+  it('keeps headers, footers and page numbers in running page margins with empty number/count slots instead of unmarked counters', () => {
     const css = text(styleFile).replace(/\/\*[\s\S]*?\*\//g, '');
     const nodes = elements(
       parse(
@@ -320,6 +320,7 @@ describe('monthly report pack, slice 1', () => {
     for (const [type, margin] of [
       ['page_header', 'top'],
       ['page_footer', 'bottom'],
+      ['page_number', 'bottom'],
     ] as const) {
       const node = nodes.find(node => attr(node, 'data-gt') === type);
       expect(node, type).toBeDefined();
@@ -339,6 +340,36 @@ describe('monthly report pack, slice 1', () => {
         ),
       ).toBe(true);
     }
+    const pageNumbers = nodes.filter(
+      node => attr(node, 'data-gt') === 'page_number',
+    );
+    expect(pageNumbers).toHaveLength(1);
+    const pageNumber = required(pageNumbers[0]);
+    for (const attribute of ['data-gt-page-number', 'data-gt-page-count']) {
+      const slots = elements(pageNumber).filter(
+        node => attr(node, attribute) !== undefined,
+      );
+      expect(slots, attribute).toHaveLength(1);
+      expect(required(slots[0]).tagName, attribute).toBe('span');
+      expect(
+        required(slots[0]).childNodes,
+        `${attribute} must be empty`,
+      ).toEqual([]);
+    }
+    // Distinct values catch swapped slots; the literal expectation catches
+    // punctuation (including the unsupported full-width slash) and wording drift.
+    const filledPageNumber = (node: Node): string => {
+      if ('tagName' in node) {
+        if (attr(node, 'data-gt-page-number') !== undefined) return '2';
+        if (attr(node, 'data-gt-page-count') !== undefined) return '3';
+      }
+      return 'childNodes' in node
+        ? node.childNodes.map(filledPageNumber).join('')
+        : content(node);
+    };
+    expect(filledPageNumber(pageNumber).replace(/\s+/g, '')).toBe(
+      '第2頁，共3頁',
+    );
     const allCss = [
       css,
       ...nodes.map(node => attr(node, 'style') ?? ''),

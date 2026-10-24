@@ -130,7 +130,7 @@ Put them first in `<body>`. `word.css` already places `.word-header` in `@top-ce
 <p class="word-title" data-gt="title">業務會議紀錄</p>
 ```
 
-Your own margins and margin boxes: see `$PDF_GENERATOR_REPO/templates/monthly-report/pack/styles/` (`position: running(…)` and `content: element(…)` in `@page`). No page numbers unless the page count is fixed by the layout (then write `第 1 頁` as text in a `page_number` mark).
+Your own margins and margin boxes: see `$PDF_GENERATOR_REPO/templates/monthly-report/pack/styles/` (`position: running(…)` and `content: element(…)` in `@page`). Page numbers: a running `page_number` block with empty `data-gt-page-number` / `data-gt-page-count` slots, as in that pack (spec §4.4).
 
 ## Optional sections
 

@@ -1,6 +1,6 @@
 // T22 acceptance on a running stack: zips pack/, uploads it, prints a batch
 // and checks it. Passes when every fixture's self-check passes, every page
-// has the running header and footer in gt.json, and the lists, tables,
+// has the running header, footer and correct page number in gt.json, and the lists, tables,
 // figure and remarks in gt.json are the ones its data.json asks for.
 //   pnpm --filter @pdf-generator/monthly-report acceptance -- \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t22]
@@ -170,6 +170,22 @@ function compare(gt: GroundTruth, record: Report): string[] {
     for (const text of texts(type)) same(type, text, want);
   }
 
+  // Catches missing/duplicate page numbers, wrong clone numbers, stale totals
+  // and punctuation changes even when the PDF and GT agree with each other.
+  const pageNumbers = of('page_number');
+  same(
+    'page_number pages',
+    pageNumbers.map(block => block.page).sort((a, b) => a - b),
+    gt.pages.map((_, index) => index + 1),
+  );
+  for (const block of pageNumbers) {
+    same(
+      `page_number page ${block.page}`,
+      squash(block.text),
+      `第${block.page}頁，共${gt.pages.length}頁`,
+    );
+  }
+
   same(
     'list items',
     texts('list_item'),
@@ -290,7 +306,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print the header, footer, lists, figure and tables their data asks for`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print correct page numbers and the header, footer, lists, figure and tables their data asks for`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,
