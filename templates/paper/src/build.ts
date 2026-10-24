@@ -79,23 +79,7 @@ export function expandTemplate(source: string): string {
     .join('\n');
 }
 
-// Fixes for the print self-check, which reads the PDF's text in paint order:
-// - KaTeX positions sub/superscripts, fractions and `\tag`, and Chrome paints
-//   positioned spans after the rest of the line, so the PDF text came out in
-//   another order than the DOM text gt.json records. Positioning every span
-//   (zero specificity: KaTeX's own `position: absolute` still wins) paints
-//   them all in DOM order. Layout is unchanged: no offsets.
-// - `.vlist-s` holds a U+200B (a Safari fix) that is in the DOM text but not
-//   in the PDF. Hidden, it isn't in gt.json either; `.vlist-t2`'s margin
-//   made room for it.
-const fixes = `
-/* paper pack: print the formula text in DOM order (see build.ts) */
-:where(.katex-html span){position:relative}
-.katex .vlist-s{display:none}
-.katex .vlist-t2{margin-right:0}
-`;
-
-/** KaTeX's stylesheet, trimmed to the shipped faces, plus the pack's fixes. */
+/** KaTeX's stylesheet, trimmed to the shipped faces. */
 export function katexStylesheet(): string {
   const upstream = readFileSync(join(katexDist, 'katex.min.css'), 'utf8');
   const trimmed = upstream.replace(/@font-face\{[^}]*\}/g, face => {
@@ -108,7 +92,7 @@ export function katexStylesheet(): string {
   });
   return `/* biome-ignore-all lint: KaTeX's own stylesheet, written by src/build.ts */
 /* biome-ignore-all format: as KaTeX ships it */
-${trimmed}${fixes}`;
+${trimmed}`;
 }
 
 /** Every generated pack file, by its path inside `pack/`. */
