@@ -387,6 +387,12 @@ importers:
 
   packages/pack-spec:
     devDependencies:
+      '@pdf-generator/contract':
+        specifier: workspace:*
+        version: link:../contract
+      '@pdf-generator/template-tools':
+        specifier: workspace:*
+        version: link:../template-tools
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
