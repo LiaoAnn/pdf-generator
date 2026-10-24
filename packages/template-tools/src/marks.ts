@@ -38,8 +38,6 @@ const known = new Set([
   'data-gt-checked',
   'data-gt-latex',
   'data-gt-text',
-  'data-gt-page-number',
-  'data-gt-page-count',
 ]);
 /** Slots the print runtime fills with the page's number or the page count. */
 const slots = new Set(['data-gt-page-number', 'data-gt-page-count']);
