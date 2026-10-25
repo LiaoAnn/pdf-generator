@@ -70,17 +70,32 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `money` | `min`, `max`, `decimals?` (0-2) | Number (TWD) |
 | `integer` | `min`, `max` | Integer |
 | `number` | `min`, `max`, `decimals` (0-6) | Number |
-| `choice` | `options` (strings, numbers, booleans), `weights?` | One option |
+| `choice` | `options` (at least one; strings, numbers, booleans), `weights?` (≥ 0) | One option |
 | `text` | `lang`: `zh` \| `en` \| `mixed`, `minLength`, `maxLength`, `phrases?` (1-1000 strings of 1-200 characters) | Filler text, length in characters |
 | `checkbox` | `probability?` (chance it is checked) | Boolean |
 | `constant` | `value` | Always `value` |
 | `object` | `fields` | Nested record |
-| `array` | `minItems`, `maxItems`, `items` (one field rule) | List, e.g. table rows |
+| `array` | `minItems`, `maxItems`, `items` (one field rule), `sortBy?` (key of a `date` field of the items) | List, e.g. table rows; with `sortBy`, in date order |
 | `sum` | `of`: field paths | Sum of the values (`null` counts as 0) |
 | `runningBalance` | `opening`, `add`, `subtract`: field paths | Inside an array item: opening + Σ add − Σ subtract over rows 0..i |
-| `percentage` | `part`, `whole`, `decimals` | part / whole × 100 |
+| `percentage` | `part`, `whole`: field paths, `decimals` (0-6) | part / whole × 100 |
 
-Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after an array field, and must name a numeric field: `transactions[].amount`. Every `min` is ≤ its `max`; `weights` has one entry per option and a positive sum.
+Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after every array field on the way and nowhere else, and must name a numeric field (`money`, `integer`, `number`, `sum`, `runningBalance`, `percentage`, or a `constant` whose `value` is a number): `transactions[].amount`. Through an array the field isn't inside, `[]` means every item (a `sum` adds them all); through the array the field itself is inside, it means the current row (`rows[].price` from `rows[].subtotal`). Every `min` is ≤ its `max`, `minLength` (at least 1) ≤ `maxLength`, `minItems` (at least 0) ≤ `maxItems`; `weights` has one entry per option and a positive sum.
+
+Each `date` field is drawn on its own, so array rows come out in no particular date order. To print them in date order (a bank statement, a ledger), give the array `sortBy` with the key of a `date` field directly in its `object` items. The engine then reorders the whole rows by that date, earliest first; rows with the same date keep the order they were drawn in, and rows whose date is blank, or that are blank themselves, go last. It sorts before it computes `sum`, `runningBalance` and `percentage`, so a running balance adds up row by row in the printed order. `sortBy` naming anything else (a missing key, a field of another type, items that aren't an `object`) is `rules-invalid`. Sorting by other fields, or newest first, isn't supported. Without `sortBy` the rows stay in draw order.
+
+```json
+"opening": { "type": "money", "min": 1000, "max": 90000 },
+"transactions": {
+  "type": "array", "minItems": 8, "maxItems": 32, "sortBy": "date",
+  "items": { "type": "object", "fields": {
+    "date": { "type": "date", "min": "2026-09-01", "max": "2026-09-30" },
+    "deposit": { "type": "money", "min": 500, "max": 50000, "blankProbability": 0.5 },
+    "withdrawal": { "type": "money", "min": 100, "max": 12000, "blankProbability": 0.5 },
+    "balance": { "type": "runningBalance", "opening": "opening", "add": ["transactions[].deposit"], "subtract": ["transactions[].withdrawal"] }
+  } }
+}
+```
 
 `text` without `phrases` reads like a business report (營運、營收、專案進度). To make it read like the document's own domain, give it `phrases` in that domain's wording (an incident form: `["消防人員抵達現場", "傷者已送醫", "現場已封鎖"]`). The text is then built only from those phrases, joined with the punctuation of `lang` (`，` `；` `。` for `zh` and `mixed`, `. ` for `en`) and ending with `。` or `.`; a phrase longer than what is left is cut, so text shorter than a phrase is that phrase's start. Two cases have no end mark: text of length 1 (a phrase's first character), and a length no phrase or phrase start can end exactly, which happens only when all phrases have nearly the same length (`["甲乙丙"]` at length 5 gives `甲乙丙，甲`). Phrases of varied lengths give text that ends on a whole phrase more often.
 
