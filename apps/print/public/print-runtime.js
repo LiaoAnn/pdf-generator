@@ -566,6 +566,45 @@
     return faces;
   }
 
+  // The data-gt elements (and what is inside them) in each page's content
+  // area that reach outside it, by `"<page> <n>"` (the n-th of the page's
+  // data-gt elements and descendants) with how far:
+  // the PDF clips them or Paged.js's overflow column hides them. Paged.js
+  // breaks the pages on screen; `printed` reports those outside only in
+  // print, which a style that applies only there (a data-pagedjs-ignore
+  // sheet's @media print, a <style> in <body>) can make taller or wider than
+  // the page Paged.js gave them (T07-23).
+  function outsidePages() {
+    const tolerance = 0.5;
+    const round = (/** @type {number} */ value) => value.toFixed(1);
+    /** @type {Map<string, string>} */
+    const outside = new Map();
+    pagedPages().forEach((page, index) => {
+      const content = page.querySelector(
+        ':scope > .pagedjs_sheet > .pagedjs_pagebox > .pagedjs_area > .pagedjs_page_content',
+      );
+      if (!content) return;
+      const area = content.getBoundingClientRect();
+      [...content.querySelectorAll('[data-gt], [data-gt] *')].forEach(
+        (element, n) => {
+          if (element.getClientRects().length === 0) return;
+          const box = element.getBoundingClientRect();
+          const below = box.bottom - area.bottom;
+          const right = box.right - area.right;
+          if (below > tolerance || right > tolerance) {
+            outside.set(
+              `${index + 1} ${n}`,
+              `page ${index + 1} ${element.localName}${below > tolerance ? ` ${round(below)}px below` : ''}${right > tolerance ? ` ${round(right)}px right of` : ''} its content area`,
+            );
+          }
+        },
+      );
+    });
+    return outside;
+  }
+  /** Keys of `outsidePages()` on screen, once Paged.js has finished. */
+  let outsideOnScreen = new Set();
+
   // Rows with text that are split or reach outside their page's content
   // area: their text may be missing from the PDF (T03 Must 4).
   function fragmentedRows() {
@@ -907,6 +946,10 @@
       boxes: gtBoxes(),
       movedBoxes: movedBoxes({ print: true, pageWidth }),
       fragmentedRows: fragmentedRows(),
+      outsidePages: [...outsidePages()]
+        .filter(([key]) => !outsideOnScreen.has(key))
+        .map(([, where]) => where)
+        .slice(0, 50),
       plainInk: plainInk(),
       expectedText: expectedText(),
     };
@@ -948,6 +991,7 @@
       /** @param {{ total: number }} flow */
       after: flow => {
         fillPageNumbers(flow.total);
+        outsideOnScreen = new Set(outsidePages().keys());
         resolveReady({
           pageCount: flow.total,
           pageSize: pageSize(),
