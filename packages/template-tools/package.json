@@ -12,8 +12,10 @@
     "typecheck": "tsc && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
+    "@types/fontkit": "^2.0.9",
     "@types/node": "^24.13.6",
     "esbuild": "0.28.2",
+    "fontkit": "^2.0.4",
     "miniflare": "5.20261019.2-beta",
     "typescript": "catalog:",
     "vitest": "catalog:"

@@ -119,7 +119,7 @@ function pack(heading: string, approved = true) {
           Buffer.from(bytes).toString('base64'),
         ]),
       ),
-      fonts: [],
+      fonts: ['LXGWWenKaiTC-Regular'],
     },
   };
 }

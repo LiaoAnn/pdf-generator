@@ -204,7 +204,8 @@ describe('template storage HTTP acceptance in workerd with local D1 and R2', () 
       'assets/duplicate.woff2': new Uint8Array(wenkai),
       'assets/not-a-font.ttf': strToU8('not a font'),
     });
-    // The original assets/report.woff2 is deliberately still the unreadable placeholder.
+    // The pack's own assets/report.woff2 is the real WenKai font too: the same
+    // name as the two added copies, so the names stay unique.
     const summary = await upload(zipSync(files));
     const stored = await templateStore(
       drizzle(env.DB, { schema }),
@@ -218,6 +219,10 @@ describe('template storage HTTP acceptance in workerd with local D1 and R2', () 
 
   test('stored pack stops discovering font names after 64 MiB of cumulative decompressed font output', async () => {
     const files = pack({ id: 'font-decompression-budget' });
+    // The valid pack's own font is real now and would spend part of the 64 MiB
+    // budget (and sort among the names): make it unreadable, so only the three
+    // budget fonts below take part.
+    files['assets/report.woff2'] = strToU8('not a font');
     addAssets(files, {
       'assets/first.woff2': budgetFont('First-Within-Budget', 32 * 1024 * 1024),
       'assets/second.woff2': budgetFont(
