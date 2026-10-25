@@ -71,7 +71,7 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `integer` | `min`, `max` | Integer |
 | `number` | `min`, `max`, `decimals` (0-6) | Number |
 | `choice` | `options` (strings, numbers, booleans), `weights?` | One option |
-| `text` | `lang`: `zh` \| `en` \| `mixed`, `minLength`, `maxLength` | Filler text, length in characters |
+| `text` | `lang`: `zh` \| `en` \| `mixed`, `minLength`, `maxLength`, `phrases?` (1-1000 strings of 1-200 characters) | Filler text, length in characters |
 | `checkbox` | `probability?` (chance it is checked) | Boolean |
 | `constant` | `value` | Always `value` |
 | `object` | `fields` | Nested record |
@@ -81,6 +81,8 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `percentage` | `part`, `whole`, `decimals` | part / whole × 100 |
 
 Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after an array field, and must name a numeric field: `transactions[].amount`. Every `min` is ≤ its `max`; `weights` has one entry per option and a positive sum.
+
+`text` without `phrases` reads like a business report (營運、營收、專案進度). To make it read like the document's own domain, give it `phrases` in that domain's wording (an incident form: `["消防人員抵達現場", "傷者已送醫", "現場已封鎖"]`). The text is then built only from those phrases, joined with the punctuation of `lang` (`，` `；` `。` for `zh` and `mixed`, `. ` for `en`) and ending with `。` or `.`; a phrase longer than what is left is cut, so text shorter than a phrase is that phrase's start. Phrases of varied lengths give text that ends on a whole phrase more often.
 
 `sample.json` is one record of exactly that shape, written by hand: the check validates it against the rules (`sample-invalid`) and fills the template with it (`template-render`). It must be a record the rules could produce: lengths within `minLength`/`maxLength`, dates within range, identifiers with valid check digits, `null` only where `blankProbability` allows it, or for a `percentage` whose `whole` is 0 (it is then `null`, printed blank, §5).
 
