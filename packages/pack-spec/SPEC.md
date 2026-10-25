@@ -298,10 +298,10 @@ A `page_number` block holds its fixed text and two kinds of empty slot (no value
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
 - **Columns** (`column-count`): use `column-fill: balance`. With `column-fill: auto`, `break-inside: avoid` can push the whole column block to the next page. Give every block in the columns `break-inside: avoid`: a block split across two columns gets one gt box spanning both. See the recipe "Two columns" in `skill/references/recipes.md` and `templates/paper`.
 - **Leave the page box alone** (`css-page-box`). The ground truth is measured from the page Paged.js lays out, and CSS that moves that page prints everything somewhere else. `checkPack` refuses, in every stylesheet in `files.styles` and every `<style>` in the template (also inside `@media`, `@supports` and `@layer`):
-  - any rule with `pagedjs` anywhere in a selector (`.pagedjs_page`, `.pagedjs_pages > div`, `[class*=pagedjs]`), whatever it declares: those elements are the platform's;
+  - any rule with `pagedjs` anywhere in a selector, in any case, also in a quoted attribute value or spelled with CSS escapes (`.pagedjs_page`, `.pagedjs_pages > div`, `[class*=pagedjs]`, `[class^="pagedjs" i]`, `.\70 agedjs_page`), whatever it declares: those elements are the platform's;
   - on `html`, `body`, `:root` or `*` as the element a selector styles (`body.report`, `html > body`, `p, body` too), a `margin`, `padding` or `border` width other than 0 (`margin: auto` and `var(--x)` count as nonzero), a `border` that isn't `none`, `hidden` or 0, `position` other than `static`, `transform`, `translate`, `rotate` or `scale` other than `none`, and `zoom` other than `normal`, `1` or `100%`. A Word-style reset `* { margin: 0 }` is fine; `* { margin: 2px }` is not.
 
-  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. Don't rely on its limits (it doesn't look inside quotes, so `[class*="pagedjs"]` gets through): page movement that slips past it shows in the self-check, where a shift of more than 1 pt can make text-free blocks report `ink` (§9), though not always: a drawing that moves from one edge of its box to the middle still fits.
+  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. Don't rely on its limits (it looks for the name only, so `[class$="_page"]` gets through): page movement that slips past it shows in the self-check, where a shift of more than 1 pt can make text-free blocks report `ink` (§9), though not always: a drawing that moves from one edge of its box to the middle still fits.
 
 ```css pack-error css-page-box
 body {
@@ -311,6 +311,12 @@ body {
 
 ```css pack-error css-page-box
 .pagedjs_page {
+  margin: 20mm;
+}
+```
+
+```css pack-error css-page-box
+[class*="pagedjs"] {
   margin: 20mm;
 }
 ```
