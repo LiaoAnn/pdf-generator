@@ -396,6 +396,22 @@ function covers(
   return from(0);
 }
 
+// Invisible operators (U+2061 function application after `log`, `sin`…):
+// in KaTeX's MathML, not in its visible rendering.
+const invisibleOperators = /[\u2061-\u2064]/g;
+
+/**
+ * Whether `copy` holds exactly `text`'s characters, in any order, invisible
+ * operators aside: KaTeX's MathML copy of a formula lists them in its own
+ * order (a fraction's parts, sub- and superscripts). For the paper's 12
+ * formula options it does (T14-1).
+ */
+function sameCharacters(copy: string, text: string): boolean {
+  const sorted = (value: string) =>
+    [...value.replace(invisibleOperators, '')].sort().join('');
+  return sorted(copy) === sorted(text);
+}
+
 /** Compares a printed PDF with its gt.json and lists every difference. */
 export async function checkPdf(
   pdf: Uint8Array,
@@ -489,7 +505,9 @@ export async function checkPdf(
       (block.type === 'formula' &&
         // KaTeX's hidden MathML copy comes before the visible rendering, and
         // may be painted into the text layer (PR #10).
-        ((wanted !== '' && printed.endsWith(wanted)) ||
+        ((wanted !== '' &&
+          printed.endsWith(wanted) &&
+          sameCharacters(printed.slice(0, -wanted.length), wanted)) ||
           covers(
             own.map(item => comparable(item.text)),
             wanted,
