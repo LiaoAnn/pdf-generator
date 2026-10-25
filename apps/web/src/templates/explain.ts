@@ -128,7 +128,7 @@ const printIssues: Record<string, string> = {
   text_missing:
     '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。',
   viewport_dependent:
-    '樣板 CSS 用到了跟視窗大小有關的寫法：vw、vh、vmin、vmax 等視窗單位、cqw 等容器單位、依視窗寬高或方向判斷的 @media、html／body 上的容器查詢（container-type）、position: fixed、<picture> 依 media 選圖或 srcset 的寬度描述，或在 content 以外的屬性用 attr()。量測標準答案時的視窗和實際列印的頁面大小不完全相同，PDF 會和標準答案對不上。請改用 mm、pt、px 或 % 等固定單位，頁面大小用 @page 設定，不要用依視窗大小的 @media。',
+    '版面會隨視窗大小改變：印 PDF 前，平台在差約 1 px 的兩種視窗大小（例如 A4 的 793 與 794 px），以及 Paged.js 分頁時的視窗下量 data-gt 元素的框，結果不同。常見原因是 CSS 用了 vw、vh 等視窗單位、依視窗寬高判斷的 @media 或 @container，或圖片的 sizes。另外 position: fixed 的元素、<picture> 依 media 選圖也會被擋。實際列印的頁面大小和量測標準答案時的視窗不完全相同，PDF 會和標準答案對不上。請改用 mm、pt、px 等固定單位，頁面大小用 @page 設定，不要讓版面依視窗大小改變。',
 };
 
 const fallback =
