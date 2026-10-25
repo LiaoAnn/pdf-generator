@@ -255,16 +255,19 @@ function prefixes(raw: string): { at: number; text: string }[] {
  * the last one's; the split's x is where the boxes meet: the left box's right
  * edge and the right box's left edge, which must agree unless whitespace
  * separates them (an edge outside the item, of a block that continues on
- * another line, doesn't count). The item's outer edges stay as printed, so
- * text sticking out of the outer boxes is still a `bbox` difference.
+ * another line, doesn't count). When neither edge lies inside the item, both
+ * blocks wrap across it and each box holds all of it: both pieces keep its x
+ * range. The item's outer edges stay as printed, so text sticking out of the
+ * outer boxes is still a `bbox` difference. Each piece comes with its block.
  * Anything else, and rotated text, stays one item.
  */
 function splitAcross(
   item: PdfTextItem,
   blocks: readonly GtBlock[],
   wantedText: ReadonlyMap<GtBlock, string>,
-): PdfTextItem[] {
-  if (item.dir) return [item];
+): { item: PdfTextItem; block?: GtBlock }[] {
+  const whole = [{ item }];
+  if (item.dir) return whole;
   const t = boxTolerancePt;
   const [, y] = anchorOf(item);
   const crossed = blocks
@@ -275,7 +278,7 @@ function splitAcross(
         Math.min(item.x1, bbox[2]) - Math.max(item.x0, bbox[0]) > t,
     )
     .sort((a, b) => a.bbox[0] - b.bbox[0] || a.bbox[2] - b.bbox[2]);
-  if (crossed.length < 2) return [item];
+  if (crossed.length < 2) return whole;
   const wanted = crossed.map(block => wantedText.get(block) ?? '');
   const full = comparable(item.text);
   // Comparable lengths of each piece: the first is the longest end of its
@@ -301,9 +304,9 @@ function splitAcross(
       break;
     }
   }
-  if (!lengths) return [item];
+  if (!lengths) return whole;
   const marks = prefixes(item.text);
-  const pieces: PdfTextItem[] = [];
+  const pieces: { item: PdfTextItem; block?: GtBlock }[] = [];
   let start = 0;
   let x0 = item.x0;
   let at = 0;
@@ -314,7 +317,7 @@ function splitAcross(
     // follows it, which goes with the next piece.
     const cuts = marks.filter(mark => mark.text === target);
     const cut = cuts[0];
-    if (!cut) return [item];
+    if (!cut) return whole;
     const spaced = cuts.length > 1;
     const right = crossed[j]?.bbox[2] ?? 0;
     const left = crossed[j + 1]?.bbox[0] ?? 0;
@@ -323,19 +326,28 @@ function splitAcross(
     let next: number;
     if (inItem(right) && inItem(left)) {
       const gap = left - right;
-      if (gap < -t || (gap > t && !spaced)) return [item];
+      if (gap < -t || (gap > t && !spaced)) return whole;
       end = right;
       next = left;
     } else if (inItem(right)) end = next = right;
     else if (inItem(left)) end = next = left;
-    else return [item];
-    if (end <= x0) return [item];
-    pieces.push({ ...item, text: item.text.slice(start, cut.at), x0, x1: end });
+    else {
+      end = item.x1;
+      next = item.x0;
+    }
+    if (end <= x0) return whole;
+    pieces.push({
+      item: { ...item, text: item.text.slice(start, cut.at), x0, x1: end },
+      block: crossed[j],
+    });
     start = cut.at;
     x0 = next;
   }
-  if (item.x1 <= x0) return [item];
-  pieces.push({ ...item, text: item.text.slice(start), x0, x1: item.x1 });
+  if (item.x1 <= x0) return whole;
+  pieces.push({
+    item: { ...item, text: item.text.slice(start), x0, x1: item.x1 },
+    block: crossed.at(-1),
+  });
   return pieces;
 }
 
@@ -455,14 +467,20 @@ export async function checkPdf(
   const wantedText = new Map(
     blocks.map(block => [block, comparable(block.text)]),
   );
+  // The block each piece of a split item was cut for.
+  const cutFor: (GtBlock | undefined)[][] = [];
   const items: Item[][] = pages.map((page: PdfPage, i) => {
     const onPage = blocks.filter(block => block.page === i + 1);
-    return page.items
-      .flatMap(item => splitAcross(item, onPage, wantedText))
-      .map((item, index) => ({ ...item, index }));
+    const pieces = page.items.flatMap(item =>
+      splitAcross(item, onPage, wantedText),
+    );
+    cutFor.push(pieces.map(piece => piece.block));
+    return pieces.map(({ item }, index) => ({ ...item, index }));
   });
   const owner: (GtBlock | undefined)[][] = items.map((pageItems, i) =>
-    pageItems.map(item => {
+    pageItems.map((item, j) => {
+      const cut = cutFor[i]?.[j];
+      if (cut) return cut;
       const [x, y] = anchorOf(item);
       const text = comparable(item.text);
       const rank = (block: GtBlock) => [

@@ -33,6 +33,13 @@ const cases = [
     wrapped: 'lbl',
     sharedText: 'City END',
   },
+  {
+    name: 'both blocks wrapping around the shared middle line',
+    texts: ['Alice Chen lives in Taipei City', 'Bob accounting@example.com'],
+    width: 150,
+    wrapped: 'both',
+    sharedText: 'CityBob',
+  },
 ];
 const ids = ['lbl', 'val', 'tail'];
 const fixtures = new Map<string, { pdf: Uint8Array; gt: GroundTruth }>();
@@ -94,6 +101,15 @@ beforeAll(async () => {
         expect(gt.blocks.map(block => block.text)).toEqual(
           scenario.texts.map(text => text.trim()),
         );
+        if (scenario.wrapped === 'both') {
+          // Measure the printed DOM independently of the PDF text layer.
+          const multiline = await page.evaluate(`Array.from(
+            document.querySelectorAll('.pagedjs_page [data-gt]'),
+            element => element.getBoundingClientRect().height >
+              Number.parseFloat(getComputedStyle(element).lineHeight)
+          )`);
+          expect(multiline).toEqual([true, true]);
+        }
         const pdf = await page.pdf({
           preferCSSPageSize: true,
           printBackground: true,
@@ -118,13 +134,20 @@ test.each(cases)(
     expect(pages).toHaveLength(1);
     const items = pages.flatMap(page => page.items);
     if (scenario.wrapped) {
-      expect(items).toHaveLength(2);
+      expect(items).toHaveLength(scenario.wrapped === 'both' ? 3 : 2);
       expect(items.some(item => item.text.includes(scenario.sharedText))).toBe(
         true,
       );
-      const wrapped = block(gt, scenario.wrapped);
+      const wrapped = block(
+        gt,
+        scenario.wrapped === 'both' ? 'lbl' : scenario.wrapped,
+      );
       // A single inline's bounding box must really span both 24pt lines.
       expect(wrapped.bbox[3] - wrapped.bbox[1]).toBeGreaterThan(24);
+      if (scenario.wrapped === 'both') {
+        const value = block(gt, 'val');
+        expect(value.bbox[3] - value.bbox[1]).toBeGreaterThan(24);
+      }
       if (scenario.wrapped === 'lbl') {
         expect(block(gt, 'val').bbox[1] - wrapped.bbox[1]).toBeCloseTo(24, 1);
       }
@@ -139,6 +162,45 @@ test.each(cases)(
     expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
   },
 );
+
+test.each([
+  {
+    name: 'second block text wrong at its start',
+    affected: 'val',
+    change: (gt: GroundTruth) => {
+      block(gt, 'val').text = 'Rob accounting@example.com';
+    },
+  },
+  {
+    name: 'first block text wrong at its end',
+    affected: 'lbl',
+    change: (gt: GroundTruth) => {
+      block(gt, 'lbl').text = 'Alice Chen lives in Taipei Town';
+    },
+  },
+  {
+    name: 'second block box moved down one line height',
+    affected: 'val',
+    change: (gt: GroundTruth) => {
+      const box = block(gt, 'val').bbox;
+      box[1] += 24;
+      box[3] += 24;
+    },
+  },
+])('$name is rejected when both adjacent blocks wrap', async scenario => {
+  const { pdf, gt: correct } = fixture(
+    'both blocks wrapping around the shared middle line',
+  );
+  const gt = structuredClone(correct);
+  scenario.change(gt);
+  const report = await checkPdf(pdf, gtSchema.parse(gt));
+  expect(report.ok).toBe(false);
+  expect(report.differences).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ blockId: scenario.affected }),
+    ]),
+  );
+});
 
 const mutations: {
   name: string;

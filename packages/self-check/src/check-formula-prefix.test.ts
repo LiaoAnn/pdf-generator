@@ -150,6 +150,14 @@ test('a same-length prefix with a substituted character is not a MathML copy', a
   });
 });
 
+test('a MathML prefix with an extra repeated character is not a formula copy', async () => {
+  mockPrinted('xx+yx+y');
+  expect(await checkPdf(new Uint8Array(), groundTruth('x+y'))).toEqual({
+    ok: false,
+    differences: [textDifference('x+y', 'xx+yx+y')],
+  });
+});
+
 test('a paragraph cannot discard a matching character-copy prefix', async () => {
   mockPrinted('x+yx+y');
   expect(
