@@ -144,8 +144,8 @@ async function print(
   // could close its browser: close it here.
   let close = discard;
   try {
-    // With a source, the ground truth is read on the paginated tab right
-    // before it is printed (T03 Must 3).
+    // With a source, the ground truth is read on the paginated tab that
+    // printed the PDF, in print media (T03 Must 3, T07-20).
     const result = await renderPdf(browser, parsed.data, {
       assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
       store: env.PACK_FILES,

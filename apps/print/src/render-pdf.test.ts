@@ -34,6 +34,14 @@ function fakeBrowser() {
       calls.push('close');
     }),
   };
+  let medium: string | undefined;
+  let viewport: { width: number; height: number } | undefined;
+  page.emulateMediaType.mockImplementation(async type => {
+    medium = type;
+  });
+  page.setViewport.mockImplementation(async value => {
+    viewport = value;
+  });
   const fake = fakeBrowserContext(page);
   fake.context.newPage.mockImplementation(async () => {
     calls.push('newPage');
@@ -44,6 +52,7 @@ function fakeBrowser() {
     page,
     calls,
     bytes,
+    layout: () => ({ medium, viewport }),
     newPage: fake.context.newPage,
   };
 }
@@ -52,13 +61,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-test('inspection sees the completed page on the printing tab before PDF and its result reaches the caller', async () => {
+test('inspection sees the completed page in print media at PDF width and its result reaches the caller', async () => {
   const fake = fakeBrowser();
   const put = vi.fn(async (_key: string, _value: string | Uint8Array) => {});
   const inspected = { pages: 3, blocks: ['one', 'two'] };
   const inspect = vi.fn(async (page: unknown) => {
     fake.calls.push('inspect');
     expect(page).toBe(fake.page);
+    expect(fake.layout()).toMatchObject({
+      medium: 'print',
+      viewport: { width: 793 },
+    });
     return inspected;
   });
   const result = await renderPdf(fake.browser, request, {
@@ -83,16 +96,15 @@ test('inspection sees the completed page on the printing tab before PDF and its 
     ),
   ).toBe(true);
   expect(fake.page.setContent).not.toHaveBeenCalled();
-  // A print-media recheck may evaluate again; the first ready state must
-  // still precede inspection, which must precede PDF creation.
+  // Pagination must finish before inspection. A PDF probe may establish
+  // the print viewport before the hook reads GT.
   expect(fake.calls.indexOf('ready')).toBeLessThan(
     fake.calls.indexOf('inspect'),
   );
-  expect(fake.calls.filter(call => call !== 'ready')).toEqual([
+  expect(fake.calls.filter(call => !['ready', 'pdf'].includes(call))).toEqual([
     'newPage',
     'goto',
     'inspect',
-    'pdf',
     'close',
   ]);
   expect(inspect).toHaveBeenCalledTimes(1);
@@ -161,7 +173,7 @@ test('a pending pagination promise prevents inspection and printing until it res
   expect(fake.page.close).toHaveBeenCalledTimes(1);
 });
 
-test('an inspect failure closes the tab and never prints an uninspected page', async () => {
+test('an inspect failure closes the tab and rejects the render', async () => {
   const fake = fakeBrowser();
   const failure = new Error('ground truth could not be read');
   await expect(
@@ -173,7 +185,6 @@ test('an inspect failure closes the tab and never prints an uninspected page', a
       },
     }),
   ).rejects.toBe(failure);
-  expect(fake.page.pdf).not.toHaveBeenCalled();
   expect(fake.page.close).toHaveBeenCalledTimes(1);
 });
 

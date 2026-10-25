@@ -284,10 +284,10 @@
   // onto its own sheet, the boxes inside each page where the screen pass
   // found them, and the document no wider than its PDF page. The geometry catches what moves a page without these
   // properties (flex, floats, pseudo-elements, grid placement). Run once on
-  // screen, which ground truth measures, and once in print media (lib.ts
-  // emulates it), which is what prints: Paged.js leaves screen-only
-  // stylesheets live, and the browser's 8px body margin applies on screen
-  // only.
+  // screen, where Paged.js paginates, and once in print media (`printed`),
+  // which is what prints and where ground truth is read: Paged.js leaves
+  // screen-only stylesheets live, and the browser's 8px body margin applies
+  // on screen only.
   /** @param {{ print?: boolean, pageWidth?: number }} [options] */
   function movedBoxes({ print = false, pageWidth } = {}) {
     /** @type {string[]} */
@@ -653,14 +653,30 @@
     });
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], movedBoxes: string[], plainInk: boolean[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
+  // What the PDF shows, measured in print media (lib.ts emulates it at the
+  // PDF's page width): the checks of the page boxes, the table rows and the
+  // data-gt text, and the scale guard's ink. Paged.js leaves stylesheets that
+  // apply in one medium only live (`media="screen"`, data-pagedjs-ignore,
+  // `@media all and (…)`), so these and the ground truth, which lib.ts reads
+  // right after, must not be read on screen (T07-20).
+  /** @param {{ pageWidth: number }} options */
+  function printed({ pageWidth }) {
+    return {
+      movedBoxes: movedBoxes({ print: true, pageWidth }),
+      fragmentedRows: fragmentedRows(),
+      plainInk: plainInk(),
+      expectedText: expectedText(),
+    };
+  }
+
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
   });
   Object.assign(window, {
-    // lib.ts calls movedBoxes again in print media.
-    __pdfgen: { ready, movedBoxes },
+    // lib.ts calls printed() in print media, after printing the PDF.
+    __pdfgen: { ready, printed },
     PagedConfig: {
       auto: true,
       before: async () => {
@@ -673,10 +689,7 @@
         resolveReady({
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),
-          fragmentedRows: fragmentedRows(),
           movedBoxes: movedBoxes(),
-          plainInk: plainInk(),
-          expectedText: expectedText(),
         });
       },
     },

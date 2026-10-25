@@ -1,6 +1,7 @@
 // Printing a document on a Browser Rendering tab. Exported for the print
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
-// tab through `inspect` before the PDF is printed (T03 Must 3).
+// tab through `inspect`, in print media once the PDF is printed (T03 Must 3,
+// T07-20).
 import type { Browser, Page } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
 import { getDocumentProxy } from 'unpdf';
@@ -38,13 +39,23 @@ export interface PrintReadyState {
   pageCount: number;
   /** `"<family> <weight>: <status>"` of every face that is not loaded. */
   unloadedFaces: string[];
-  /** `"page <n>: <row text>"` of every table row split or outside its page. */
-  fragmentedRows: string[];
   /**
    * `"page <n> <box> <property>: <value>"` of every Paged.js page box (or
    * html/body) a template moved from where Paged.js put it, on screen.
    */
   movedBoxes?: string[];
+}
+
+/**
+ * What the print runtime measures in print media, once the PDF is printed:
+ * the layout the PDF shows, which a stylesheet that applies in one medium
+ * only can make differ from the screen's (T07-20).
+ */
+export interface PrintedState {
+  /** As `PrintReadyState.movedBoxes`, in print media. */
+  movedBoxes?: string[];
+  /** `"page <n>: <row text>"` of every table row split or outside its page. */
+  fragmentedRows?: string[];
   /**
    * Per page, whether it paints text, a background or a border at its own
    * scale (outside SVG and CSS transforms): what the PDF must draw at 0.75 pt
@@ -141,7 +152,10 @@ export interface RenderOptions<T> {
   assetOrigin: string;
   /** Keeps the document and pack files while the tab loads them. */
   store: PrintStore;
-  /** Runs on the paginated tab, before it is printed. */
+  /**
+   * Runs on the paginated tab once it is printed and passed every check, in
+   * print media at the PDF's page width: the layout the PDF shows.
+   */
   inspect?: (page: PrintPage) => Promise<T>;
   timeoutMs?: number;
 }
@@ -321,17 +335,9 @@ async function print<T>(
       ready.unloadedFaces,
     );
   }
-  if (ready.fragmentedRows.length > 0) {
-    throw new RenderError(
-      'row_fragmented',
-      'Some table rows are split or outside their page',
-      ready.fragmentedRows,
-    );
-  }
   // Ground truth is read relative to each page's box, so a page box a
   // template moved misplaces every block in it (T07-18).
   rejectMovedBoxes(ready.movedBoxes);
-  const inspected = options.inspect ? await options.inspect(page) : undefined;
   const pdf = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,
@@ -349,24 +355,12 @@ async function print<T>(
       [`PDF pages: ${numPages}; Paged.js pages: ${ready.pageCount}`],
     );
   }
-  if (
-    ready.expectedText?.some(blocks =>
-      blocks.some(block => block.texts.length > 0),
-    )
-  ) {
-    const missing = await missingText(pdf, ready.expectedText);
-    if (missing.length > 0) {
-      throw new RenderError(
-        'text_missing',
-        'Some data-gt text is missing from the PDF',
-        missing,
-      );
-    }
-  }
-  // Again as printed: Paged.js leaves screen-only stylesheets live, and its
-  // own @media print rules apply only here. The viewport as wide as the
-  // widest PDF page (in CSS px), as when printing: a document wider than its
-  // page is shrunk to fit, which moves every box.
+  // Everything else is measured as printed, on the same tab (T03 Must 3):
+  // Paged.js leaves stylesheets that apply in one medium only live, so the
+  // screen can place boxes and data-gt content where the PDF doesn't
+  // (T07-20), and its own @media print rules apply only here. The viewport
+  // as wide as the widest PDF page (in CSS px), as when printing: a
+  // document wider than its page is shrunk to fit, which moves every box.
   let pageWidth = 0;
   let pageHeight = 0;
   for (let number = 1; number <= numPages; number++) {
@@ -385,16 +379,35 @@ async function print<T>(
       (
         globalThis as unknown as {
           __pdfgen: {
-            movedBoxes(options: {
-              print: boolean;
-              pageWidth: number;
-            }): string[];
+            printed(options: { pageWidth: number }): PrintedState;
           };
         }
-      ).__pdfgen.movedBoxes({ print: true, pageWidth: width }),
+      ).__pdfgen.printed({ pageWidth: width }),
     pageWidth,
   );
-  rejectMovedBoxes(printed);
-  rejectMovedBoxes(await scaledPages(printedPdf, ready.plainInk));
+  if (printed.fragmentedRows && printed.fragmentedRows.length > 0) {
+    throw new RenderError(
+      'row_fragmented',
+      'Some table rows are split or outside their page',
+      printed.fragmentedRows,
+    );
+  }
+  if (
+    printed.expectedText?.some(blocks =>
+      blocks.some(block => block.texts.length > 0),
+    )
+  ) {
+    const missing = await missingText(pdf, printed.expectedText);
+    if (missing.length > 0) {
+      throw new RenderError(
+        'text_missing',
+        'Some data-gt text is missing from the PDF',
+        missing,
+      );
+    }
+  }
+  rejectMovedBoxes(printed.movedBoxes);
+  rejectMovedBoxes(await scaledPages(printedPdf, printed.plainInk));
+  const inspected = options.inspect ? await options.inspect(page) : undefined;
   return { pdf, pageCount: ready.pageCount, inspected };
 }
