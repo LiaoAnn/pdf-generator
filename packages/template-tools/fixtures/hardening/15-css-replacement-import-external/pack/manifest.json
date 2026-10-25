@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "hardening-control",
+  "name": "Hardening control",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "files": {
+    "template": "templates/report.hbs",
+    "styles": [
+      "styles/report.css"
+    ],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json",
+    "assets": [
+      "assets/logo.svg",
+      "styles/safe.css",
+      "styles/\ufffdsafe.css"
+    ]
+  }
+}

@@ -184,7 +184,7 @@ export function fontRequests(css: string): { bold: boolean; slanted: boolean } {
     /(?:^|[;{\s])(font-weight|font-style|font)\s*:\s*([^;}]*)/gi,
   )) {
     const property = match[1]?.toLowerCase();
-    const value = match[2] ?? '';
+    const value = (match[2] ?? '').replace(/!\s*important\s*$/i, ' ');
     if (property !== 'font-style') {
       bold ||= value.trim().split(/\s+/).some(isBold);
     }

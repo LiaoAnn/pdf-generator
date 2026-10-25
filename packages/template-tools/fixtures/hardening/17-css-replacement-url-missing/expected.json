@@ -1,0 +1,11 @@
+{
+  "description": "rejects a missing replacement-character image URL",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "styles/report.css",
+      "line": 1,
+      "column": 18
+    }
+  ]
+}

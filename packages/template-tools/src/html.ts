@@ -112,7 +112,7 @@ function asHtml(
     for (let i = gap.indexOf('{{'); i >= 0; ) {
       const statement = known.get(at + i) ?? {
         start: at + i,
-        end: at + i + blockTagLength(gap.slice(i)),
+        end: at + i + tagLength(gap.slice(i)),
         mustache: false,
       };
       statements.push(statement);
@@ -124,11 +124,11 @@ function asHtml(
 }
 
 /**
- * Length of the block tag ({{#…}}, {{else}}, {{/…}}) starting `text`: up to
+ * Length of the Handlebars tag ({{#…}}, {{else}}, {{/…}}, …) starting `text`: up to
  * the first `}}` outside a string literal (`"…"` or `'…'`, `\` escaping a
  * quote, as Handlebars' lexer reads them).
  */
-function blockTagLength(text: string): number {
+export function tagLength(text: string): number {
   let quote: string | undefined;
   for (let i = 2; i < text.length; i++) {
     const c = text[i];

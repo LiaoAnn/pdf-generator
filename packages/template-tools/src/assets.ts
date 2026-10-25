@@ -160,9 +160,12 @@ export function assetIssues(
    */
   const reference = (
     source: Source,
-    { url, offset, kind }: Reference,
+    { url: written, offset, kind }: Reference,
     context: 'attribute' | 'css' = 'css',
   ) => {
+    // CSS (and HTML) turn a NUL into U+FFFD before the URL parser, which
+    // would strip a NUL: that file is the one the browser loads.
+    const url = written.replaceAll('\0', '\uFFFD');
     const trimmed = url.slice(urlStart(url));
     const at = offset + url.length - trimmed.length;
     if (source === template && url.includes('{{')) {
@@ -394,6 +397,7 @@ export function assetIssues(
   ];
   const matches = (face: FaceKind, kind: (typeof kinds)[number]) =>
     (kind.bold ? face.bold : face.regular) && face.slanted === kind.slanted;
+  const byFamily = Map.groupBy(faces, face => face.family);
   for (const face of faces) {
     const familyUsed =
       families.has(face.family) ||
@@ -402,7 +406,7 @@ export function assetIssues(
       );
     // A combination no face of the family matches falls back to whichever
     // face the browser picks, so then every face of the family counts.
-    const family = faces.filter(other => other.family === face.family);
+    const family = byFamily.get(face.family) ?? [];
     const used =
       familyUsed &&
       kinds.some(

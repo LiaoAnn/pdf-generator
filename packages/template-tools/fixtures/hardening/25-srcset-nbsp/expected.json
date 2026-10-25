@@ -1,0 +1,11 @@
+{
+  "description": "rejects NBSP as part of a srcset URL",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "templates/report.hbs",
+      "line": 2,
+      "column": 30
+    }
+  ]
+}

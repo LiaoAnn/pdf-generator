@@ -8,6 +8,7 @@ import {
   descendants,
   type Html,
   type TemplateHtml,
+  tagLength,
 } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { isRefused } from './policy.ts';
@@ -57,10 +58,15 @@ const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
  * A data-gt-checked value: a state, or one the data decides, made of
  * statements only (literal text around one prints neither true nor false).
  */
-const checkedValue = (value: string) =>
-  value === 'true' ||
-  value === 'false' ||
-  (value.includes('{{') && value.replace(/\{\{[\s\S]*?\}\}/g, '') === '');
+const checkedValue = (value: string) => {
+  if (value === 'true' || value === 'false') return true;
+  if (!value.startsWith('{{')) return false;
+  for (let at = 0; at < value.length; ) {
+    if (!value.startsWith('{{', at)) return false;
+    at += tagLength(value.slice(at));
+  }
+  return true;
+};
 
 const isToggle = (node: Html.Node): node is Html.Element =>
   'tagName' in node &&

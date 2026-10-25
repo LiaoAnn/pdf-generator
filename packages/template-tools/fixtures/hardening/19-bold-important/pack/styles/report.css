@@ -1,0 +1,4 @@
+@font-face { font-family: Report; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 700; src: url(../assets/face.woff2); }
+body { font-family: Report; }
+p{font-weight:700!important}

@@ -89,6 +89,65 @@ describe.each(slugs)('hardening pack: %s', slug => {
   });
 });
 
+describe.each([
+  '15-css-replacement-import-external',
+  '16-css-replacement-import-missing',
+  '17-css-replacement-url-missing',
+])('CSS NUL preprocessing: %s', slug => {
+  it.each(['CLI', 'file map', 'zip'])(
+    'replaces NUL with U+FFFD before resolving CSS URLs via %s',
+    format => {
+      const directory = join(fixtures, slug);
+      const expected = JSON.parse(
+        readFileSync(join(directory, 'expected.json'), 'utf8'),
+      ) as { issues: Omit<PackIssue, 'message'>[] };
+      const files = readPack(join(directory, 'pack'));
+      const css = new TextDecoder().decode(files['styles/report.css']);
+      expect(css).toContain('\uFFFD');
+      // Keep the committed U+FFFD fixture as an independently exercised
+      // control; only the referring stylesheet gets a literal NUL byte.
+      files['styles/report.css'] = new TextEncoder().encode(
+        css.replace('\uFFFD', '\u0000'),
+      );
+      if (format !== 'CLI') {
+        expectResult(
+          checkPack(format === 'zip' ? zipSync(files) : files),
+          expected.issues,
+        );
+        return;
+      }
+      const temporary = mkdtempSync(join(tmpdir(), 'hardening-css-nul-'));
+      try {
+        for (const [file, bytes] of Object.entries(files)) {
+          const target = join(temporary, file);
+          mkdirSync(dirname(target), { recursive: true });
+          writeFileSync(target, bytes);
+        }
+        const result = cli(temporary);
+        expect(result.error).toBeUndefined();
+        expect(result.stderr).toBe('');
+        expect(result.status).toBe(1);
+        expectResult(JSON.parse(result.stdout) as CheckResult, expected.issues);
+      } finally {
+        rmSync(temporary, { recursive: true, force: true });
+      }
+    },
+  );
+});
+
+it.each(['i', 'em', 'cite', 'var', 'dfn', 'address'])(
+  'accepts <%s> alone as a request for the italic face',
+  tag => {
+    const files = readPack(join(fixtures, '27-semantic-italic/pack'));
+    files['templates/report.hbs'] = new TextEncoder().encode(
+      `<head></head>\n<${tag} data-gt="paragraph">Report</${tag}>\n`,
+    );
+    for (const input of [files, zipSync(files)]) {
+      expectResult(checkPack(input), []);
+    }
+  },
+);
+
 describe('fill lookup errors stay inside the public TemplateError boundary', () => {
   const keys: { name: string; key: unknown }[] = [
     { name: 'poisoned object', key: { toString: 'x' } },

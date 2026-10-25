@@ -1,0 +1,11 @@
+{
+  "description": "follows a replacement-character import to an external asset",
+  "issues": [
+    {
+      "code": "asset-external",
+      "file": "styles/�safe.css",
+      "line": 1,
+      "column": 18
+    }
+  ]
+}
