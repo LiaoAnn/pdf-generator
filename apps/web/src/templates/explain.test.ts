@@ -176,6 +176,7 @@ describe('template author error explanations', () => {
   const printCodes = [
     'page_count_mismatch',
     'page_box_moved',
+    'viewport_dependent',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -223,6 +224,38 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toContain('標準答案');
     expect(issue?.explanation).toContain('@page');
     expect(issue?.explanation).toMatch(/頁邊界|頁面邊界|頁面邊距|頁邊距/);
+  });
+
+  test('preview viewport-dependent refusals explain the CSS causes and how to keep the PDF aligned with ground truth', () => {
+    const raw =
+      'stylesheet 2 .t: width: 50vw\nstylesheet 2 @media: (min-width: 800px)';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'viewport_dependent', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('viewport_dependent');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toMatch(cjk);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.explanation).toMatch(/CSS/i);
+    expect(issue?.explanation).toMatch(/視窗|視埠/);
+    expect(issue?.explanation).toMatch(/大小|尺寸|寬|高/);
+    expect(issue?.explanation).toMatch(/\bvw\b/i);
+    expect(issue?.explanation).toMatch(/\bvh\b/i);
+    expect(issue?.explanation).toMatch(/容器|\bcq(?:w|h|i|b|min|max)\b/i);
+    expect(issue?.explanation).toMatch(/attr\(\)/i);
+    expect(issue?.explanation).toMatch(/content/i);
+    expect(issue?.explanation).toContain('@media');
+    expect(issue?.explanation).toMatch(/不要|避免|移除|改用|勿/);
+    expect(issue?.explanation).toMatch(/\b(?:mm|px|pt)\b|%/i);
+    expect(issue?.explanation).toContain('@page');
+    expect(issue?.explanation).toMatch(/頁面大小|紙張大小|紙張尺寸|頁面尺寸/);
+    expect(issue?.explanation).toContain('PDF');
+    expect(issue?.explanation).toContain('標準答案');
+    expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -425,6 +458,7 @@ describe('stored fixture print errors', () => {
   test.each([
     'page_count_mismatch',
     'page_box_moved',
+    'viewport_dependent',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
