@@ -17,6 +17,7 @@ type Fixture = {
   name: string;
   head?: string;
   body?: string;
+  target?: string;
   files?: Record<string, string>;
   diagnostic: string;
 };
@@ -27,7 +28,7 @@ async function post(fixture: Omit<Fixture, 'name' | 'diagnostic'>) {
     body { margin: 0; font: 16px/24px sans-serif; }
     .target { width: 50mm; margin: 0; }
     </style>${fixture.head ?? ''}</head><body>
-    <p class="target" data-gt="paragraph">VIEWPORT_GUARD_MARKER</p>
+    ${fixture.target ?? '<p class="target" data-gt="paragraph">VIEWPORT_GUARD_MARKER</p>'}
     ${fixture.body ?? ''}</body></html>`;
   return fetch(new URL('/print', (await worker.url).href), {
     method: 'POST',
@@ -62,6 +63,8 @@ async function post(fixture: Omit<Fixture, 'name' | 'diagnostic'>) {
 }
 
 const rule = '.target { width: 50vw; }';
+const blackTarget =
+  '<div class="target" data-gt="image" style="width:40px;height:40px;background:black"></div>';
 const svg =
   '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>';
 
@@ -169,6 +172,23 @@ test.each(animationRefusals)(
 // Each row isolates a bypass: detecting another unit or another source cannot
 // make this row pass. The declarations deliberately keep the page printable.
 const refusals: Fixture[] = [
+  ...['html', 'body'].map(selector => ({
+    name: `viewport-sized ${selector} container outside Paged.js pages`,
+    head: `<style data-pagedjs-ignore>
+      ${selector} { container-type: inline-size; }
+      @container (min-width: 793.5px) { .target { position: relative; left: 100px; } }
+      </style>`,
+    target: blackTarget,
+    diagnostic: 'container',
+  })),
+  {
+    name: 'generated fixed before pseudo-element',
+    head: `<style data-pagedjs-ignore>
+      .target::before { content: ""; position: fixed; width: 10px; height: 10px; background: black; }
+      </style>`,
+    target: blackTarget,
+    diagnostic: 'fixed',
+  },
   ...[
     'vw',
     'vh',
@@ -464,6 +484,41 @@ test.each(refusals)(
 // Regression: scanning raw HTML/CSS tokens instead of values refuses innocent
 // strings, asset names, content attr(), and fixed or font-relative dimensions.
 const controls: Omit<Fixture, 'diagnostic'>[] = [
+  {
+    name: 'size container inside page content',
+    head: `<style data-pagedjs-ignore>
+      .box { container-type: inline-size; width: 50mm; }
+      @container (min-width: 10mm) { .target { position: relative; left: 10px; } }
+      </style>`,
+    target: `<div class="box">${blackTarget}</div>`,
+  },
+  {
+    name: 'display none element with computed position fixed',
+    head: '<style data-pagedjs-ignore>.hidden { display: none; position: fixed; }</style>',
+    body: '<div class="hidden">HIDDEN_FIXED_MARKER</div>',
+  },
+  {
+    name: 'fixed before pseudo-element without content',
+    head: '<style data-pagedjs-ignore>.target::before { position: fixed; }</style>',
+    target: blackTarget,
+  },
+  ...[
+    [
+      'aria-label on SVG',
+      '<svg width="10" height="10" aria-label="100vw"><rect width="10" height="10"/></svg>',
+    ],
+    [
+      'data-note on SVG rect',
+      '<svg width="10" height="10"><rect width="10" height="10" data-note="50vw"/></svg>',
+    ],
+  ].map(([name, body]) => ({
+    name: `non-rendering ${name} containing a viewport-looking token`,
+    body,
+  })),
+  {
+    name: 'animation-name referencing missing keyframes',
+    head: '<style data-pagedjs-ignore>.target { animation-name: missing; animation-duration: 1s; }</style>',
+  },
   {
     name: 'animation-name list containing only none',
     head: `<style data-pagedjs-ignore>

@@ -790,6 +790,7 @@
       checkMedia('<style> media', style.media);
       checkSource('<style>', style.textContent ?? '');
     }
+    const paginated = pagedPages().length > 0;
     for (const element of document.querySelectorAll('*')) {
       const tag = `<${element.localName}>`;
       if (element instanceof HTMLElement || element instanceof SVGElement) {
@@ -797,15 +798,46 @@
       }
       const source = element.getAttribute('style');
       if (source) checkSource(`${tag} style`, source);
-      // Placed relative to the viewport, and printed on every page.
-      for (const pseudo of ['', '::before', '::after']) {
-        if (getComputedStyle(element, pseudo || null).position === 'fixed') {
-          report(`${tag}${pseudo}`, 'position: fixed');
+      // Placed relative to the viewport, and printed on every page; a box
+      // only, so not what display: none or a ::before without content hides.
+      if (element.getClientRects().length > 0) {
+        for (const pseudo of ['', '::before', '::after']) {
+          const style = getComputedStyle(element, pseudo || null);
+          const box =
+            !pseudo ||
+            (style.display !== 'none' &&
+              style.content !== 'none' &&
+              style.content !== 'normal');
+          if (box && style.position === 'fixed') {
+            report(`${tag}${pseudo}`, 'position: fixed');
+          }
         }
+      }
+      // A size container outside the pages (html, body) is as large as the
+      // viewport, and so is what its container queries see. Before
+      // pagination there are no pages yet: only html and body are outside.
+      const containerType = getComputedStyle(element).containerType;
+      const outside = paginated
+        ? !element.closest('.pagedjs_page')
+        : element === document.documentElement || element === document.body;
+      if (containerType && containerType !== 'normal' && outside) {
+        report(tag, `container-type: ${containerType}`);
       }
       if (element instanceof SVGElement) {
         for (const { name, value } of element.attributes) {
-          if (name !== 'style' && units.test(bare(value))) {
+          // Not what SVG renders: metadata, ids, links, handlers.
+          const inert =
+            /^(?:aria-|data-|on|xml|xlink:)/.test(name) ||
+            [
+              'style',
+              'id',
+              'class',
+              'role',
+              'lang',
+              'tabindex',
+              'href',
+            ].includes(name);
+          if (!inert && units.test(bare(value))) {
             report(tag, `${name}="${value}"`);
           }
         }
@@ -844,6 +876,28 @@
   function animations() {
     /** @type {Set<string>} */
     const found = new Set();
+    // The @keyframes names that exist: a name without them animates nothing.
+    /** @type {Set<string>} */
+    const keyframes = new Set();
+    /** @param {CSSRuleList} rules */
+    const collect = rules => {
+      for (const rule of rules) {
+        if (rule instanceof CSSKeyframesRule) keyframes.add(rule.name);
+        if (rule instanceof CSSImportRule && rule.styleSheet) {
+          try {
+            collect(rule.styleSheet.cssRules);
+          } catch {}
+        }
+        if ('cssRules' in rule && rule.cssRules instanceof CSSRuleList) {
+          collect(rule.cssRules);
+        }
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      try {
+        collect(sheet.cssRules);
+      } catch {}
+    }
     for (const animation of document.getAnimations()) {
       const effect = animation.effect;
       const target =
@@ -869,7 +923,13 @@
       // still runs from its start when Chrome prints.
       for (const pseudo of ['', '::before', '::after']) {
         const { animationName } = getComputedStyle(element, pseudo || null);
-        if (animationName.split(',').some(name => name.trim() !== 'none')) {
+        if (
+          animationName
+            .split(',')
+            .some(name =>
+              keyframes.has(name.trim().replace(/^["']|["']$/g, '')),
+            )
+        ) {
           found.add(
             `<${element.localName}>${pseudo}: animation ${animationName}`,
           );
