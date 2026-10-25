@@ -1,0 +1,23 @@
+{
+  "name": "@pdf-generator/dev-tools",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.6",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "dependencies": {
+    "@pdf-generator/contract": "workspace:*",
+    "playwright-core": "1.63.0",
+    "unpdf": "^1.9.1"
+  }
+}

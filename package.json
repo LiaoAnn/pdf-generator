@@ -10,6 +10,7 @@
     "dev": "pnpm --filter @pdf-generator/web dev",
     "dev:print": "pnpm --filter @pdf-generator/print dev",
     "dev:cron": "bash .devcontainer/scripts/cron.sh",
+    "pdf-to-png": "node packages/dev-tools/src/cli.ts",
     "test": "vitest run && pnpm test:cron",
     "test:watch": "vitest",
     "test:cron": "node --test .devcontainer/scripts/*.test.mjs",
