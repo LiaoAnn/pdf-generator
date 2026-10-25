@@ -146,12 +146,37 @@ const comparable = (text: string) =>
 const joined = (items: readonly Item[]) =>
   items.map(item => item.text).join('');
 
-const inkBox = (item: PdfTextItem): Box => [
-  item.x0,
-  item.baseline - glyphBodyEm * item.size,
-  item.x1,
-  item.baseline,
-];
+/**
+ * The axis-aligned box of an item's glyph bodies: along its advance from its
+ * origin, and `glyphBodyEm` up from its baseline. Rotated text runs along
+ * `dir` from `(x0, baseline)`, for `x1 - x0`.
+ */
+function inkBox(item: PdfTextItem): Box {
+  const [dx, dy] = item.dir ?? [1, 0];
+  const length = item.x1 - item.x0;
+  const height = glyphBodyEm * item.size;
+  // "Up" from the baseline: the advance turned a quarter left (y down).
+  const xs = [0, length * dx];
+  const ys = [0, length * dy];
+  for (const i of [0, 1]) {
+    xs.push((xs[i] ?? 0) + height * dy);
+    ys.push((ys[i] ?? 0) - height * dx);
+  }
+  return [
+    item.x0 + Math.min(...xs),
+    item.baseline + Math.min(...ys),
+    item.x0 + Math.max(...xs),
+    item.baseline + Math.max(...ys),
+  ];
+}
+
+/** Halfway along the item's advance, `anchorEm` above its baseline. */
+function anchorOf(item: PdfTextItem): [number, number] {
+  const [dx, dy] = item.dir ?? [1, 0];
+  const half = (item.x1 - item.x0) / 2;
+  const up = anchorEm * item.size;
+  return [item.x0 + half * dx + up * dy, item.baseline + half * dy - up * dx];
+}
 
 function unionBox(items: readonly Item[]): Box {
   const boxes = items.map(inkBox);
@@ -203,6 +228,126 @@ function findRun(items: readonly Item[], wanted: string): Item[] | undefined {
     }
   }
   return undefined;
+}
+
+/**
+ * Comparable positions of `raw`: for each code-point boundary, the
+ * comparable form of the text before it.
+ */
+function prefixes(raw: string): { at: number; text: string }[] {
+  const out = [{ at: 0, text: '' }];
+  let at = 0;
+  for (const char of raw) {
+    at += char.length;
+    out.push({ at, text: comparable(raw.slice(0, at)) });
+  }
+  return out;
+}
+
+/**
+ * Splits an item that runs across adjacent inline blocks into one piece per
+ * block. Chrome prints spans in one font with no gap between them as one
+ * text run, so two `data-gt` blocks side by side (`姓名：` `王小明`) arrive as
+ * one item; whole, it would belong to one block and leave the other empty.
+ * The blocks are those whose box holds the item's anchor height and overlaps
+ * its x range, in reading order (`blocks` is; their boxes can't order wrapped
+ * spans, which share a left edge). The item's text must split into the end of the
+ * first block's text, the whole text of each block between, and the start of
+ * the last one's; the split's x is where the boxes meet: the left box's right
+ * edge and the right box's left edge, which must agree unless whitespace
+ * separates them (an edge outside the item, of a block that continues on
+ * another line, doesn't count). When neither edge lies inside the item, both
+ * blocks wrap across it and each box holds all of it: both pieces keep its x
+ * range. The item's outer edges stay as printed, so text sticking out of the
+ * outer boxes is still a `bbox` difference. Each piece comes with its block.
+ * Anything else, and rotated text, stays one item.
+ */
+function splitAcross(
+  item: PdfTextItem,
+  blocks: readonly GtBlock[],
+  wantedText: ReadonlyMap<GtBlock, string>,
+): { item: PdfTextItem; block?: GtBlock }[] {
+  const whole = [{ item }];
+  if (item.dir) return whole;
+  const t = boxTolerancePt;
+  const [, y] = anchorOf(item);
+  const crossed = blocks.filter(
+    ({ bbox }) =>
+      y >= bbox[1] &&
+      y <= bbox[3] &&
+      Math.min(item.x1, bbox[2]) - Math.max(item.x0, bbox[0]) > t,
+  );
+  if (crossed.length < 2) return whole;
+  const wanted = crossed.map(block => wantedText.get(block) ?? '');
+  const full = comparable(item.text);
+  // Comparable lengths of each piece: the first is the longest end of its
+  // block's text that lets the rest fit.
+  let lengths: number[] | undefined;
+  const first = wanted[0] ?? '';
+  for (let length = Math.min(first.length, full.length); length > 0; length--) {
+    if (!first.endsWith(full.slice(0, length))) continue;
+    const found = [length];
+    let at = length;
+    for (const text of wanted.slice(1, -1)) {
+      if (text === '' || !full.startsWith(text, at)) break;
+      found.push(text.length);
+      at += text.length;
+    }
+    const rest = full.slice(at);
+    if (
+      found.length === crossed.length - 1 &&
+      rest !== '' &&
+      (wanted.at(-1) ?? '').startsWith(rest)
+    ) {
+      lengths = [...found, rest.length];
+      break;
+    }
+  }
+  if (!lengths) return whole;
+  const marks = prefixes(item.text);
+  const pieces: { item: PdfTextItem; block?: GtBlock }[] = [];
+  let start = 0;
+  let x0 = item.x0;
+  let at = 0;
+  for (let j = 0; j < crossed.length - 1; j++) {
+    at += lengths[j] ?? 0;
+    const target = full.slice(0, at);
+    // Raw cuts with this comparable prefix: more than one when whitespace
+    // follows it, which goes with the next piece.
+    const cuts = marks.filter(mark => mark.text === target);
+    const cut = cuts[0];
+    if (!cut) return whole;
+    const spaced = cuts.length > 1;
+    const right = crossed[j]?.bbox[2] ?? 0;
+    const left = crossed[j + 1]?.bbox[0] ?? 0;
+    const inItem = (x: number) => x > item.x0 + t && x < item.x1 - t;
+    let end: number;
+    let next: number;
+    if (inItem(right) && inItem(left)) {
+      const gap = left - right;
+      if (gap < -t || (gap > t && !spaced)) return whole;
+      end = right;
+      next = left;
+    } else if (inItem(right)) end = next = right;
+    else if (inItem(left)) end = next = left;
+    else {
+      end = item.x1;
+      next = item.x0;
+    }
+    if (end <= x0) return whole;
+    pieces.push({
+      item: { ...item, text: item.text.slice(start, cut.at), x0, x1: end },
+      block: crossed[j],
+    });
+    start = cut.at;
+    x0 = next;
+  }
+  if (item.x1 <= x0) return whole;
+  pieces.push({
+    item: { ...item, text: item.text.slice(start), x0, x1: item.x1 },
+    block: crossed.at(-1),
+  });
+  return pieces;
 }
 
 /**
@@ -262,6 +407,22 @@ function covers(
   return from(0);
 }
 
+// Invisible operators (U+2061 function application after `log`, `sin`…):
+// in KaTeX's MathML, not in its visible rendering.
+const invisibleOperators = /[\u2061-\u2064]/g;
+
+/**
+ * Whether `copy` holds exactly `text`'s characters, in any order, invisible
+ * operators aside: KaTeX's MathML copy of a formula lists them in its own
+ * order (a fraction's parts, sub- and superscripts). For the paper's 12
+ * formula options it does (T14-1).
+ */
+function sameCharacters(copy: string, text: string): boolean {
+  const sorted = (value: string) =>
+    [...value.replace(invisibleOperators, '')].sort().join('');
+  return sorted(copy) === sorted(text);
+}
+
 /** Compares a printed PDF with its gt.json and lists every difference. */
 export async function checkPdf(
   pdf: Uint8Array,
@@ -305,13 +466,21 @@ export async function checkPdf(
   const wantedText = new Map(
     blocks.map(block => [block, comparable(block.text)]),
   );
-  const items: Item[][] = pages.map((page: PdfPage) =>
-    page.items.map((item, index) => ({ ...item, index })),
-  );
+  // The block each piece of a split item was cut for.
+  const cutFor: (GtBlock | undefined)[][] = [];
+  const items: Item[][] = pages.map((page: PdfPage, i) => {
+    const onPage = blocks.filter(block => block.page === i + 1);
+    const pieces = page.items.flatMap(item =>
+      splitAcross(item, onPage, wantedText),
+    );
+    cutFor.push(pieces.map(piece => piece.block));
+    return pieces.map(({ item }, index) => ({ ...item, index }));
+  });
   const owner: (GtBlock | undefined)[][] = items.map((pageItems, i) =>
-    pageItems.map(item => {
-      const x = (item.x0 + item.x1) / 2;
-      const y = item.baseline - anchorEm * item.size;
+    pageItems.map((item, j) => {
+      const cut = cutFor[i]?.[j];
+      if (cut) return cut;
+      const [x, y] = anchorOf(item);
       const text = comparable(item.text);
       const rank = (block: GtBlock) => [
         wantedText.get(block)?.includes(text) ? 0 : 1,
@@ -353,7 +522,9 @@ export async function checkPdf(
       (block.type === 'formula' &&
         // KaTeX's hidden MathML copy comes before the visible rendering, and
         // may be painted into the text layer (PR #10).
-        ((wanted !== '' && printed.endsWith(wanted)) ||
+        ((wanted !== '' &&
+          printed.endsWith(wanted) &&
+          sameCharacters(printed.slice(0, -wanted.length), wanted)) ||
           covers(
             own.map(item => comparable(item.text)),
             wanted,
@@ -388,7 +559,9 @@ export async function checkPdf(
       ),
       wanted,
     );
-    if (run) {
+    // A run inside the box means the box holds more than the block's text:
+    // a text difference, below.
+    if (run?.some(item => outside(item, block.bbox))) {
       for (const item of own) pageOwner[item.index] = undefined;
       for (const item of run) pageOwner[item.index] = block;
       report(block.page, boxDifference(block, run));
@@ -618,11 +791,6 @@ function markState(text: string): boolean | undefined {
   }
   return undefined;
 }
-
-const anchorOf = (item: PdfTextItem): [number, number] => [
-  (item.x0 + item.x1) / 2,
-  item.baseline - anchorEm * item.size,
-];
 
 /**
  * The differences in a block's type-specific fields that the PDF can show:

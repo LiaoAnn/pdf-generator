@@ -12,7 +12,12 @@ export interface PdfTextItem {
   /** Font size in PDF points. */
   size: number;
   /** Embedded font name without the subset tag, e.g. `NotoSansTC-Regular`. */
-  font: string;
+  font: string /**
+   * Rotated text only: the unit vector its advance runs along, in the same
+   * frame (x right, y down). `x0` and `baseline` are then its origin and
+   * `x1 - x0` its advance's length. Left out for horizontal text.
+   */;
+  dir?: [number, number];
 }
 
 /** Something a page draws besides text. */
@@ -94,7 +99,10 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
       const items: PdfTextItem[] = [];
       for (const item of content.items as TextContentItem[]) {
         if (typeof item.str !== 'string' || item.str.trim() === '') continue;
-        const [, b = 0, , d = 0, e = 0, f = 0] = item.transform;
+        const [a = 0, b = 0, , d = 0, e = 0, f = 0] = item.transform;
+        const length = Math.hypot(a, b);
+        // Horizontal text runs left to right with no vertical component.
+        const rotated = length > 0 && (Math.abs(b) > 1e-6 * length || a < 0);
         items.push({
           text: item.str,
           x0: e - left,
@@ -104,6 +112,8 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
           // skewed (italic) or rotated text.
           size: Math.hypot(b, d),
           font: fontOf(item.fontName),
+          // PDF space is y up; the page frame is y down.
+          ...(rotated ? { dir: [a / length, -b / length] } : {}),
         });
       }
       const marks = readMarks(operators, OPS, [left, bottom, right, top]);
