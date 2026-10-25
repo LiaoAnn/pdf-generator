@@ -78,9 +78,9 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `array` | `minItems`, `maxItems`, `items` (one field rule), `sortBy?` (key of a `date` field of the items) | List, e.g. table rows; with `sortBy`, in date order |
 | `sum` | `of`: field paths | Sum of the values (`null` counts as 0) |
 | `runningBalance` | `opening`, `add`, `subtract`: field paths | Inside an array item: opening + Σ add − Σ subtract over rows 0..i |
-| `percentage` | `part`, `whole`, `decimals` | part / whole × 100 |
+| `percentage` | `part`, `whole`: field paths, `decimals` (0-6) | part / whole × 100 |
 
-Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after an array field, and must name a numeric field: `transactions[].amount`. Every `min` is ≤ its `max`; `weights` has one entry per option and a positive sum.
+Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after every array field on the way and nowhere else, and must name a numeric field (`money`, `integer`, `number`, `sum`, `runningBalance`, `percentage`, or a `constant` whose `value` is a number): `transactions[].amount`. Through an array the field isn't inside, `[]` means every item (a `sum` adds them all); through the array the field itself is inside, it means the current row (`rows[].price` from `rows[].subtotal`). Every `min` is ≤ its `max`, `minLength` (at least 1) ≤ `maxLength`, `minItems` ≤ `maxItems`; `weights` has one entry per option and a positive sum.
 
 Each `date` field is drawn on its own, so array rows come out in no particular date order. To print them in date order (a bank statement, a ledger), give the array `sortBy` with the key of a `date` field directly in its `object` items. The engine then reorders the whole rows by that date, earliest first; rows with the same date keep the order they were drawn in, and rows whose date is blank, or that are blank themselves, go last. It sorts before it computes `sum`, `runningBalance` and `percentage`, so a running balance adds up row by row in the printed order. `sortBy` naming anything else (a missing key, a field of another type, items that aren't an `object`) is `rules-invalid`. Sorting by other fields, or newest first, isn't supported. Without `sortBy` the rows stay in draw order.
 
