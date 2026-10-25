@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Node drives Chromium; the code passed to page.evaluate runs in the page.
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["src"]
+}
