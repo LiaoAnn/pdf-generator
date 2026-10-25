@@ -293,10 +293,42 @@ A `page_number` block holds its fixed text and two kinds of empty slot (no value
 - **Headers and footers** are running elements: an element with `position: running(<name>)` that `@page { @top-center { content: element(<name>) } }` (or another margin box) shows on every page from the one where it appears. Put it first in `<body>` and mark it `page_header`, `page_footer` or `page_number`. `word.css` provides `.word-header` and `.word-footer`.
 - **Only marked text may print.** CSS generated content prints text that is in no element, so the self-check reports it as unmarked text: no `content: "…"`, `counter()` or `counter(page)` in `::before`/`::after` or in margin boxes. Print page numbers with a `page_number` block and its slots (§4.4).
 - **List markers** are generated content too, outside the box (`list-style-position: outside`) or inside it: either way the self-check reports them. Use `list-style: none` and write the marker into the item's text (`・{{this}}`, or `（一）` in a fixed list). A list from an array can't number itself: there is no helper that adds 1 to `@index`.
-- **Blank fields**: a field that can be `null` (`blankProbability`, or a `percentage` of a zero `whole`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own: `display: inline-block; min-width: 6em; min-height: 1lh` (as the minimal example does), or put it in a table cell.
+- **Blank fields**: a field that can be `null` (`blankProbability`, or a `percentage` of a zero `whole`) prints an empty element, whose box is empty (an inline element has no width, an inline-block no height). The print then fails with `ground_truth_invalid`, since a box must have `x0 < x1` and `y0 < y1`. Give the element a size of its own and something visible in it, such as an underline: `display: inline-block; min-width: 6em; min-height: 1lh; border-bottom: 0.5pt solid #000`, or put it in a table cell. A size alone isn't enough: a block with no text must paint something inside its box, or the self-check reports `ink` (§9). A cell of a `table` block needs neither, since the table's text is checked.
 - **Every `data-gt` block's text must reach the PDF.** A block hidden with `display: none` is skipped, but text clipped by `overflow: hidden`, pushed off the page or painted over is still in `gt.json`; the print or self-check fails on it.
 - **Tables**: rows are kept whole and the header repeats (above). Keep rows shorter than a page.
 - **Columns** (`column-count`): use `column-fill: balance`. With `column-fill: auto`, `break-inside: avoid` can push the whole column block to the next page. Give every block in the columns `break-inside: avoid`: a block split across two columns gets one gt box spanning both. See the recipe "Two columns" in `skill/references/recipes.md` and `templates/paper`.
+- **Leave the page box alone** (`css-page-box`). The ground truth is measured from the page Paged.js lays out, and CSS that moves that page prints everything somewhere else. `checkPack` refuses, in every stylesheet in `files.styles` and every `<style>` in the template (also inside `@media`, `@supports` and `@layer`):
+  - any rule with `pagedjs` anywhere in a selector (`.pagedjs_page`, `.pagedjs_pages > div`, `[class*=pagedjs]`), whatever it declares: those elements are the platform's;
+  - on `html`, `body`, `:root` or `*` as the element a selector styles (`body.report`, `html > body`, `p, body` too), a `margin`, `padding` or `border` width other than 0 (`margin: auto` and `var(--x)` count as nonzero), a `border` that isn't `none`, `hidden` or 0, `position` other than `static`, `transform`, `translate`, `rotate` or `scale` other than `none`, and `zoom` other than `normal`, `1` or `100%`. A Word-style reset `* { margin: 0 }` is fine; `* { margin: 2px }` is not.
+
+  Set page margins with `@page` (its margin boxes too), and spacing on your own elements. Fonts, colours and `line-height` on `html`/`body` are fine, and so are descendants (`body p { margin: 4mm }`), pseudo-elements and `style` attributes, which the check doesn't read. Don't rely on its limits (it doesn't look inside quotes, so `[class*="pagedjs"]` gets through): page movement that slips past it shows in the self-check, where a shift of more than 1 pt can make text-free blocks report `ink` (§9), though not always: a drawing that moves from one edge of its box to the middle still fits.
+
+```css pack-error css-page-box
+body {
+  padding: 20mm;
+}
+```
+
+```css pack-error css-page-box
+.pagedjs_page {
+  margin: 20mm;
+}
+```
+
+```css pack-ok
+@page {
+  margin: 20mm;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+}
+
+.report-section {
+  padding: 4mm;
+}
+```
 
 ## 6. Fonts
 
@@ -384,6 +416,24 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `html-active`, `html-unsupported` | The allowlist (§3) |
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `css-escape` | Files the template or CSS loads |
 | `font-unused` | Fonts (§6) |
+| `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |
 | `gt-unmarked`, `gt-nested`, `gt-type`, `gt-attribute`, `gt-id`, `gt-branch`, `gt-table`, `gt-checkbox`, `gt-formula`, `gt-image-text` | Marking (§4) |
 
 Passing the check is not the end: print a few records (the web app's preview, then a small batch) and read the self-check report. Something it flags is a defect of the pack.
+
+### The self-check's `ink` difference
+
+Most blocks are checked by their text: the PDF's text inside the block's box must be the block's text. A block with no text in `gt.json` (an image, a barcode, a checkbox drawn with borders, a blank field) has nothing to compare, so its box is checked against what the PDF draws there instead; so is an `image` whose text isn't printed as text. Without that, a box in the wrong place would pass, and a block that prints nothing is no use as OCR ground truth either. What counts as drawn: images, filled or stroked paths (borders, underlines, backgrounds, inline SVG shapes, gradients) at any opacity above 0. A clip alone doesn't count, and neither does a drawing larger than the box that covers all of it, such as the page or a section background (a background exactly filling the block's own box does count).
+
+The drawings that overlap the box must lie inside it, within 1 pt, and together sit on each axis either on an edge of the box, within 1 pt, or in its middle, the gaps on the two sides differing by at most 1 pt. A border, an underline (it touches the left, right and bottom edges), a background, an image filling its box and a centred icon or barcode pass. The self-check reports `ink` when:
+
+- **Nothing is painted in the box**: `Block <id> on page <n> has no text and the PDF paints nothing in its box [x0, y0, x1, y1], so its box can't be checked`. Usually a blank field with no border or underline (one that can be `null`, or is always empty, such as a signature line), or an empty `<span>` used as a checkbox. Give it an underline (`border-bottom: 0.5pt solid #000`), a border or a background (§5 "Blank fields").
+- **The drawing doesn't fit the box**: `Block <id> on page <n>: the PDF draws at [...], which doesn't fit its box [...]`. Either it spills out by more than 1 pt (an `<img>` wider than the block around it), or it sits inside but off-centre and away from every edge (a line raised with `::after { bottom: 4pt }`, a drawing pushed sideways with `transform`). Draw on the block's own box: its border or background, or content that fills it or is centred in it. When every text-free block on a page reports it, the page itself has usually moved: see `css-page-box` (§5).
+
+### The self-check's `formula_undecided` difference
+
+Chrome prints a formula's positioned pieces (sub- and superscripts, fraction parts, delimiters) after the rest of its line, so a `formula` block's text in the PDF is often in another order than in `gt.json`. The self-check then accepts the block when its printed items, each used once and whole, spell its text in some order. That search has a fixed work budget, far above what the paper's formulas need, so every run gives the same answer. A formula it can't decide within the budget is reported, and never passes:
+
+`Block <id> on page <n>: the formula match budget was exceeded before its <k> printed items could be matched to gt.json's text, so it fails undecided`
+
+The search only runs when the PDF doesn't already print the text in order. It runs out on a long formula with many printed pieces, sooner when many of them are made of the same few characters. Simplify the formula, or split it into several `formula` blocks, each with its own `data-gt-latex` (§4.3).

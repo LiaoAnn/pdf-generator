@@ -31,11 +31,12 @@ One block for the label (with its `：`), one for the value. Make the label bold
   margin-right: 0.5em;
 }
 
-/* recorder can be blank: an empty element needs a box of its own. */
+/* recorder can be blank: an empty block must still paint something inside its box, or self-check reports ink. */
 .value {
   display: inline-block;
   min-width: 6em;
   min-height: 1lh;
+  border-bottom: 0.5pt solid #000;
   vertical-align: top;
 }
 ```
@@ -266,4 +267,7 @@ These pass `check-pack` and fail when the platform prints or self-checks the PDF
 | Text in inline `<svg>` (`<text>`) | Put it in an HTML mark next to the drawing |
 | A table row taller than a page | Short cell texts; `maxItems` on nested arrays |
 | Ellipsis, `text-transform`, `letter-spacing` tricks that change the printed text | Print the text as it is in the data |
+| A blank field (a `null` value, a signature line) with a size but no border, underline or background: the block has no text and paints nothing, so its box can't be checked (`ink`) | `border-bottom: 0.5pt solid #000`, a border or a background on the field itself |
+| A line or drawing inside a text-free block that is neither on an edge nor centred (an underline raised with `::after { bottom: 4pt }`), or one spilling out of its box (`ink`) | Draw on the block's own border or background, or centre the drawing |
+| A very long formula in one `formula` block, with many printed pieces (`formula_undecided`: the self-check's match budget runs out, and that never passes) | Simplify it, or split it into several `formula` blocks, each with its own `data-gt-latex` |
 | Something visible but unmarked (a border-drawn box is fine; a `content:` glyph is not) | Draw with borders and backgrounds; write text into marks |

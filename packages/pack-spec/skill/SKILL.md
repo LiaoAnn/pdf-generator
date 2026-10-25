@@ -72,7 +72,8 @@ These are the ones agents get wrong; the spec has the rest.
 - **No `<script>`, no URLs that leave the pack, no `{{{raw}}}`, no helpers but `eq`, `lookup`, `number`, `rocDate`** (and the built-in `if`/`unless`/`each`/`with`).
 - **Handlebars only in text or in quoted attribute values**, and an element opens and closes in the same `{{#if}}` branch: to switch an attribute, duplicate the whole element in each branch.
 - **Fonts**: only the platform families (`"Noto Serif TC"`, `"Noto Sans TC"`, `"LXGW WenKai TC"`, `"Noto Sans Symbols 2"`), named in the `font-family` of the printed elements in your stylesheet; `"Noto Sans Symbols 2"` first wherever ☑ ☐ print. No `@font-face` for them, no `@import`. The one exception is pack fonts a layout needs, such as KaTeX's for formulas (spec §6, "Formulas (KaTeX)" in [references/recipes.md](references/recipes.md)). Fixed text uses common Traditional Chinese characters only.
-- **Blank-able fields** (`blankProbability`) get a size: `display: inline-block; min-width: 6em; min-height: 1lh`, or sit in a table cell.
+- **Blank-able fields** (`blankProbability`), and any marked element that is always empty (a signature line), get a size and visible ink: `display: inline-block; min-width: 6em; min-height: 1lh; border-bottom: 0.5pt solid #000`, or sit in a table cell. A block with no text that paints nothing in its box fails the self-check (`ink`, spec §9).
+- **Leave the page box alone**: page margins go on `@page`; no `pagedjs` in selectors and no margin, padding, border, position, transform or zoom on `html`, `body`, `:root` or `*` beyond 0/none (`css-page-box`, spec §5).
 - **Tables**: `table-layout: fixed` with `<col>` widths (word.css sets the layout; you give the widths), one row per `{{#each}}` item, rows short enough never to exceed a page.
 - **No text inside inline `<svg>`**; put it in an HTML mark beside the drawing.
 - Don't upload, and don't edit files in the platform repo.
