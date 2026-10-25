@@ -770,6 +770,24 @@
 - **不做**：改平台程式
 - **來源**：PR #48（T10-1）
 
+### T10-3 規格書：陣列規則的 `sortBy`
+- **目標**：T02-6 加的陣列規則 `sortBy` 沒寫進 `packages/pack-spec` SPEC 的規則表；補上說明與範例
+- **Blocked by**：T02-6
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`
+- **驗收測試**：文件與 `packages/contract`、`packages/fake-data` 的實際行為一致；skill 的範例片段仍通過 `skill.test.ts`
+- **不做**：改平台程式
+- **來源**：PR #63（T12-2）
+
+### T27 樣板：通報單與論文用自己的詞庫
+- **目標**：T12-2 讓 `text` 規則可以帶 `phrases`；incident-form 的 3 個與 paper 的 8 個 `text` 欄位目前印出營運報告式的填充文字（「本月營收持續成長…」）。在兩個樣板的 rules.json 給各欄位符合領域的 `phrases`
+- **Blocked by**：T12-2、T23、T25
+- **Blocks**：—
+- **撞車風險**：`templates/incident-form`、`templates/paper`
+- **驗收測試**：兩個樣板的 checkPack 與 acceptance script 通過；抽 20 個 seed，每個 `text` 欄位的字都來自它的 `phrases`；gt.json 與 PDF 自我檢查通過
+- **不做**：改平台程式
+- **來源**：PR #63（T12-2）
+
 ### T14-6 樣板：空白欄位要有墨跡（minimal-example 與其他樣板）
 - **目標**：T14-4 之後，沒有文字的區塊必須在框內畫出東西。`templates/minimal-example` 的 `.pair [data-gt="field"]` 有大小但沒有墨跡，`recorder` 為空（`blankProbability` 0.3）的紀錄都以 `ink`「paints nothing」失敗（T10-2 批次 10 份中 2 份）。加上底線（例如 `border-bottom: 0.5pt solid #000`）。同時檢查其他 5 個樣板裡所有可能為空的欄位、勾選框與圖片，找出同樣的問題一併修好（T14-4 的驗收各批 10 份全過，可能只是剛好沒抽到空值）
 - **Blocked by**：T14-4
