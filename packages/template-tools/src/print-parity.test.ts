@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles } from './index.ts';
 
 const templateFile = 'report.hbs';
@@ -21,7 +22,7 @@ function pack(
         assets: ['logo.svg', 'nested/notes.txt', 'nested/extra.css'],
       },
     }),
-    [templateFile]: template,
+    [templateFile]: withHead(template),
     [cssFile]: css,
     'rules.json': JSON.stringify({
       schemaVersion: 1,

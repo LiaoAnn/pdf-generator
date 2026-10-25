@@ -1,0 +1,4 @@
+{
+  "description": "trims non-NUL C0 controls and tabs around CSS URLs",
+  "issues": []
+}

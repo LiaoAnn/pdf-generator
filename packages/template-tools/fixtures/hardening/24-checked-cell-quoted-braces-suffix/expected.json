@@ -1,0 +1,11 @@
+{
+  "description": "rejects literal suffix after a cell checked statement containing quoted closing braces",
+  "issues": [
+    {
+      "code": "gt-attribute",
+      "file": "templates/report.hbs",
+      "line": 2,
+      "column": 38
+    }
+  ]
+}

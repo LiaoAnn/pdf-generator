@@ -1,0 +1,4 @@
+{
+  "description": "accepts a single field statement as block checked state without a literal comparison",
+  "issues": []
+}

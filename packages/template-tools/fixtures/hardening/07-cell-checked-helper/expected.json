@@ -1,0 +1,4 @@
+{
+  "description": "accepts a single helper statement as cell checked state without a literal comparison",
+  "issues": []
+}

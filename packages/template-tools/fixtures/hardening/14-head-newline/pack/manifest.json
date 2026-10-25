@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "head-end",
+  "name": "Head end",
+  "page": {
+    "size": "A4",
+    "orientation": "portrait"
+  },
+  "files": {
+    "template": "templates/report.hbs",
+    "styles": [
+      "styles/report.css"
+    ],
+    "rules": "data/rules.json",
+    "sample": "data/sample.json"
+  }
+}

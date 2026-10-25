@@ -90,7 +90,7 @@ The engine draws only characters the platform fonts cover. Text you write yourse
 
 ## 3. The template
 
-One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>`, then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
+One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>` outside every `{{#…}}` block (`template-structure` otherwise), then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
 
 ### Handlebars
 
@@ -223,7 +223,7 @@ Any other `data-gt-*` is a typo (`gt-attribute`), and a detail attribute on the 
 
 ### 4.1 Checkboxes
 
-A `checkbox` block states whether it is checked, either with `data-gt-checked` or with exactly one `<input type="checkbox|radio">` inside it (`gt-checkbox` otherwise). Print the state the PDF can show: a glyph (☑ ☐ from Noto Sans Symbols 2) whose choice follows the same field. The self-check reads the printed glyph and compares it with the state.
+A `checkbox` block states whether it is checked, either with `data-gt-checked` or with exactly one `<input type="checkbox|radio">` (the block itself or inside it) however its `{{#if}}`/`{{#each}}` blocks go: one input in each branch of an `{{#if}}…{{else}}` counts, one only inside an `{{#if}}` without `{{else}}` or inside an `{{#each}}` doesn't (`gt-checkbox` otherwise). A literal `data-gt-checked="true|false"` must agree with the `checked` attribute of every input it covers (`gt-checkbox`). Print the state the PDF can show: a glyph (☑ ☐ from Noto Sans Symbols 2) whose choice follows the same field. The self-check reads the printed glyph and compares it with the state.
 
 ```html pack-ok
 <p data-gt="checkbox" data-gt-checked="{{confirmed}}"><span class="box">{{#if confirmed}}☑{{else}}☐{{/if}}</span>本紀錄已經主席確認無誤。</p>
@@ -239,7 +239,7 @@ A `checkbox` block states whether it is checked, either with `data-gt-checked` o
 
 `data-gt="table"` goes on the `<table>`; the reader builds the grid itself: every printed cell with its row, column, `rowspan`/`colspan`, its text and box, and whether it is a header cell (a `<th>`, or any cell of a `<thead>` row). Cells carry no `data-gt` (`gt-table`). Merged cells are plain `rowspan`/`colspan`. An empty cell is a cell with empty text.
 
-**Checkboxes inside a cell** (`cell.checkboxes` in `gt.json`): mark each box element inside the `<td>` with `data-gt-checked` alone, no `data-gt`. The option's label is the text after the box up to the next box. The box's own glyph is part of the cell text.
+**Checkboxes inside a cell** (`cell.checkboxes` in `gt.json`): mark each box element inside the `<td>` with `data-gt-checked` alone, no `data-gt`. Only the table block's own cells count: a box in a table nested inside a cell is `gt-table`. A literal state must agree with the `checked` attribute of the input it is or wraps (`gt-checkbox`). The option's label is the text after the box up to the next box. The box's own glyph is part of the cell text.
 
 ```html pack-ok
 <table data-gt="table">
@@ -256,7 +256,7 @@ A table that breaks across pages becomes one `table` block per page; each later 
 
 ### 4.3 Formulas and images
 
-A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding="application/x-tex">` KaTeX puts inside its MathML (`gt-formula` otherwise). The block's text is what KaTeX visibly renders; the hidden MathML copy doesn't count. KaTeX's HTML must be pre-rendered into the template (no scripts run), and its fonts are pack fonts (§6). The skill's recipe "Formulas (KaTeX)" (`skill/references/recipes.md`) and `templates/paper` show the whole setup: a build script, KaTeX's stock CSS, the woff2 faces and the spacing.
+A `formula` block needs its LaTeX: `data-gt-latex`, or the `<annotation encoding="application/x-tex">` KaTeX puts inside its MathML, exactly one however the block's `{{#if}}`/`{{#each}}` blocks go (`gt-formula` otherwise). The block's text is what KaTeX visibly renders; the hidden MathML copy doesn't count. KaTeX's HTML must be pre-rendered into the template (no scripts run), and its fonts are pack fonts (§6). The skill's recipe "Formulas (KaTeX)" (`skill/references/recipes.md`) and `templates/paper` show the whole setup: a build script, KaTeX's stock CSS, the woff2 faces and the spacing.
 
 An `image` block's text is `data-gt-text` if present, else the rendered text of an HTML element inside it, else empty. **Text drawn by inline SVG (`<text>`) is not read**: the block's text is empty, the PDF still prints the text, and the self-check fails. Keep text out of inline SVG: put it in HTML next to the drawing, in its own mark.
 
@@ -353,7 +353,7 @@ Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't decla
 
 **Missing glyphs are errors.** A character no listed font has (for example 㵾, or 𩸽 outside WenKai) falls back to a system font, and the self-check fails on any font but the pack's: keep fixed text and `choice` options within these fonts.
 
-**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) print like the platform fonts; the batch self-check also accepts each pack font under its PostScript name (read from the font file), so text in it is not a font error. Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
+**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) print like the platform fonts; the batch self-check also accepts each pack font under its PostScript name (read from the font file), so text in it is not a font error. Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates. A face counts by its weight and style: a bold face (`font-weight` 600 and up) is used only when something asks for bold (`font-weight: bold` or 600+, the `font` shorthand, `<b>`, `<strong>`, `<th>`, `<h1>`–`<h6>`), an italic or oblique face only when something asks for italic (`font-style`, the shorthand, `<i>`, `<em>`, `<cite>`, `<var>`, `<dfn>`, `<address>`). A family with no face matching a requested weight and style falls back to one of its faces, so then all its faces count.
 
 ```css pack-error font-unused
 @font-face {

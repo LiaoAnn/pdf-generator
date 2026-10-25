@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { afterEach, describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import {
   type CheckResult,
   checkPack,
@@ -157,7 +158,7 @@ describe('Node check-pack CLI for local pack authors', () => {
     writeFileSync(join(directory, 'z-extra.txt'), 'accidentally included');
     writeFileSync(
       join(directory, 'templates/report.hbs'),
-      '<p data-gt="field">{{missing}}</p>\n<p data-gt="field">{{otherMissing}}</p><p>unmarked<span>also unmarked</span></p>\n',
+      '<head></head>\n<p data-gt="field">{{missing}}</p>\n<p data-gt="field">{{otherMissing}}</p><p>unmarked<span>also unmarked</span></p>\n',
     );
     const expected = checkPack(filesIn(directory));
     expect(expected.issues.length).toBeGreaterThan(3);
@@ -196,7 +197,7 @@ function pack(template: string): PackFiles {
   ]) {
     files[file] = readFileSync(join(join(fixtures, 'valid'), file));
   }
-  files[templateFile] = template;
+  files[templateFile] = withHead(template);
   const rules = JSON.parse(
     readFileSync(join(join(fixtures, 'valid'), 'data/rules.json'), 'utf8'),
   );
@@ -404,7 +405,7 @@ describe('ROC dates for Taiwanese template packs', () => {
         expect.objectContaining({
           code: 'template-unsupported',
           file: templateFile,
-          line: 2,
+          line: 3,
           column: 3,
         }),
       ]);

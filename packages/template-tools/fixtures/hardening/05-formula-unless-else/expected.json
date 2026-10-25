@@ -1,0 +1,4 @@
+{
+  "description": "accepts exactly one formula fallback in each exclusive unless/else branch",
+  "issues": []
+}

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "value": {
+      "type": "constant",
+      "value": "Report"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 1,
+      "items": {
+        "type": "constant",
+        "value": "row"
+      }
+    }
+  }
+}

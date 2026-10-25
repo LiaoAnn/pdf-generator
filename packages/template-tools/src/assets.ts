@@ -3,7 +3,14 @@
 // declared face before it paginates; T03 Must 8). A reference resolves
 // against the file containing it, as in a browser loading the pack's files at
 // their pack paths.
-import { fontFaces, type Reference, scanCss, usedFamilies } from './css.ts';
+import {
+  type FaceKind,
+  fontFaces,
+  fontRequests,
+  type Reference,
+  scanCss,
+  usedFamilies,
+} from './css.ts';
 import {
   attributeOf,
   decodedOffsets,
@@ -63,6 +70,22 @@ function resolve(
 }
 
 /**
+ * Where a URL starts and ends once the browser's URL parser has stripped the
+ * C0 controls and spaces around it; it keeps the no-break space and other
+ * Unicode spaces, which then name a file that isn't in the pack.
+ */
+const urlStart = (url: string) => {
+  let i = 0;
+  while (i < url.length && url.charCodeAt(i) <= 0x20) i++;
+  return i;
+};
+const urlEnd = (url: string) => {
+  let i = url.length;
+  while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
+  return i;
+};
+
+/**
  * The candidate URLs of a srcset, with their offsets in it, as the HTML spec
  * splits them: a URL runs to the next whitespace (commas included, so data:
  * URLs survive), then a descriptor runs to the next comma.
@@ -71,9 +94,9 @@ function srcsetUrls(value: string): Reference[] {
   const urls: Reference[] = [];
   let i = 0;
   while (i < value.length) {
-    while (i < value.length && /[\s,]/.test(value[i] ?? '')) i++;
+    while (i < value.length && /[\t\n\f\r ,]/.test(value[i] ?? '')) i++;
     const start = i;
-    while (i < value.length && !/\s/.test(value[i] ?? '')) i++;
+    while (i < value.length && !/[\t\n\f\r ]/.test(value[i] ?? '')) i++;
     let url = value.slice(start, i);
     if (url.endsWith(',')) url = url.replace(/,+$/, '');
     else while (i < value.length && value[i] !== ',') i++;
@@ -82,6 +105,20 @@ function srcsetUrls(value: string): Reference[] {
   return urls;
 }
 
+/** Elements the browser prints bold, or italic, by default. */
+const boldElements = new Set([
+  'b',
+  'strong',
+  'th',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+]);
+const slantedElements = new Set(['i', 'em', 'cite', 'var', 'dfn', 'address']);
+
 /** Asset, font and active-content issues of a pack's template and styles. */
 export function assetIssues(
   template: Source & { html: TemplateHtml },
@@ -89,8 +126,14 @@ export function assetIssues(
   read: (path: string) => Uint8Array | undefined,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
-  const faces: (Source & { family: string; name: string; offset: number })[] =
-    [];
+  const faces: (Source &
+    FaceKind & { family: string; name: string; offset: number })[] = [];
+  /** Whether anything asks for a bold or an italic face. */
+  const requests = { bold: false, slanted: false };
+  const request = (asked: { bold: boolean; slanted: boolean }) => {
+    requests.bold ||= asked.bold;
+    requests.slanted ||= asked.slanted;
+  };
   const families = new Set<string>();
   const shorthandFirsts: string[] = [];
   /** Stylesheets checked or queued, so each is read once (imports cycle). */
@@ -117,10 +160,13 @@ export function assetIssues(
    */
   const reference = (
     source: Source,
-    { url, offset, kind }: Reference,
+    { url: written, offset, kind }: Reference,
     context: 'attribute' | 'css' = 'css',
   ) => {
-    const trimmed = url.trimStart();
+    // CSS (and HTML) turn a NUL into U+FFFD before the URL parser, which
+    // would strip a NUL: that file is the one the browser loads.
+    const url = written.replaceAll('\0', '\uFFFD');
+    const trimmed = url.slice(urlStart(url));
     const at = offset + url.length - trimmed.length;
     if (source === template && url.includes('{{')) {
       // In CSS a statement is a template-structure issue already.
@@ -143,7 +189,7 @@ export function assetIssues(
       );
       return;
     }
-    const problem = resolve(source.file, trimmed.trimEnd());
+    const problem = resolve(source.file, trimmed.slice(0, urlEnd(trimmed)));
     if (problem === undefined) return;
     if (!('path' in problem)) {
       issue(problem.code, source, at, problem.message);
@@ -202,6 +248,7 @@ export function assetIssues(
     }
     const used = usedFamilies(css);
     for (const family of used.families) families.add(family);
+    request(fontRequests(css));
     shorthandFirsts.push(...used.shorthandFirsts);
   };
 
@@ -279,9 +326,16 @@ export function assetIssues(
           `${link.value} depends on the data: write the link out`,
         );
       }
+      request({
+        bold: boldElements.has(tag),
+        slanted: slantedElements.has(tag),
+      });
       // SVG presentation attributes take url() too (fill, mask, clip-path…).
       if (element.namespaceURI === 'http://www.w3.org/2000/svg') {
         for (const attr of element.attrs) {
+          if (attr.name === 'font-weight' || attr.name === 'font-style') {
+            request(fontRequests(`${attr.name}:${attr.value}`));
+          }
           const name = attr.prefix ? `${attr.prefix}:${attr.name}` : attr.name;
           const at = attrAt(name);
           if (name === 'style' || name.endsWith('href') || !at) continue;
@@ -331,18 +385,42 @@ export function assetIssues(
     } else css({ file: path, text }, text, same, true);
   }
 
+  // The weight and style combinations the pack prints: regular upright
+  // always, the others when something asks for them anywhere.
+  const kinds = [
+    { bold: false, slanted: false },
+    ...(requests.bold ? [{ bold: true, slanted: false }] : []),
+    ...(requests.slanted ? [{ bold: false, slanted: true }] : []),
+    ...(requests.bold && requests.slanted
+      ? [{ bold: true, slanted: true }]
+      : []),
+  ];
+  const matches = (face: FaceKind, kind: (typeof kinds)[number]) =>
+    (kind.bold ? face.bold : face.regular) && face.slanted === kind.slanted;
+  const byFamily = Map.groupBy(faces, face => face.family);
   for (const face of faces) {
-    const used =
+    const familyUsed =
       families.has(face.family) ||
       shorthandFirsts.some(
         first => first === face.family || first.endsWith(` ${face.family}`),
+      );
+    // A combination no face of the family matches falls back to whichever
+    // face the browser picks, so then every face of the family counts.
+    const family = byFamily.get(face.family) ?? [];
+    const used =
+      familyUsed &&
+      kinds.some(
+        kind =>
+          matches(face, kind) || !family.some(other => matches(other, kind)),
       );
     if (!used) {
       issue(
         'font-unused',
         face,
         face.offset,
-        `@font-face "${face.name}" is declared but no font-family or font uses it; Paged.js would download it anyway`,
+        familyUsed
+          ? `@font-face "${face.name}" (${face.bold && !face.regular ? 'bold' : 'regular'}${face.slanted ? ' italic' : ''}) is declared but nothing asks for that weight and style; Paged.js would download it anyway`
+          : `@font-face "${face.name}" is declared but no font-family or font uses it; Paged.js would download it anyway`,
       );
     }
   }

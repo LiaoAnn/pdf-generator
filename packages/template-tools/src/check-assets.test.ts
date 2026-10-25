@@ -1,6 +1,7 @@
 import { manifestSchema, rulesSchema } from '@pdf-generator/contract';
 import { recordSchema } from '@pdf-generator/fake-data';
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles } from './index.ts';
 
 const templateFile = 'templates/report.hbs';
@@ -38,7 +39,7 @@ function validFiles(
   const sample = recordSchema(rules).parse({ holder: '王小明' });
   return {
     'manifest.json': JSON.stringify(manifest),
-    [templateFile]: template,
+    [templateFile]: withHead(template),
     [cssFile]: css,
     'styles/extra.css': '',
     'data/rules.json': JSON.stringify(rules),

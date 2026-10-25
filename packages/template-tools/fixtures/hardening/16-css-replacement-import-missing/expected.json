@@ -1,0 +1,11 @@
+{
+  "description": "rejects a missing replacement-character import",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "styles/report.css",
+      "line": 1,
+      "column": 10
+    }
+  ]
+}

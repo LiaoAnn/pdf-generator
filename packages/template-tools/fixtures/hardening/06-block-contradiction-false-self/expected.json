@@ -1,0 +1,11 @@
+{
+  "description": "rejects block literal false contradicting its self radio checked state",
+  "issues": [
+    {
+      "code": "gt-checkbox",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 40
+    }
+  ]
+}

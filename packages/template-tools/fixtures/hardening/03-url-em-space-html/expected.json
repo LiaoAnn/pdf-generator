@@ -1,0 +1,11 @@
+{
+  "description": "preserves em-space in a html URL instead of trimming it",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 8
+    }
+  ]
+}

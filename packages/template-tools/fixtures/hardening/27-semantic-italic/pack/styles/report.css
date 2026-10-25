@@ -1,0 +1,3 @@
+@font-face { font-family: Report; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-style: italic; src: url(../assets/face.woff2); }
+body { font-family: Report; }

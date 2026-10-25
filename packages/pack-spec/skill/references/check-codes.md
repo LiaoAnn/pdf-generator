@@ -20,7 +20,7 @@
 | `template-unsupported` | `{{{raw}}}`, `{{> partial}}`, a helper other than `eq`, `lookup`, `number`, `rocDate` (`formatDate`, `add`, `inc`), a `rocDate` `format=` not in §3's list | Use the subset (§3); derive values in the rules, write fixed numbering as text |
 | `template-unknown-field` | `{{field}}` that the rules don't define (typo, wrong scope inside `{{#each}}`: use `{{../x}}` or `@root.x`) | Match the rules' keys |
 | `template-render` | Filling the sample failed (e.g. `{{#each}}` over a non-array, `rocDate` of a date before 1912 or of a non-date) | Fix the template or the rule type |
-| `template-structure` | `{{…}}` inside a tag but outside a quoted value, in CSS, in a comment, after `<` | Put statements in text or quoted values; duplicate whole elements per branch (§3) |
+| `template-structure` | `{{…}}` inside a tag but outside a quoted value, in CSS, in a comment, after `<`; no `</head>`, or one inside a block | Put statements in text or quoted values; duplicate whole elements per branch (§3) |
 | `html-active` | `<script>`, `on*=` handlers | Remove them; nothing runs |
 | `html-unsupported` | An element or attribute outside the allowlist (`<form>`, `<button>`, `<select>`, `<iframe>`, `<canvas>`) | Use the look-alikes: text, borders, ☐ glyphs, tables |
 | `asset-external` | A URL leaving the pack (`https://…`, a web font) | Put the file in the pack and reference it relatively, or use a platform font |
@@ -30,14 +30,14 @@
 | `asset-dynamic` | A `src`/`href`/`srcset` or CSS URL built from data (`src="img/{{kind}}.png"`) | Write each path out and choose between them with `{{#if}}` |
 | `css-escape` | A backslash escape in CSS (`content: "\25A1"`, `\5FAE`) | Write the character itself; files are UTF-8 |
 | `css-page-box` | CSS that moves the page Paged.js lays out: any selector naming `pagedjs` (any case, quoted or escaped too: `[class*="pagedjs"]`, `.\70 agedjs_page`), or a nonzero `margin`/`padding`/`border`, a `position`, `transform` or `zoom` on `html`, `body`, `:root` or `*` (`body { padding: 20mm }` as page margins, a `* { margin: 2px }` reset) | Page margins on `@page`; `html, body { margin: 0; padding: 0 }`; spacing on your own elements (§5) |
-| `font-unused` | An `@font-face` no printed element uses | Remove it; never declare the platform fonts |
+| `font-unused` | An `@font-face` no printed element uses: its family is unused, or its bold/italic face is never asked for | Remove it; never declare the platform fonts |
 | `gt-unmarked` | Text, an image, an input or a formula outside every `data-gt` (a stray `：`, a fixed caption, text between two spans) | Wrap it in its own mark, or move it into the neighbouring mark |
 | `gt-nested` | A `data-gt` inside another `data-gt` | Split the outer into separate blocks, or drop the inner mark |
 | `gt-type` | A block type not in §4's list (`text`, `value`, `header`) | Use `paragraph`, `field`, `page_header`, … |
 | `gt-attribute` | Unknown `data-gt-*`, a detail attribute on the wrong type, a block statement in `data-gt-checked` | `data-gt-checked` only on `checkbox` (or cell boxes), with `true`/`false`/one `{{field}}` |
 | `gt-id` | A `data-gt-id` with characters outside `A-Za-z0-9_-` or too long | Short ASCII ids, or none |
 | `gt-branch` | An element opened in one `{{#if}}` branch and closed in another | Each element whole inside one branch |
-| `gt-table` | `data-gt` on a `<td>`/`<tr>`, or `table` on a non-table | Mark only the `<table>`; cell boxes get `data-gt-checked` alone |
-| `gt-checkbox` | A `checkbox` block with neither `data-gt-checked` nor exactly one input | Add `data-gt-checked="{{field}}"` |
-| `gt-formula` | A `formula` block without LaTeX | Add `data-gt-latex` |
+| `gt-table` | `data-gt` on a `<td>`/`<tr>`, `table` on a non-table, or `data-gt-checked` in a table nested inside a cell | Mark only the `<table>`; cell boxes get `data-gt-checked` alone |
+| `gt-checkbox` | A `checkbox` block with neither `data-gt-checked` nor exactly one input in every branch, or a literal `data-gt-checked` that disagrees with an input's `checked` | Add `data-gt-checked="{{field}}"` |
+| `gt-formula` | A `formula` block without `data-gt-latex` or exactly one x-tex annotation in every branch | Add `data-gt-latex` |
 | `gt-image-text` | An `image` with `data-gt-text` that also contains printed text | Keep the text out of the image element |

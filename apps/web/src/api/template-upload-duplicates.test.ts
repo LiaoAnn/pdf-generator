@@ -253,9 +253,12 @@ test.each([2, 65_535])(
       ...Array.from({ length: count - 1 }, () => repeatedCentral),
     ]);
     // Use assemble's ZIP64 end records for 65,535+ directory records.
+    // The skeleton only supplies the end records, so its entries carry an empty
+    // stream: copying the real font count times would need gigabytes.
+    const empty = { ...repeated, stream: new Uint8Array() };
     const skeleton = assemble(
-      Array.from({ length: parts.length + count - 1 }, () => repeated),
-      sizes,
+      Array.from({ length: parts.length + count - 1 }, () => empty),
+      new Map(),
     );
     const tailLength = parts.length + count - 1 >= 0xffff ? 98 : 22;
     const tail = Buffer.from(skeleton.subarray(-tailLength));

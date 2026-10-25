@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "x": {
+      "type": "checkbox"
+    },
+    "field": {
+      "type": "checkbox"
+    },
+    "a": {
+      "type": "constant",
+      "value": "b"
+    },
+    "rows": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "constant",
+        "value": "row"
+      }
+    }
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "fields": {
+    "table": {
+      "type": "object",
+      "fields": {
+        "x": {
+          "type": "constant",
+          "value": "found"
+        }
+      }
+    },
+    "key": {
+      "type": "object",
+      "fields": {
+        "part": {
+          "type": "constant",
+          "value": "x"
+        }
+      }
+    }
+  }
+}

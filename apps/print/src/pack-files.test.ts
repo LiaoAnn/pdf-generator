@@ -139,7 +139,28 @@ test('T06 valid pack prints sample text with its own loaded and embedded WenKai 
 
 // Regression: checking only platform fonts permits a broken pack font to fall back.
 test('the original placeholder pack font fails with font_not_loaded', async () => {
-  const result = await error(await post(valid), 422, 'font_not_loaded');
+  // The 27-byte placeholder the broken packs still carry: not a loadable font.
+  const placeholder = await readFile(
+    new URL(
+      '../../../packages/template-tools/fixtures/broken/01-missing-stylesheet/pack/assets/report.woff2',
+      import.meta.url,
+    ),
+  );
+  expect(placeholder.byteLength).toBe(27);
+  const result = await error(
+    await post({
+      ...valid,
+      pack: {
+        ...valid.pack,
+        files: {
+          ...valid.pack.files,
+          'assets/report.woff2': encode(placeholder),
+        },
+      },
+    }),
+    422,
+    'font_not_loaded',
+  );
   expect(JSON.stringify(result.details)).toContain('Report Sans');
 });
 

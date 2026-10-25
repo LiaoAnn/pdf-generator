@@ -1,0 +1,7 @@
+@font-face { font-family: Report; font-weight: normal; font-style: normal; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 599; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 600; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 600 900; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 100 599; src: url(../assets/face.woff2); }
+body { font-family: Report; }
+/* p { font-weight: bold; font-style: italic; } */

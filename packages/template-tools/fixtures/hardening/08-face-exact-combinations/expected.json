@@ -1,0 +1,11 @@
+{
+  "description": "does not use bold slanted when only bold upright is requested",
+  "issues": [
+    {
+      "code": "font-unused",
+      "file": "styles/report.css",
+      "line": 3,
+      "column": 1
+    }
+  ]
+}

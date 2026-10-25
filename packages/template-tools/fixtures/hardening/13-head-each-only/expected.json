@@ -1,0 +1,11 @@
+{
+  "description": "rejects a head end tag inside an each branch",
+  "issues": [
+    {
+      "code": "template-structure",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 3
+    }
+  ]
+}

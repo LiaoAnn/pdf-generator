@@ -1,0 +1,11 @@
+{
+  "description": "rejects a bold face even when its regular family is used",
+  "issues": [
+    {
+      "code": "font-unused",
+      "file": "styles/report.css",
+      "line": 2,
+      "column": 1
+    }
+  ]
+}

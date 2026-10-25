@@ -1,0 +1,11 @@
+{
+  "description": "rejects cell literal true contradicting its self radio checked state",
+  "issues": [
+    {
+      "code": "gt-checkbox",
+      "file": "templates/report.hbs",
+      "line": 4,
+      "column": 23
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "description": "rejects a missing head end tag at the head start",
+  "issues": [
+    {
+      "code": "template-structure",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 3
+    }
+  ]
+}

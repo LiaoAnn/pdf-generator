@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles } from './index.ts';
 
 const templateFile = 'report.hbs';
@@ -22,7 +23,7 @@ function pack(
         assets: ['logo.svg', 'local.html'],
       },
     }),
-    [templateFile]: template,
+    [templateFile]: withHead(template),
     [cssFile]: css,
     'rules.json': JSON.stringify({
       schemaVersion: 1,
@@ -67,7 +68,7 @@ function rejects(
 function accepts(template: string, css = '') {
   const result = checkPack(pack(template, css));
   expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(result.pack?.template).toBe(template);
+  expect(result.pack?.template).toBe(withHead(template));
 }
 
 describe('printed-document element and attribute allowlist', () => {
@@ -280,16 +281,15 @@ describe('Handlebars cannot change HTML or CSS structure', () => {
   ])(
     'rejects every statement in %s at its original statement location',
     (_name, template) => {
-      const result = checkPack(pack(template));
+      const source = withHead(template);
+      const result = checkPack(pack(source));
       expect(result.ok).toBe(false);
       expect(result).not.toHaveProperty('pack');
-      const expected = [...template.matchAll(/\{\{[\s\S]*?\}\}/g)].map(
-        match => ({
-          code: 'template-structure',
-          file: templateFile,
-          ...at(template, match.index),
-        }),
-      );
+      const expected = [...source.matchAll(/\{\{[\s\S]*?\}\}/g)].map(match => ({
+        code: 'template-structure',
+        file: templateFile,
+        ...at(source, match.index),
+      }));
       expect(
         result.issues
           .filter(issue => issue.code === 'template-structure')

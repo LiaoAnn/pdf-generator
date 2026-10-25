@@ -1,0 +1,11 @@
+{
+  "description": "rejects cell checked state with literal prefix around a statement",
+  "issues": [
+    {
+      "code": "gt-attribute",
+      "file": "templates/report.hbs",
+      "line": 4,
+      "column": 9
+    }
+  ]
+}

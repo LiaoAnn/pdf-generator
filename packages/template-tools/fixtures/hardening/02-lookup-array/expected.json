@@ -1,0 +1,11 @@
+{
+  "description": "reports a located render issue for a array lookup key",
+  "issues": [
+    {
+      "code": "template-render",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 3
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 // One fixture of a batch: fake data → filled template → printed PDF and
 // ground truth → R2. Same job, same bytes for data.json and gt.json.
 import { type FakeRecord, generate } from '@pdf-generator/fake-data';
-import { fill } from '@pdf-generator/template-tools';
+import { fill, headEnd } from '@pdf-generator/template-tools';
 import type { TemplatePack, TemplateSourceApi } from '../templates/source.ts';
 import type { Checker } from './check.ts';
 import type { Printer } from './printer.ts';
@@ -78,10 +78,11 @@ function relativeUrl(from: string, path: string): string {
 }
 
 // The pack's stylesheets are linked from the document head: the print Worker
-// serves the pack's files, so their url()s resolve as in the pack.
+// serves the pack's files, so their url()s resolve as in the pack. checkPack
+// makes sure the template writes out the head's end tag.
 function linkStyles(html: string, template: string, styles: string[]): string {
-  const head = html.search(/<\/head>/i);
-  if (head < 0) throw new Error('the template has no </head>');
+  const head = headEnd(html);
+  if (head === undefined) throw new Error('the template has no </head>');
   const tags = styles
     .map(
       path => `<link rel="stylesheet" href="${relativeUrl(template, path)}">\n`,

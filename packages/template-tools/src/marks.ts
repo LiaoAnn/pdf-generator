@@ -8,6 +8,7 @@ import {
   descendants,
   type Html,
   type TemplateHtml,
+  tagLength,
 } from './html.ts';
 import type { PackIssue } from './issues.ts';
 import { isRefused } from './policy.ts';
@@ -53,9 +54,37 @@ const maxIdLength = 60;
 /** Whitespace in source text, including the no-break space as an entity. */
 const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 
-/** A data-gt-checked value: a state, or one the data decides. */
-const checkedValue = (value: string) =>
-  value === 'true' || value === 'false' || value.includes('{{');
+/**
+ * A data-gt-checked value: a state, or one the data decides, made of
+ * statements only (literal text around one prints neither true nor false).
+ */
+const checkedValue = (value: string) => {
+  if (value === 'true' || value === 'false') return true;
+  if (!value.startsWith('{{')) return false;
+  for (let at = 0; at < value.length; ) {
+    if (!value.startsWith('{{', at)) return false;
+    at += tagLength(value.slice(at));
+  }
+  return true;
+};
+
+const isToggle = (node: Html.Node): node is Html.Element =>
+  'tagName' in node &&
+  node.tagName === 'input' &&
+  ['checkbox', 'radio'].includes(
+    attributeOf(node, 'type')?.value.toLowerCase() ?? '',
+  );
+
+/**
+ * Whether a literal data-gt-checked state disagrees with the `checked`
+ * attribute of one of `inputs`, which T13 refuses when it prints.
+ */
+const contradicts = (value: string, inputs: Html.Element[]) =>
+  (value === 'true' || value === 'false') &&
+  inputs.some(
+    input =>
+      (attributeOf(input, 'checked') !== undefined) !== (value === 'true'),
+  );
 
 const isGtAttribute = (name: string) =>
   name === 'data-gt' || name.startsWith('data-gt-');
@@ -85,7 +114,7 @@ const slotProblem = (element: Html.Element, name: string, value: string) => {
 /** Every place the template breaks the data-gt rule. */
 export function markIssues(
   source: string,
-  { html, document }: TemplateHtml,
+  { html, document, printedCount }: TemplateHtml,
   file: string,
 ): PackIssue[] {
   const issues: PackIssue[] = [];
@@ -119,6 +148,14 @@ export function markIssues(
       }
     }
     const inside = [...descendants(element)];
+    /** Whether the template prints exactly one of `nodes`, however it goes. */
+    const exactlyOne = (nodes: Html.Node[]) => {
+      const { min, max } = printedCount(
+        element.sourceCodeLocation?.startOffset ?? 0,
+        nodes.map(node => node.sourceCodeLocation?.startOffset ?? 0),
+      );
+      return min === 1 && max === 1;
+    };
     if (type === 'checkbox') {
       if (checked !== undefined && !checkedValue(checked.value)) {
         report(
@@ -127,19 +164,20 @@ export function markIssues(
           'data-gt-checked must be true, false or a {{field}}',
         );
       }
-      const inputs = inside.filter(
-        node =>
-          'tagName' in node &&
-          node.tagName === 'input' &&
-          ['checkbox', 'radio'].includes(
-            attributeOf(node, 'type')?.value.toLowerCase() ?? '',
-          ),
-      );
-      if (checked === undefined && inputs.length !== 1) {
+      // T13 counts the block itself when it is the input.
+      const inputs = [element, ...inside].filter(isToggle);
+      if (checked === undefined && !exactlyOne(inputs)) {
         report(
           'gt-checkbox',
           at('data-gt'),
-          `a checkbox block needs data-gt-checked, or exactly one <input type="checkbox|radio"> (found ${inputs.length})`,
+          `a checkbox block needs data-gt-checked, or exactly one <input type="checkbox|radio"> in every branch (found ${inputs.length})`,
+        );
+      }
+      if (checked !== undefined && contradicts(checked.value, inputs)) {
+        report(
+          'gt-checkbox',
+          at('data-gt-checked'),
+          `data-gt-checked="${checked.value}" disagrees with the checked state of an input inside it`,
         );
       }
     }
@@ -147,17 +185,17 @@ export function markIssues(
       if (latex !== undefined && latex.value === '') {
         report('gt-attribute', at('data-gt-latex'), 'data-gt-latex is empty');
       }
-      const annotated = inside.some(
+      const annotations = inside.filter(
         node =>
           'tagName' in node &&
           node.tagName === 'annotation' &&
           attributeOf(node, 'encoding')?.value === 'application/x-tex',
       );
-      if (latex === undefined && !annotated) {
+      if (latex === undefined && !exactlyOne(annotations)) {
         report(
           'gt-formula',
           at('data-gt'),
-          'a formula block needs data-gt-latex, or a KaTeX <annotation encoding="application/x-tex">',
+          'a formula block needs data-gt-latex, or exactly one KaTeX <annotation encoding="application/x-tex"> in every branch',
         );
       }
     }
@@ -188,13 +226,15 @@ export function markIssues(
 
   /**
    * `table`: inside a table block; `cell`: inside one of its cells, where an
-   * element may mark a printed checkbox with data-gt-checked alone (T13).
+   * element may mark a printed checkbox with data-gt-checked alone (T13);
+   * `nested`: inside a table within a cell, whose cells T13 doesn't read.
    */
   const visit = (
     node: Html.ParentNode,
     marked: boolean,
     table: boolean,
     cell = false,
+    nested = false,
   ) => {
     for (const child of node.childNodes) {
       if (child.nodeName === '#text') {
@@ -256,6 +296,16 @@ export function markIssues(
           );
         } else if (
           mark === undefined &&
+          nested &&
+          attr.name === 'data-gt-checked'
+        ) {
+          report(
+            'gt-table',
+            at(attr.name),
+            'data-gt-checked inside a table nested in a cell: only the cells of the table block itself carry checkboxes',
+          );
+        } else if (
+          mark === undefined &&
           cell &&
           attr.name === 'data-gt-checked'
         ) {
@@ -264,6 +314,17 @@ export function markIssues(
               'gt-attribute',
               at(attr.name),
               'data-gt-checked must be true, false or a {{field}}',
+            );
+          } else if (
+            contradicts(attr.value, [
+              ...(isToggle(element) ? [element] : []),
+              ...[...descendants(element)].filter(isToggle),
+            ])
+          ) {
+            report(
+              'gt-checkbox',
+              at(attr.name),
+              `data-gt-checked="${attr.value}" disagrees with the checked state of its input`,
             );
           }
         } else if (mark === undefined) {
@@ -283,7 +344,9 @@ export function markIssues(
           );
           continue;
         }
-        visit(element, marked, table, cell || isCell);
+        if (table && element.tagName === 'table') {
+          visit(element, marked, false, false, true);
+        } else visit(element, marked, table, cell || isCell, nested);
         continue;
       }
 
