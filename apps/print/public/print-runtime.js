@@ -673,18 +673,42 @@
       /\d(?:[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))(?![\w-])/i;
     const sizeFeatures =
       /(?<![\w-])(?:(?:min|max)-)?(?:device-)?(?:width|height|aspect-ratio|orientation)(?![\w-])/i;
+    // CSS escapes, as Chrome reads them: `100v\77` is 100vw.
+    /** @param {string} text */
+    const unescapeCss = text =>
+      text.replace(
+        /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n])/gi,
+        (
+          _,
+          /** @type {string | undefined} */ hex,
+          /** @type {string} */ char,
+        ) => {
+          if (!hex) return char;
+          const code = Number.parseInt(hex, 16);
+          return code > 0 && code <= 0x10ffff
+            ? String.fromCodePoint(code)
+            : '\ufffd';
+        },
+      );
     /** @param {string} text */
     const bare = text =>
-      text
-        .replace(/\/\*[\s\S]*?\*\//g, ' ')
-        .replace(
-          /url\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)]*)\)/gi,
-          ' ',
-        )
-        .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+      unescapeCss(
+        text
+          .replace(/\/\*[\s\S]*?\*\//g, ' ')
+          .replace(
+            /url\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)]*)\)/gi,
+            ' ',
+          )
+          .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'),
+      );
     /** @param {string} where @param {string} text */
     const report = (where, text) =>
-      found.add(`${where}: ${text.replace(/\s+/g, ' ').trim().slice(0, 200)}`);
+      found.add(
+        `${where}: ${unescapeCss(text)
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 200)}`,
+      );
     /** @param {string} where @param {string} media */
     const checkMedia = (where, media) => {
       if (sizeFeatures.test(bare(media))) report(where, media);
@@ -785,6 +809,21 @@
         (units.test(bare(sizes)) || sizeFeatures.test(bare(sizes)))
       ) {
         report(tag, `sizes="${sizes}"`);
+      }
+      // A picture's source chosen by a media query, and width descriptors
+      // without `sizes`, which default to 100vw.
+      const media = element.getAttribute('media');
+      if (media && element.parentElement?.localName === 'picture') {
+        checkMedia(`${tag} media`, media);
+      }
+      const srcset = element.getAttribute('srcset');
+      if (
+        srcset &&
+        !sizes &&
+        (element.localName === 'img' || element.localName === 'source') &&
+        srcset.split(',').some(candidate => /\s\d+w\s*$/i.test(candidate))
+      ) {
+        report(tag, `srcset="${srcset}"`);
       }
     }
     return [...found].slice(0, 50);

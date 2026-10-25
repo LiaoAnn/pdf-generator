@@ -231,6 +231,46 @@ const refusals: Fixture[] = [
     head: '<style>.target { width: attr(data-width type(<length>), 10px); }</style>',
     diagnostic: 'attr(',
   },
+  {
+    name: 'attr outside content in a linked stylesheet',
+    head: '<link rel="stylesheet" href="sheet.css">',
+    files: { 'sheet.css': '.target { --w: attr(data-width); }' },
+    diagnostic: 'attr(',
+  },
+  ...[
+    [
+      'hex escape in a custom property viewport unit',
+      String.raw`100v\77`,
+      'vw',
+    ],
+    ['escaped letter in a viewport unit', String.raw`50\vw`, 'vw'],
+    ['terminated hex escape in a viewport unit', String.raw`1\76 h`, 'vh'],
+  ].map(([name, value, diagnostic]) => ({
+    name: name ?? '',
+    head:
+      diagnostic === 'vw' && value === String.raw`100v\77`
+        ? `<style>.target { --w: ${value}; width: calc((var(--w) - 790px) * 100); }</style>`
+        : `<style>.target { --w: ${value}; width: var(--w); }</style>`,
+    diagnostic: diagnostic ?? '',
+  })),
+  {
+    name: 'picture source media attribute size query',
+    body: '<picture><source media="(min-width: 793.5px)" srcset="wide.svg"><img data-gt="image" src="narrow.svg"></picture>',
+    files: {
+      'narrow.svg': svg.replace('width="10"', 'width="40"'),
+      'wide.svg': svg.replace('width="10"', 'width="200"'),
+    },
+    diagnostic: 'min-width',
+  },
+  ...['img', 'source'].map(tag => ({
+    name: `${tag} width-descriptor srcset without sizes`,
+    body:
+      tag === 'img'
+        ? '<img data-gt="image" src="a.svg" srcset="a.svg 100w, b.svg 2000w">'
+        : '<picture><source srcset="a.svg 100w, b.svg 2000w"><img data-gt="image" src="a.svg"></picture>',
+    files: { 'a.svg': svg, 'b.svg': svg },
+    diagnostic: 'srcset',
+  })),
   ...['img', 'source'].map(tag => ({
     name: `${tag} sizes viewport length`,
     body:
@@ -275,6 +315,28 @@ test.each(refusals)(
 // Regression: scanning raw HTML/CSS tokens instead of values refuses innocent
 // strings, asset names, content attr(), and fixed or font-relative dimensions.
 const controls: Omit<Fixture, 'diagnostic'>[] = [
+  ...['img', 'source'].map(tag => ({
+    name: `${tag} density-descriptor srcset without sizes`,
+    body:
+      tag === 'img'
+        ? '<img data-gt="image" src="a.svg" srcset="a.svg 1x, b.svg 2x">'
+        : '<picture><source srcset="a.svg 1x, b.svg 2x"><img data-gt="image" src="a.svg"></picture>',
+    files: { 'a.svg': svg, 'b.svg': svg },
+  })),
+  ...['print', 'screen'].map(media => ({
+    name: `picture source with plain ${media} media`,
+    body: `<picture><source media="${media}" srcset="pixel.svg"><img data-gt="image" src="pixel.svg"></picture>`,
+    files: { 'pixel.svg': svg },
+  })),
+  ...['video', 'audio'].map(tag => ({
+    name: `${tag} source media does not select a picture image`,
+    body: `<${tag}><source media="(min-width: 793.5px)"></${tag}>`,
+  })),
+  {
+    name: 'image with only a plain src and intrinsic dimensions',
+    body: '<img data-gt="image" src="pixel.svg">',
+    files: { 'pixel.svg': svg },
+  },
   {
     name: 'CSS strings and comments containing forbidden-looking tokens',
     head: `<style>/* 50vw; @media (min-width: 1px); attr(data-w) */
