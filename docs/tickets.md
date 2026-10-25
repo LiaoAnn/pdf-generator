@@ -815,6 +815,15 @@
 - **不做**：T07-22 的視窗檢查
 - **來源**：PR #69（T07-20）
 
+### T07-24 印 PDF：SVG `<set>` 的封鎖測試偶發回 `css_animation`
+- **目標**：`apps/print/src/request-blocking.test.ts`「an SVG <set> that changes an <image> href to the server」在完整 `pnpm verify` 偶發失敗：預期 `422 request_blocked`，實際回 `css_animation`（T07-20 新增的拒絕）。T07-21 的兩個 worker 跑 4 次 verify 有 2 次，單獨跑未記錄。推測是兩項檢查誰先觸發取決於時序（未證實）。先確認原因：若外部伺服器有收到請求，就是封鎖漏了，要修正式程式；若只是先後順序，讓結果固定（例如測試接受兩者之一、或檢查有固定優先順序），並在 PR 說明選擇
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的封鎖與動畫檢查；與其他 T07 票不要同時派
+- **驗收測試**：說明原因（附能推翻它的檢查）；修正後完整 `pnpm verify` 連跑 5 次這個測試都通過，外部伺服器都沒收到請求
+- **不做**：T07-22、T07-23 的範圍
+- **來源**：PR #70（T07-21）
+
 ### T27 樣板：通報單與論文用自己的詞庫
 - **目標**：T12-2 讓 `text` 規則可以帶 `phrases`；incident-form 的 3 個與 paper 的 8 個 `text` 欄位目前印出營運報告式的填充文字（「本月營收持續成長…」）。在兩個樣板的 rules.json 給各欄位符合領域的 `phrases`
 - **Blocked by**：T12-2、T23、T25
