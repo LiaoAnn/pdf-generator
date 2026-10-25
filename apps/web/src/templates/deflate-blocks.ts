@@ -19,7 +19,13 @@ const blockBudget = (output: number) =>
   freeBlocks + Math.floor(output / bytesPerBlock);
 
 export type BlockScan =
-  | { ok: true; blocks: number; output: number }
+  | {
+      ok: true;
+      blocks: number;
+      output: number;
+      /** Bytes the stream uses; any after its final block are not deflate. */
+      length: number;
+    }
   | {
       ok: false;
       reason: 'too-many-blocks' | 'too-much-output' | 'invalid';
@@ -266,5 +272,5 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
   if (blocks > blockBudget(output)) {
     return { ok: false, reason: 'too-many-blocks', blocks };
   }
-  return { ok: true, blocks, output };
+  return { ok: true, blocks, output, length: at - (held >> 3) };
 }

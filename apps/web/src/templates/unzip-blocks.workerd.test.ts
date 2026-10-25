@@ -240,6 +240,38 @@ test.each<BlockKind>(['dynamic-1', 'dynamic-15', 'fixed', 'stored'])(
   30_000,
 );
 
+test.each(['content', 'empty'] as const)(
+  'ignores 9.9 MiB of padding after a final %s deflate block within 500 ms',
+  kind => {
+    const data =
+      kind === 'content'
+        ? strToU8('0123456789abcdef'.repeat(2))
+        : new Uint8Array();
+    const finalBlock =
+      kind === 'content'
+        ? new Uint8Array(deflateRawSync(data))
+        : new Uint8Array([0x03, 0x00]);
+    const stream = new Uint8Array(
+      finalBlock.length + Math.floor(9.9 * 1024 * 1024),
+    );
+    stream.set(finalBlock);
+    // Both ZIP headers declare only the stream's output as uncompressed size;
+    // compressed size includes the trailing padding, all below the upload cap.
+    const zip = zipped(stream, data);
+    expect(zip.byteLength).toBeLessThan(10 * 1024 * 1024);
+    const start = performance.now();
+    const result = unzipBounded(zip, 20 * 1024 * 1024);
+    const elapsed = performance.now() - start;
+    expect(result).not.toHaveProperty('issue');
+    if (!('files' in result)) throw new Error(JSON.stringify(result));
+    expect(result.files['payload.bin']).toEqual(data);
+    // Feeding the trailing bytes to fflate recopies the unconsumed remainder
+    // on every 8 KiB push (~1.4 s); ignoring them leaves ample VM headroom.
+    expect(elapsed).toBeLessThan(500);
+  },
+  30_000,
+);
+
 test.each(
   [1, 2, 3].flatMap(emptyBlocks =>
     [false, true].map(trailingFixed => ({ emptyBlocks, trailingFixed })),

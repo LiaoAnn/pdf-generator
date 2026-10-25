@@ -63,9 +63,21 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
   return bytes;
 }
 
+const understated = (name: string, limit: number): PackIssue => ({
+  code: 'zip-invalid',
+  file: name,
+  message: `${name} holds more data than its zip header says (${limit} bytes)`,
+});
+
 /** Why a deflated entry was refused before inflating it. */
-class TooManyBlocks extends Error implements FlateError {
+class Refusal extends Error implements FlateError {
   code = 0;
+  readonly issue: PackIssue;
+
+  constructor(issue: PackIssue) {
+    super(issue.message);
+    this.issue = issue;
+  }
 }
 
 /**
@@ -92,25 +104,32 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
       if (!final) return;
       const stream = concat(this.#chunks, this.#size);
       this.#chunks = [];
-      const scan = scanDeflate(stream, declared.get(this.#name) ?? 0);
-      // A stream larger than its header says is refused as it inflates.
-      if (!scan.ok && scan.reason !== 'too-much-output') {
+      const limit = declared.get(this.#name) ?? 0;
+      const scan = scanDeflate(stream, limit);
+      if (!scan.ok) {
         const error =
           scan.reason === 'too-many-blocks'
-            ? new TooManyBlocks(
-                `${this.#name} is split into more deflate blocks than its data pays for (8, plus one per 4096 bytes)`,
-              )
-            : Object.assign(new Error('invalid deflate data'), { code: 1 });
+            ? new Refusal({
+                code: 'zip-too-many-blocks',
+                file: this.#name,
+                message: `${this.#name} is split into more deflate blocks than its data pays for (8, plus one per 4096 bytes)`,
+              })
+            : scan.reason === 'too-much-output'
+              ? new Refusal(understated(this.#name, limit))
+              : Object.assign(new Error('invalid deflate data'), { code: 1 });
         this.ondata(error, new Uint8Array(), true);
         return;
       }
+      // Bytes after the final block are left out: fflate would copy them
+      // again on every push, quadratic in their length.
+      const deflated = stream.subarray(0, scan.length);
       const inflate = new Inflate((data, last) =>
         this.ondata(null, data, last),
       );
       try {
-        for (let at = 0; at < stream.byteLength && !this.#stopped; ) {
-          const end = Math.min(at + slice, stream.byteLength);
-          inflate.push(stream.subarray(at, end), end === stream.byteLength);
+        for (let at = 0; at < deflated.byteLength && !this.#stopped; ) {
+          const end = Math.min(at + slice, deflated.byteLength);
+          inflate.push(deflated.subarray(at, end), end === deflated.byteLength);
           at = end;
         }
       } catch (error) {
@@ -195,12 +214,8 @@ export function unzipBounded(
     let size = 0;
     file.ondata = (error, data, final) => {
       if (stop) return;
-      if (error instanceof TooManyBlocks) {
-        stop = {
-          code: 'zip-too-many-blocks',
-          file: file.name,
-          message: error.message,
-        };
+      if (error instanceof Refusal) {
+        stop = error.issue;
         return;
       }
       if (error) {
@@ -213,11 +228,7 @@ export function unzipBounded(
       size += data.byteLength;
       inflated += data.byteLength;
       if (size > limit) {
-        stop = {
-          code: 'zip-invalid',
-          file: file.name,
-          message: `${file.name} holds more data than its zip header says (${limit} bytes)`,
-        };
+        stop = understated(file.name, limit);
       } else if (inflated > maxBytes) {
         stop = tooLarge(maxBytes, maxBytes);
       }
