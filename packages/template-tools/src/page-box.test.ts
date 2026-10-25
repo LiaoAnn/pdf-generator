@@ -83,6 +83,172 @@ describe('page-box upload guard', () => {
     selector => rejects(pack(`\n  ${selector} { color: red }`), selector),
   );
 
+  describe.each(['manifest stylesheet', 'template <style>'])(
+    'quoted Paged.js selectors in %s',
+    source => {
+      function rejectsCss(css: string, token: string) {
+        if (source === 'manifest stylesheet') rejects(pack(css), token);
+        else
+          rejects(
+            pack('', `<style>\n${css}\n</style>${paragraph}`),
+            token,
+            templateFile,
+          );
+      }
+
+      it.each(
+        ['=', '~=', '|=', '^=', '$=', '*='].flatMap(operator =>
+          [
+            'pagedjs',
+            'PAGEDJS',
+            "'pagedjs'",
+            "'PAGEDJS'",
+            '"pagedjs"',
+            '"PAGEDJS"',
+          ].flatMap(value =>
+            ['', ' i', ' s'].map(flag => `[class${operator}${value}${flag}]`),
+          ),
+        ),
+      )(
+        'rejects attribute value %s regardless of quoting, operator, case or flag at the selector start',
+        selector =>
+          rejectsCss(
+            `p { color: black }\n  ${selector} { margin: 20mm }`,
+            selector,
+          ),
+      );
+
+      describe.each([
+        '',
+        '@media print',
+        '@supports (display: grid)',
+        '@layer print',
+      ])('selector context %s', wrapper => {
+        it.each([
+          ['p, [class^="pagedjs"]', '[class^="pagedjs"]'],
+          ["p, [class^='pagedjs']", "[class^='pagedjs']"],
+          ['p:not([class*="pagedjs"])', 'p:not('],
+          ["p:not([class*='pagedjs'])", 'p:not('],
+          ['p:is(.report, [class*="pagedjs"])', 'p:is('],
+          ["p:is(.report, [class*='pagedjs'])", 'p:is('],
+        ])(
+          'rejects quoted Paged.js in %s at the offending selector rather than the value',
+          (selector, token) => {
+            const rule = `\n  ${selector} { color: red }\n`;
+            rejectsCss(wrapper ? `${wrapper} {${rule}}` : rule, token);
+          },
+        );
+      });
+
+      it.each([
+        '[title="}"]',
+        "[title='}']",
+        '[title="a;b{c}"]',
+        "[title='a;b{c}']",
+      ])(
+        'keeps parsing after quoted selector punctuation in %s and rejects only the later body padding',
+        selector =>
+          rejectsCss(
+            `\n  ${selector} { color: red }\n  body { padding: 1mm }`,
+            'padding',
+          ),
+      );
+    },
+  );
+
+  describe.each(['manifest stylesheet', 'template <style>'])(
+    'escaped Paged.js selectors in %s',
+    source => {
+      function checkEscapedCss(css: string, selector?: string) {
+        const inline = source === 'template <style>';
+        const files = inline
+          ? pack('', `<style>\n${css}\n</style>${paragraph}`)
+          : pack(css);
+        const file = inline ? templateFile : cssFile;
+        const text = String(files[file]);
+        const result = checkPack(files);
+        function issueAt(code: string, offset: number) {
+          const lines = text.slice(0, offset).split('\n');
+          return expect.objectContaining({
+            code,
+            file,
+            line: lines.length,
+            column: (lines.at(-1)?.length ?? 0) + 1,
+            message: expect.stringMatching(/\S/),
+          });
+        }
+
+        expect(result.ok).toBe(false);
+        expect(result).not.toHaveProperty('pack');
+        const escapes = [...text.matchAll(/\\/g)].map(match =>
+          issueAt('css-escape', match.index),
+        );
+        expect(
+          result.issues.filter(issue => issue.code === 'css-escape'),
+        ).toEqual(escapes);
+        expect(
+          result.issues.filter(issue => issue.code === 'css-page-box'),
+        ).toEqual(
+          selector ? [issueAt('css-page-box', text.indexOf(selector))] : [],
+        );
+        expect(result.issues).toHaveLength(escapes.length + (selector ? 1 : 0));
+      }
+
+      it.each([
+        String.raw`.\70 agedjs_page`,
+        String.raw`#\70 agedjs_page`,
+        String.raw`.\000070agedjs_page`,
+        String.raw`#\000070 agedjs_page`,
+        '.\\70\tagedjs_page',
+        '.\\70\nagedjs_page',
+        String.raw`.\50 AGEDJS_page`,
+        String.raw`.\pagedjs_page`,
+        String.raw`#pa\gedjs_page`,
+        String.raw`.pa\g\65 djs_page`,
+      ])(
+        'refuses escaped class/id %s at the selector start while retaining an issue at every backslash',
+        selector =>
+          checkEscapedCss(
+            `p { color: black }\n  ${selector} { margin: 20mm }`,
+            selector,
+          ),
+      );
+
+      it.each(
+        [
+          String.raw`\70 agedjs`,
+          String.raw`\000070agedjs`,
+          String.raw`\000070 agedjs`,
+          String.raw`pa\gedjs`,
+        ].flatMap(value =>
+          [value, `'${value}'`, `"${value}"`].flatMap(quoted =>
+            ['', ' i'].map(flag => `[class*=${quoted}${flag}]`),
+          ),
+        ),
+      )(
+        'refuses escaped attribute value %s regardless of quoting or i flag at the selector start',
+        selector =>
+          checkEscapedCss(
+            `p { color: black }\n  ${selector} { margin: 20mm }`,
+            selector,
+          ),
+      );
+
+      it('does not mistake an escaped report class for pagedjs; reports only css-escape', () => {
+        checkEscapedCss(String.raw`.\72 eport { margin: 2mm }`);
+      });
+
+      it('consumes hex digits in an escape instead of treating them as simple escapes; reports only css-escape', () => {
+        // \ed is U+00ED, followed by js; it does not spell pagedjs.
+        checkEscapedCss(String.raw`.pa\g\edjs_page { margin: 2mm }`);
+      });
+
+      it('does not treat escaped pagedjs in declaration content as a selector; reports only css-escape', () => {
+        checkEscapedCss(String.raw`p::before { content: "\70 agedjs" }`);
+      });
+    },
+  );
+
   describe.each(['@media print', '@supports (display: grid)', '@layer print'])(
     'inside %s',
     wrapper => {
@@ -169,6 +335,12 @@ describe('page-box upload guard', () => {
     'p { margin: 4mm } .body { padding: 3mm } .html-note { margin: 1mm } tbody { border: 1px solid } div.body { padding: 2mm }',
     'body p { margin: 4mm } html > div { padding: 3mm }',
     '/* .pagedjs_page { margin-top: -20mm } */ p::before { content: "pagedjs" }',
+    '[title="a{b"] { color: red } p { margin: 1mm }',
+    "[title='a{b'] { color: red } p { margin: 1mm }",
+    'p { font-family: "pagedjs" }',
+    "p { font-family: 'pagedjs' }",
+    '[class*="report"] { margin: 2mm }',
+    "[class*='report'] { margin: 2mm }",
   ])('allows legitimate pack CSS without broadening the guard: %s', css => {
     expect(checkPack(pack(css))).toMatchObject({ ok: true, issues: [] });
     expect(
