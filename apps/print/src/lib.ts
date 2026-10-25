@@ -431,12 +431,8 @@ function rejectMovedBoxes(moved: string[] | undefined) {
   }
 }
 
-// Box entries in one list and not the other.
-function changedBoxes(
-  before: string[],
-  after: string[],
-  labels = ['before printing', 'after printing'],
-): string[] {
+// Box entries in one list and not the other, for `layout_unsettled`.
+function changedBoxes(before: string[], after: string[]): string[] {
   const missing = (from: string[], other: string[]) => {
     const rest = [...other];
     return from.filter(box => {
@@ -447,29 +443,35 @@ function changedBoxes(
     });
   };
   return [
-    ...missing(before, after).map(box => `${labels[0]}: ${box}`),
-    ...missing(after, before).map(box => `${labels[1]}: ${box}`),
+    ...missing(before, after).map(box => `before printing: ${box}`),
+    ...missing(after, before).map(box => `after printing: ${box}`),
   ];
 }
 
 type Viewport = { width: number; height: number };
 const size = ({ width, height }: Viewport) => `${width}x${height}`;
 
-// The data-gt boxes at two viewports, as `{ boxes }` from the runtime (no
-// array: nothing to compare). Chrome prints at the exact page size, between
-// its floor and ceil in CSS px, and Paged.js breaks pages where the layout
-// at its own viewport put them: a layout that differs between two of these
-// can print differently than gt.json describes it (T07-22).
+// The boxes of the elements in the pages at two viewports, as `{ boxes }`
+// from the runtime (no array: nothing to compare), entry by entry. Chrome
+// prints at the exact page size, between its floor and ceil in CSS px, and
+// Paged.js breaks pages where the layout at its own viewport put them: a
+// layout that differs between two of these can print differently than
+// gt.json describes it (T07-22).
 function rejectViewportBoxes(
   medium: string,
   a: { viewport: Viewport; boxes?: unknown },
   b: { viewport: Viewport; boxes?: unknown },
 ) {
-  if (!Array.isArray(a.boxes) || !Array.isArray(b.boxes)) return;
-  const changed = changedBoxes(a.boxes, b.boxes, [
-    `at ${size(a.viewport)}`,
-    `at ${size(b.viewport)}`,
-  ]);
+  const [from, to] = [a.boxes, b.boxes];
+  if (!Array.isArray(from) || !Array.isArray(to)) return;
+  const changed: string[] = [];
+  for (let i = 0; i < Math.max(from.length, to.length); i++) {
+    if (from[i] !== to[i]) {
+      changed.push(
+        `at ${size(a.viewport)}: ${from[i] ?? 'none'}; at ${size(b.viewport)}: ${to[i] ?? 'none'}`,
+      );
+    }
+  }
   if (changed.length > 0) {
     throw new RenderError(
       'viewport_dependent',
@@ -488,7 +490,11 @@ type PrintedReader = {
   __pdfgen: {
     loadPrintResources(): Promise<void>;
     printed(options: { pageWidth: number }): PrintedState;
-    boxes(): { boxes: string[] };
+    boxes(): {
+      boxes: string[];
+      viewportDependent: string[];
+      animations: string[];
+    };
   };
 };
 
@@ -593,7 +599,8 @@ async function print<T>(
   rejectAnimations(before.animations);
   rejectViewportDependent(before.viewportDependent);
   // The same in print media, a CSS px wider and taller, with what that
-  // loads: Chrome prints between the two.
+  // loads: Chrome prints between the two. What the boxes don't show (fixed
+  // pseudo-elements, animations) is checked there too.
   if (ready.pageSize && pageViewport) {
     const ceil = {
       width: Math.ceil(ready.pageSize.width),
@@ -603,13 +610,17 @@ async function print<T>(
       ceil.width !== pageViewport.width ||
       ceil.height !== pageViewport.height
     ) {
+      const atFloor = await readBoxes();
       await setViewport(ceil);
       await loadResources();
+      const atCeil = await readBoxes();
       rejectViewportBoxes(
         'print media',
-        { viewport: pageViewport, boxes: before.boxes },
-        { viewport: ceil, ...(await readBoxes()) },
+        { viewport: pageViewport, ...atFloor },
+        { viewport: ceil, ...atCeil },
       );
+      rejectAnimations(atCeil.animations);
+      rejectViewportDependent(atCeil.viewportDependent);
       await setViewport(pageViewport);
     }
   }

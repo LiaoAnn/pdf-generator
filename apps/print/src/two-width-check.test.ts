@@ -64,6 +64,42 @@ async function post(fixture: Fixture) {
 // sheet after ignored styles; equal specificity would leave its 40px sizes.
 const printRefusals: Fixture[] = [
   {
+    name: 'equal-size image siblings swap boxes without changing the box multiset',
+    head: `<style data-pagedjs-ignore>
+      .pair { display: flex; width: 80px; }
+      .red { background: red; } .blue { background: blue; }
+      @media print and (min-width: 793.5px) {
+        .red { transform: translateX(40px); }
+        .blue { transform: translateX(-40px); }
+      }
+      </style>`,
+    target: `<div class="pair"><div class="target red" data-gt="image"></div><div class="target blue" data-gt="image"></div></div>`,
+  },
+  {
+    name: 'table cell widths change while the outer table box stays fixed',
+    head: `<style data-pagedjs-ignore>
+      table { table-layout: fixed; width: 400px; border-collapse: collapse; }
+      td { height: 40px; padding: 0; }
+      td:first-child { width: 100px; }
+      @media print and (min-width: 793.5px) {
+        td:first-child { width: 200px; }
+      }
+      </style>`,
+    // Empty colored cells isolate geometry from PDF text extraction/merging.
+    target:
+      '<table data-gt="table"><tbody><tr><td style="background:red"></td><td style="background:blue"></td></tr></tbody></table>',
+  },
+  {
+    name: 'unmarked descendant becomes fixed only at the ceil print viewport',
+    head: `<style data-pagedjs-ignore>
+      .ink { width: 10px; height: 10px; background: red; }
+      @media print and (min-width: 793.5px) {
+        .ink { position: fixed; left: 200px; top: 200px; }
+      }
+      </style>`,
+    target: '<div class="target" data-gt="image"><div class="ink"></div></div>',
+  },
+  {
     name: 'vw changes a printed box continuously between adjacent widths',
     head: '<style data-pagedjs-ignore>@media print { div.target { width: 50vw; } }</style>',
   },
@@ -101,13 +137,20 @@ async function expectBracket(
   response: Response,
   kind: string,
   sizes: string[],
+  allowFixedDetail = false,
 ) {
-  expect(response.status, await response.clone().text()).toBe(422);
+  expect(
+    response.status,
+    response.status === 200
+      ? 'unsafe document printed successfully'
+      : await response.clone().text(),
+  ).toBe(422);
   expect(response.headers.has('x-page-count')).toBe(false);
   const { error } = apiErrorSchema.parse(await response.json());
   expect(error.code).toBe('viewport_dependent');
   expect(error.details?.length).toBeGreaterThan(0);
   for (const detail of error.details ?? []) {
+    if (allowFixedDetail && /position:\s*fixed/.test(detail.message)) continue;
     expect(detail.message).toContain(kind);
     for (const size of sizes) expect(detail.message).toContain(size);
     // Diagnostics identify actual changed boxes, not the CSS mechanism.
@@ -126,6 +169,47 @@ test.each(printRefusals)(
     ]);
   },
 );
+
+test('POST /print refuses generated before pseudo-element fixed only at the ceil print viewport', async () => {
+  const response = await post({
+    name: 'ceil-only fixed pseudo-element',
+    head: `<style data-pagedjs-ignore>
+      div.target::before { content: ""; display: block; width: 10px; height: 10px; background: red; }
+      @media print and (min-width: 793.5px) {
+        div.target::before { position: fixed; left: 200px; top: 200px; }
+      }
+      </style>`,
+  });
+  // A pseudo-element has no element box: the retained fixed-position guard
+  // may supply its existing diagnostic instead of a pair of changed boxes.
+  await expectBracket(response, 'print media', ['793x1122', '794x1123'], true);
+});
+
+test('POST /print accepts a fixed-size multi-row table and nested unmarked image descendants', async () => {
+  const response = await post({
+    name: 'fixed-size table and nested descendants',
+    head: `<style>
+      table { table-layout: fixed; width: 100mm; border-collapse: collapse; }
+      td { width: 50mm; height: 30px; padding: 0; }
+      .outer { width: 20px; height: 20px; }
+      .inner { width: 10px; height: 10px; background: red; }
+      </style>`,
+    target: `<table data-gt="table"><tbody>
+      <tr><td>A</td><td>B</td></tr><tr><td>C</td><td>D</td></tr>
+      </tbody></table>
+      <div class="target" data-gt="image"><div class="outer"><div class="inner"></div></div></div>`,
+  });
+  expect(
+    response.status,
+    response.status === 200 ? '' : await response.text(),
+  ).toBe(200);
+  const result = (await response.json()) as { pdf: string; gt: unknown };
+  expect(Buffer.from(result.pdf, 'base64').subarray(0, 5).toString()).toBe(
+    '%PDF-',
+  );
+  const gt = gtSchema.parse(result.gt);
+  expect(gt.blocks.map(block => block.type)).toEqual(['table', 'image']);
+});
 
 test.each([
   {

@@ -807,8 +807,7 @@
 
   // Per laid-out [data-gt] element, `"<page> <left>,<top>,<right>,<bottom>"`
   // in CSS px from its page's top left: lib.ts compares them just before and
-  // after printing, to catch a layout still changing (T07-20), and at the
-  // viewports that bracket the printed one (T07-22).
+  // after printing, to catch a layout still changing (T07-20).
   function gtBoxes() {
     const pages = pagedPages();
     const round = (/** @type {number} */ value) =>
@@ -824,6 +823,42 @@
         const { left, top, right, bottom } = element.getBoundingClientRect();
         return `${index + 1} ${[left - origin.left, top - origin.top, right - origin.left, bottom - origin.top].map(round).join(',')}`;
       });
+  }
+
+  // The pack's elements in the Paged.js pages (the laid-out content, and
+  // data-gt elements wherever they are, with their descendants), in document
+  // order, as `"<tag> <page> <left>,<top>,<right>,<bottom>"` from the page's
+  // top left (`none` without a box): lib.ts compares the lists entry by
+  // entry at the viewports that bracket the printed one (T07-22). Not just
+  // data-gt elements, whose boxes stay put while table cells, checkboxes or
+  // an unmarked descendant inside them move; by entry, so blocks that trade
+  // places don't compare equal. Not Paged.js's own page boxes, which its
+  // print styles make as tall as the viewport.
+  function layoutBoxes() {
+    const pages = pagedPages();
+    const round = (/** @type {number} */ value) =>
+      Math.round(value * 100) / 100;
+    return pages.flatMap((page, index) => {
+      const origin = page.getBoundingClientRect();
+      const content = page.querySelectorAll(
+        '.pagedjs_page_content *, [data-gt], [data-gt] *',
+      );
+      return [...content].map(element => {
+        const box = element.getBoundingClientRect();
+        const where =
+          element.getClientRects().length > 0
+            ? [
+                box.left - origin.left,
+                box.top - origin.top,
+                box.right - origin.left,
+                box.bottom - origin.top,
+              ]
+                .map(round)
+                .join(',')
+            : 'none';
+        return `${element.localName} ${index + 1} ${where}`;
+      });
+    });
   }
 
   // The largest Paged.js page, in CSS px: the viewport lib.ts emulates print
@@ -891,7 +926,11 @@
       ready,
       loadPrintResources,
       printed,
-      boxes: () => ({ boxes: gtBoxes() }),
+      boxes: () => ({
+        boxes: layoutBoxes(),
+        viewportDependent: viewportDependent(),
+        animations: animations(),
+      }),
     },
     PagedConfig: {
       auto: true,
@@ -915,7 +954,7 @@
             ...new Set([...sourceViewportDependent, ...viewportDependent()]),
           ].slice(0, 50),
           // On screen, at the viewport Paged.js paginated at.
-          boxes: gtBoxes(),
+          boxes: layoutBoxes(),
         });
       },
     },
