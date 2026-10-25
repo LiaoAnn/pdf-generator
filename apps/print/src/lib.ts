@@ -213,9 +213,15 @@ const refusingProxy = 'http://127.0.0.1:9';
  * `<-loopback>` stops Chrome from bypassing the proxy for loopback hosts.
  */
 function printContext(browser: Browser, origin: string) {
+  // A rule without scheme and port would let every port of the host through.
+  const { protocol, hostname, port } = new URL(origin);
+  const effectivePort = port || (protocol === 'https:' ? '443' : '80');
   return browser.createBrowserContext({
     proxyServer: refusingProxy,
-    proxyBypassList: ['<-loopback>', new URL(origin).host],
+    proxyBypassList: [
+      '<-loopback>',
+      `${protocol}//${hostname}:${effectivePort}`,
+    ],
   });
 }
 

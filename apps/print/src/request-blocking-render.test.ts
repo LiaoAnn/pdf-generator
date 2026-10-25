@@ -355,9 +355,18 @@ test('a rejected fail acknowledgement is settled and preserves request_blocked',
 
 // Regression: Fetch cannot intercept preconnect, and detaching resumes paused
 // requests. The network guard must exist before a context-owned tab is opened.
-test.each(['https://print-assets.example.test', 'http://127.0.0.1:8788'])(
-  'creates a proxy context bypassing only the Worker host for %s',
-  async assetOrigin => {
+// A bare hostname rule lets another port of the Worker's hostname out.
+// Pin literal scheme/host/effective-port rules, including default ports that
+// URL.host omits, so only the Worker's origin can bypass the refusing proxy.
+test.each([
+  ['https://print.example', 'https://print.example:443'],
+  ['https://print.example:443', 'https://print.example:443'],
+  ['https://print.example:8443', 'https://print.example:8443'],
+  ['http://print.example', 'http://print.example:80'],
+  ['http://127.0.0.1:8788', 'http://127.0.0.1:8788'],
+])(
+  'creates a proxy context bypassing only the Worker origin for %s (a bare hostname rule lets another port of the Worker’s hostname out)',
+  async (assetOrigin, bypassRule) => {
     const tab = fakeTab();
     const outcome = await renderPdf(tab.browser, request, {
       assetOrigin,
@@ -370,9 +379,7 @@ test.each(['https://print-assets.example.test', 'http://127.0.0.1:8788'])(
     const config = tab.createBrowserContext.mock.calls[0]?.[0];
     expect(config?.proxyServer).toEqual(expect.any(String));
     expect(config?.proxyServer?.length).toBeGreaterThan(0);
-    expect(config?.proxyBypassList?.slice().sort()).toEqual(
-      ['<-loopback>', new URL(assetOrigin).host].sort(),
-    );
+    expect(config?.proxyBypassList).toEqual(['<-loopback>', bypassRule]);
     expect(outcome).toHaveProperty('result');
     expect(tab.newPage).toHaveBeenCalledTimes(1);
     expect(tab.createBrowserContext.mock.invocationCallOrder[0]).toBeLessThan(
