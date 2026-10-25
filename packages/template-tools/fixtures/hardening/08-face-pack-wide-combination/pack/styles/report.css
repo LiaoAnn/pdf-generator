@@ -1,0 +1,10 @@
+@font-face { font-family: Report; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: bold; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-style: italic; src: url(../assets/face.woff2); }
+@font-face { font-family: Report; font-weight: 700; font-style: italic; src: url(../assets/face.woff2); }
+@font-face { font-family: Other; src: url(../assets/face.woff2); }
+@font-face { font-family: Other; font-weight: 700; src: url(../assets/face.woff2); }
+@font-face { font-family: Other; font-style: italic; src: url(../assets/face.woff2); }
+@font-face { font-family: Other; font-weight: 700; font-style: oblique; src: url(../assets/face.woff2); }
+body { font-family: Report; }
+

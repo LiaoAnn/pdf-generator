@@ -1,0 +1,11 @@
+{
+  "description": "matches italic requests to oblique faces without using bold slanted",
+  "issues": [
+    {
+      "code": "font-unused",
+      "file": "styles/report.css",
+      "line": 3,
+      "column": 1
+    }
+  ]
+}

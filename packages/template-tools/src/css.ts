@@ -133,15 +133,30 @@ const facePattern = /@font-face\s*\{[^}]*\}/gi;
 const normalize = (name: string) =>
   name.replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 
+/** A face's weight and style as the font-unused check compares them. */
+export type FaceKind = { regular: boolean; bold: boolean; slanted: boolean };
+
+/** A font-weight that asks for (or a face weight that is) bold: 600 and up. */
+const isBold = (token: string) =>
+  /^bold(?:er)?$/i.test(token) || Number(token) >= 600;
+const isSlanted = (value: string) => /\b(?:italic|oblique)\b/i.test(value);
+
 /**
  * The @font-face rules: the family each declares (as compared, and as
- * written) and the offset of its `@`.
+ * written), the weights and style it covers, and the offset of its `@`.
  */
 export function fontFaces(
   css: string,
-): { family: string; name: string; offset: number }[] {
+): ({ family: string; name: string; offset: number } & FaceKind)[] {
   return [...withoutComments(css).matchAll(facePattern)].flatMap(match => {
-    const family = /font-family\s*:\s*([^;}]+)/i.exec(match[0])?.[1];
+    const descriptor = (name: string) =>
+      new RegExp(`${name}\\s*:\\s*([^;}]+)`, 'i').exec(match[0])?.[1];
+    const family = descriptor('font-family');
+    // normal, bold, a number or a range of two numbers (a variable face).
+    const weights = (descriptor('font-weight') ?? 'normal')
+      .trim()
+      .split(/\s+/)
+      .map(token => (/^bold$/i.test(token) ? 700 : Number(token) || 400));
     return family === undefined
       ? []
       : [
@@ -149,9 +164,33 @@ export function fontFaces(
             family: normalize(family),
             name: family.replace(/["']/g, '').trim(),
             offset: match.index,
+            regular: Math.min(...weights) < 600,
+            bold: Math.max(...weights) >= 600,
+            slanted: isSlanted(descriptor('font-style') ?? ''),
           },
         ];
   });
+}
+
+/**
+ * Whether declarations outside @font-face rules ask for bold or for italic
+ * (or oblique): font-weight, font-style and the font shorthand.
+ */
+export function fontRequests(css: string): { bold: boolean; slanted: boolean } {
+  const text = withoutComments(css).replace(facePattern, '');
+  let bold = false;
+  let slanted = false;
+  for (const match of text.matchAll(
+    /(?:^|[;{\s])(font-weight|font-style|font)\s*:\s*([^;}]*)/gi,
+  )) {
+    const property = match[1]?.toLowerCase();
+    const value = match[2] ?? '';
+    if (property !== 'font-style') {
+      bold ||= value.trim().split(/\s+/).some(isBold);
+    }
+    if (property !== 'font-weight') slanted ||= isSlanted(value);
+  }
+  return { bold, slanted };
 }
 
 /**

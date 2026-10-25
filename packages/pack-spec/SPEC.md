@@ -353,7 +353,7 @@ Put `"Noto Sans Symbols 2"` in the font list wherever ☑ ☐ print. Don't decla
 
 **Missing glyphs are errors.** A character no listed font has (for example 㵾, or 𩸽 outside WenKai) falls back to a system font, and the self-check fails on any font but the pack's: keep fixed text and `choice` options within these fonts.
 
-**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) print like the platform fonts; the batch self-check also accepts each pack font under its PostScript name (read from the font file), so text in it is not a font error. Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates.
+**Pack fonts** (a `.woff2`/`.ttf`/`.otf` in `files.assets` with an `@font-face` whose `src: url()` is relative to the stylesheet) print like the platform fonts; the batch self-check also accepts each pack font under its PostScript name (read from the font file), so text in it is not a font error. Declare only faces the document uses (`font-unused`): Paged.js downloads every declared face before it paginates. A face counts by its weight and style: a bold face (`font-weight` 600 and up) is used only when something asks for bold (`font-weight: bold` or 600+, the `font` shorthand, `<b>`, `<strong>`, `<th>`, `<h1>`–`<h6>`), an italic or oblique face only when something asks for italic (`font-style`, the shorthand, `<i>`, `<em>`, `<cite>`, `<var>`, `<dfn>`, `<address>`). A family with no face matching a requested weight and style falls back to one of its faces, so then all its faces count.
 
 ```css pack-error font-unused
 @font-face {

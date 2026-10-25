@@ -30,7 +30,7 @@
 | `asset-dynamic` | A `src`/`href`/`srcset` or CSS URL built from data (`src="img/{{kind}}.png"`) | Write each path out and choose between them with `{{#if}}` |
 | `css-escape` | A backslash escape in CSS (`content: "\25A1"`, `\5FAE`) | Write the character itself; files are UTF-8 |
 | `css-page-box` | CSS that moves the page Paged.js lays out: any selector naming `pagedjs` (any case, quoted or escaped too: `[class*="pagedjs"]`, `.\70 agedjs_page`), or a nonzero `margin`/`padding`/`border`, a `position`, `transform` or `zoom` on `html`, `body`, `:root` or `*` (`body { padding: 20mm }` as page margins, a `* { margin: 2px }` reset) | Page margins on `@page`; `html, body { margin: 0; padding: 0 }`; spacing on your own elements (§5) |
-| `font-unused` | An `@font-face` no printed element uses | Remove it; never declare the platform fonts |
+| `font-unused` | An `@font-face` no printed element uses: its family is unused, or its bold/italic face is never asked for | Remove it; never declare the platform fonts |
 | `gt-unmarked` | Text, an image, an input or a formula outside every `data-gt` (a stray `：`, a fixed caption, text between two spans) | Wrap it in its own mark, or move it into the neighbouring mark |
 | `gt-nested` | A `data-gt` inside another `data-gt` | Split the outer into separate blocks, or drop the inner mark |
 | `gt-type` | A block type not in §4's list (`text`, `value`, `header`) | Use `paragraph`, `field`, `page_header`, … |
