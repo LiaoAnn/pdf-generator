@@ -1,0 +1,11 @@
+{
+  "description": "ignores a head end tag inside title text",
+  "issues": [
+    {
+      "code": "template-structure",
+      "file": "templates/report.hbs",
+      "line": 2,
+      "column": 3
+    }
+  ]
+}

@@ -1,5 +1,6 @@
 import { strToU8, unzipSync, zipSync } from 'fflate';
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles } from './index.ts';
 
 const templateFile = 'templates/report.hbs';
@@ -26,7 +27,7 @@ function pack(
         ],
       },
     }),
-    [templateFile]: template,
+    [templateFile]: withHead(template),
     [cssFile]: css,
     'rules.json': JSON.stringify({
       schemaVersion: 1,
@@ -217,7 +218,7 @@ describe('page-number slots', () => {
         expect(result.issues).toContainEqual({
           code: 'gt-attribute',
           file: templateFile,
-          ...at(template, attribute),
+          ...at(withHead(template), attribute),
           message: expect.stringMatching(/page_number/),
         });
       });
@@ -434,7 +435,7 @@ describe('review regressions: HTML and Handlebars branches', () => {
       ['<div data-gt', '<div>{{/if}}'].map(token => ({
         code: 'gt-branch',
         file: templateFile,
-        ...at(template, token),
+        ...at(withHead(template), token),
       })),
     );
   });
@@ -476,7 +477,7 @@ describe('review regressions: HTML and Handlebars branches', () => {
         ['{{#if holder}}', '{{/if}}'].map(token => ({
           code: 'template-structure',
           file: templateFile,
-          ...at(template, token),
+          ...at(withHead(template), token),
         })),
       );
     },

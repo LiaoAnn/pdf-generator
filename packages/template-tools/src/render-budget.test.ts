@@ -38,7 +38,7 @@ function pack(template: string, data: unknown) {
         sample: 'sample.json',
       },
     }),
-    'budget.hbs': `<div data-gt="paragraph">${template}</div>`,
+    'budget.hbs': `<head></head>\n<div data-gt="paragraph">${template}</div>`,
     'base.css': '',
     'rules.json': JSON.stringify({
       schemaVersion: 1,
@@ -88,7 +88,7 @@ describe('render budgets stop untrusted packs before exhausting resources', () =
         expect.objectContaining({
           code: 'template-render',
           file: 'budget.hbs',
-          line,
+          line: line + 1,
           column: column + (line === 1 ? 25 : 0),
         }),
       ]);

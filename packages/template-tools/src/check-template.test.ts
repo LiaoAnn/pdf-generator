@@ -1,6 +1,7 @@
 import { manifestSchema, rulesSchema } from '@pdf-generator/contract';
 import { recordSchema } from '@pdf-generator/fake-data';
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles, type PackIssue } from './index.ts';
 
 const templateFile = 'templates/report.hbs';
@@ -38,7 +39,7 @@ function validFiles(template: string): PackFiles {
   });
   return {
     'manifest.json': JSON.stringify(manifest),
-    [templateFile]: template,
+    [templateFile]: withHead(template),
     'styles/base.css': 'body { color: black; }',
     'data/rules.json': JSON.stringify(rules),
     'data/sample.json': JSON.stringify(sample),
@@ -56,7 +57,14 @@ function rejected(
   expect(result.issues).toEqual(
     expect.arrayContaining(
       expected.map(issue =>
-        expect.objectContaining({ ...issue, file: templateFile }),
+        expect.objectContaining({
+          ...issue,
+          line:
+            issue.line === undefined
+              ? undefined
+              : issue.line + (withHead(template) === template ? 0 : 1),
+          file: templateFile,
+        }),
       ),
     ),
   );
@@ -69,7 +77,7 @@ function accepted(template: string) {
   const result = checkPack(validFiles(template));
   expect(result.ok).toBe(true);
   expect(result.issues).toEqual([]);
-  expect(result.pack?.template).toBe(template);
+  expect(result.pack?.template).toBe(withHead(template));
 }
 
 describe('checkPack template coverage diagnostics', () => {

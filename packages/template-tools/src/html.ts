@@ -248,6 +248,32 @@ export function templateHtml(
   };
 }
 
+/** The document's `<head>` and `<html>` elements, as the parser built them. */
+export function headOf(document: Html.Document): {
+  html?: Html.Element;
+  head?: Html.Element;
+} {
+  const html = document.childNodes.find(
+    (node): node is Html.Element =>
+      'tagName' in node && node.tagName === 'html',
+  );
+  const head = html?.childNodes.find(
+    (node): node is Html.Element =>
+      'tagName' in node && node.tagName === 'head',
+  );
+  return { html, head };
+}
+
+/**
+ * Where the head's end tag (`</head>`, `</head >`, `</HEAD>`) starts in an
+ * HTML document, as the browser's parser reads it (not in a comment or the
+ * title); undefined when the head has no explicit end tag.
+ */
+export function headEnd(html: string): number | undefined {
+  const { head } = headOf(parse(html, { sourceCodeLocationInfo: true }));
+  return head?.sourceCodeLocation?.endTag?.startOffset;
+}
+
 /** An element's attribute by its full name (`xlink:href` included). */
 export const attributeOf = (element: Html.Element, name: string) =>
   element.attrs.find(

@@ -6,6 +6,7 @@
 import {
   attributeOf,
   type Html,
+  headOf,
   lastContent,
   type TemplateHtml,
 } from './html.ts';
@@ -236,6 +237,26 @@ export function policyIssues(
   const urls: [number, number][] = [];
   const rcdata: [number, number][] = [];
 
+  // The batch links the pack's stylesheets just before the head's end tag
+  // (headEnd), so every rendering needs one: written out, outside blocks.
+  const head = headOf(document);
+  const headEndTag = head.head?.sourceCodeLocation?.endTag;
+  if (headEndTag === undefined) {
+    report(
+      'template-structure',
+      head.head?.sourceCodeLocation?.startOffset ??
+        head.html?.sourceCodeLocation?.startOffset ??
+        0,
+      'the template needs a </head> end tag: the batch adds the stylesheets before it',
+    );
+  } else if (branchAt(headEndTag.startOffset) !== -1) {
+    report(
+      'template-structure',
+      headEndTag.startOffset,
+      '</head> must be outside every {{#…}} block: the batch adds the stylesheets before it',
+    );
+  }
+
   const visit = (node: Html.ParentNode) => {
     for (const child of node.childNodes) {
       if (child.nodeName === '#comment') {
@@ -275,7 +296,13 @@ export function policyIssues(
 
       // An element prints whole or not at all only if its tags (or, without
       // an end tag, its last content) are in one Handlebars branch.
-      if (location?.startTag) {
+      // A head that only ends in a block is reported as that, above.
+      const headInBlock =
+        element === head.head &&
+        headEndTag !== undefined &&
+        branchAt(headEndTag.startOffset) !== -1 &&
+        branchAt(location?.startOffset ?? 0) === -1;
+      if (location?.startTag && !headInBlock) {
         const branch = branchAt(location.startTag.startOffset);
         const last = location.endTag ? undefined : lastContent(html, element);
         if (

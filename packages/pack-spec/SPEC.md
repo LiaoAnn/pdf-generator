@@ -90,7 +90,7 @@ The engine draws only characters the platform fonts cover. Text you write yourse
 
 ## 3. The template
 
-One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>`, then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
+One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>` outside every `{{#…}}` block (`template-structure` otherwise), then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
 
 ### Handlebars
 
