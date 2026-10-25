@@ -805,3 +805,12 @@
 - **驗收測試**：`node src/acceptance.ts --url …` 在 seed t10-2 跑 10 份通過；故意拿掉底線時失敗
 - **不做**：改樣板外觀
 - **來源**：PR #53（T14-6）
+
+### T15-4 樣板上傳：長 Huffman 碼與檔案數上限的 CPU
+- **目標**：T15-1 之後，大量長 Huffman 碼的 deflate 串流在 workerd 要 546–680 ms（main 原本 109–174 ms），1,000 個項目各 13 個區塊、共 20 MiB 的上傳要 1.66 秒（原本 1.42 秒）。(1) 區塊掃描改用兩層解碼表處理長碼；(2) 在解壓縮前先檢查 200 個檔案的上限，不必解完才擋
+- **Blocked by**：T15-1
+- **Blocks**：—
+- **撞車風險**：`apps/web/src/templates/`（`deflate-blocks.ts`、`unzip.ts`）
+- **驗收測試**：上述兩種輸入在 workerd 的時間回到 main 的水準以下；6 個真的樣板仍能上傳；T15-1 的各種炸彈仍被擋；另測 zopfli 與 7-Zip ultra 壓的 zip
+- **不做**：改上限數值
+- **來源**：PR #55（T15-1）
