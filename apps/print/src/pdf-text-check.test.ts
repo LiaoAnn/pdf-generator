@@ -80,6 +80,7 @@ function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
       pageCount: 2,
+      pageSize: { width: 793.7, height: 1122.5 },
       unloadedFaces: [],
       fragmentedRows: [],
       ...(expectedText === undefined ? {} : { expectedText }),

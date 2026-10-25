@@ -37,6 +37,8 @@ export {
 /** What the print runtime (public/print-runtime.js) reports once Paged.js is done. */
 export interface PrintReadyState {
   pageCount: number;
+  /** The largest Paged.js page, in CSS px. */
+  pageSize?: { width: number; height: number };
   /** `"<family> <weight>: <status>"` of every face that is not loaded. */
   unloadedFaces: string[];
   /**
@@ -59,6 +61,13 @@ export interface PrintReadyState {
  * only can make differ from the screen's (T07-20).
  */
 export interface PrintedState {
+  /** As `PrintReadyState.unloadedFaces`, in print media. */
+  unloadedFaces?: string[];
+  /**
+   * `"<page> <left>,<top>,<right>,<bottom>"` (CSS px from the page's top
+   * left) of every laid-out `[data-gt]` element.
+   */
+  boxes?: string[];
   /** As `PrintReadyState.animations`, in print media. */
   animations?: string[];
   /** As `PrintReadyState.movedBoxes`, in print media. */
@@ -99,6 +108,7 @@ export type RenderErrorCode =
   | 'page_box_moved'
   | 'viewport_dependent'
   | 'css_animation'
+  | 'layout_unsettled'
   | 'request_blocked';
 
 /** A render that must not produce a PDF. */
@@ -196,13 +206,17 @@ const isFavicon = (url: URL) => url.pathname === '/favicon.ico';
  * can't cover requests still on their way to the session as the tab closes
  * (Paged.js fetches an @import'ed sheet a second time); the print's proxy
  * keeps those from leaving (see `printContext`).
+ *
+ * Also returns `loaded`, which resolves once no request the tab sent is
+ * still loading: print media makes a page load what its print-only CSS
+ * uses (T07-20).
  */
 async function blockOtherRequests(
   page: Page,
   origin: string,
   files: PublishedFiles,
   onBlocked: (url: string) => void,
-): Promise<() => Promise<void>> {
+): Promise<{ settle: () => Promise<void>; loaded: () => Promise<void> }> {
   const allow = (url: string) => {
     const parsed = URL.parse(url);
     const platform =
@@ -230,9 +244,29 @@ async function blockOtherRequests(
     answering.add(answer);
     void answer.then(() => answering.delete(answer));
   });
+  const loading = new Set<string>();
+  let onIdle = () => {};
+  cdp.on('Network.requestWillBeSent', event => {
+    loading.add(event.requestId);
+  });
+  const done = ({ requestId }: { requestId: string }) => {
+    loading.delete(requestId);
+    if (loading.size === 0) onIdle();
+  };
+  cdp.on('Network.loadingFinished', done);
+  cdp.on('Network.loadingFailed', done);
+  await cdp.send('Network.enable');
   await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
-  return async () => {
-    while (answering.size > 0) await Promise.all(answering);
+  return {
+    settle: async () => {
+      while (answering.size > 0) await Promise.all(answering);
+    },
+    loaded: () =>
+      loading.size === 0
+        ? Promise.resolve()
+        : new Promise<void>(resolve => {
+            onIdle = resolve;
+          }),
   };
 }
 
@@ -301,11 +335,17 @@ export async function renderPdf<T = undefined>(
       prepareHtml(request.html, { page: request.page }),
       request.pack,
     );
-    settle = await blockOtherRequests(page, options.assetOrigin, files, url => {
-      blocked.add(url);
-      stop(blockedError());
-    });
-    const printing = print(page, files.documentUrl, options);
+    const requests = await blockOtherRequests(
+      page,
+      options.assetOrigin,
+      files,
+      url => {
+        blocked.add(url);
+        stop(blockedError());
+      },
+    );
+    settle = requests.settle;
+    const printing = print(page, files.documentUrl, options, requests.loaded);
     printing.catch(() => undefined);
     const result = await Promise.race([printing, stopped]).catch(
       (error: unknown) => {
@@ -343,10 +383,35 @@ function rejectMovedBoxes(moved: string[] | undefined) {
   }
 }
 
+// Box entries in one list and not the other, for `layout_unsettled`.
+function changedBoxes(before: string[], after: string[]): string[] {
+  const missing = (from: string[], other: string[]) => {
+    const rest = [...other];
+    return from.filter(box => {
+      const at = rest.indexOf(box);
+      if (at < 0) return true;
+      rest.splice(at, 1);
+      return false;
+    });
+  };
+  return [
+    ...missing(before, after).map(box => `before printing: ${box}`),
+    ...missing(after, before).map(box => `after printing: ${box}`),
+  ];
+}
+
+type PrintedReader = {
+  __pdfgen: {
+    loadPrintResources(): Promise<void>;
+    printed(options: { pageWidth: number }): PrintedState;
+  };
+};
+
 async function print<T>(
   page: Page,
   documentUrl: string,
   options: RenderOptions<T>,
+  loaded: () => Promise<void>,
 ): Promise<RenderResult<T>> {
   await page.goto(documentUrl);
   const ready = await waitForPrintReady(page, options.timeoutMs);
@@ -357,6 +422,7 @@ async function print<T>(
       ready.unloadedFaces,
     );
   }
+  rejectAnimations(ready.animations);
   // Measured at the PDF page size rounded down to whole CSS px, such CSS
   // can lay out differently than Chrome prints it (T07-20).
   if (ready.viewportDependent && ready.viewportDependent.length > 0) {
@@ -366,10 +432,43 @@ async function print<T>(
       ready.viewportDependent,
     );
   }
-  rejectAnimations(ready.animations);
   // Ground truth is read relative to each page's box, so a page box a
   // template moved misplaces every block in it (T07-18).
   rejectMovedBoxes(ready.movedBoxes);
+  // Everything after this is measured as printed, on the same tab (T03
+  // Must 3): Paged.js leaves stylesheets that apply in one medium only live,
+  // so the screen can place boxes and data-gt content where the PDF doesn't
+  // (T07-20), and its own @media print rules apply only in print media. The
+  // viewport as large as the largest page (in CSS px), as when printing: a
+  // document wider than its page is shrunk to fit, which moves every box.
+  // Print media is in place before the PDF is printed, and what it makes
+  // the page load (print-only images and fonts) has loaded.
+  let viewport = { width: 0, height: 0 };
+  const setViewport = async (width: number, height: number) => {
+    const next = { width: Math.floor(width), height: Math.floor(height) };
+    if (next.width === viewport.width && next.height === viewport.height) {
+      return;
+    }
+    viewport = next;
+    await page.setViewport(next);
+  };
+  if (ready.pageSize) {
+    await setViewport(ready.pageSize.width, ready.pageSize.height);
+  }
+  await page.emulateMediaType('print');
+  await page.evaluate(() =>
+    (globalThis as unknown as PrintedReader).__pdfgen.loadPrintResources(),
+  );
+  await loaded();
+  const readPrinted = (pageWidth: number) =>
+    page.evaluate(
+      width =>
+        (globalThis as unknown as PrintedReader).__pdfgen.printed({
+          pageWidth: width,
+        }),
+      pageWidth,
+    );
+  const before = await readPrinted(ready.pageSize?.width ?? 0);
   const pdf = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,
@@ -387,12 +486,6 @@ async function print<T>(
       [`PDF pages: ${numPages}; Paged.js pages: ${ready.pageCount}`],
     );
   }
-  // Everything else is measured as printed, on the same tab (T03 Must 3):
-  // Paged.js leaves stylesheets that apply in one medium only live, so the
-  // screen can place boxes and data-gt content where the PDF doesn't
-  // (T07-20), and its own @media print rules apply only here. The viewport
-  // as wide as the widest PDF page (in CSS px), as when printing: a
-  // document wider than its page is shrunk to fit, which moves every box.
   let pageWidth = 0;
   let pageHeight = 0;
   for (let number = 1; number <= numPages; number++) {
@@ -401,22 +494,27 @@ async function print<T>(
     pageWidth = Math.max(pageWidth, (x1 - x0) / 0.75);
     pageHeight = Math.max(pageHeight, (y1 - y0) / 0.75);
   }
-  await page.setViewport({
-    width: Math.floor(pageWidth),
-    height: Math.floor(pageHeight),
-  });
-  await page.emulateMediaType('print');
-  const printed = await page.evaluate(
-    width =>
-      (
-        globalThis as unknown as {
-          __pdfgen: {
-            printed(options: { pageWidth: number }): PrintedState;
-          };
-        }
-      ).__pdfgen.printed({ pageWidth: width }),
-    pageWidth,
-  );
+  await setViewport(pageWidth, pageHeight);
+  const printed = await readPrinted(pageWidth);
+  // What arrived while the PDF was printed moved boxes after it: the PDF
+  // and the ground truth would describe different layouts.
+  if (before.boxes && printed.boxes) {
+    const changed = changedBoxes(before.boxes, printed.boxes);
+    if (changed.length > 0) {
+      throw new RenderError(
+        'layout_unsettled',
+        'The layout changed while the PDF was printed',
+        changed.slice(0, 50),
+      );
+    }
+  }
+  if (printed.unloadedFaces && printed.unloadedFaces.length > 0) {
+    throw new RenderError(
+      'font_not_loaded',
+      'Some font faces did not load',
+      printed.unloadedFaces,
+    );
+  }
   rejectAnimations(printed.animations);
   if (printed.fragmentedRows && printed.fragmentedRows.length > 0) {
     throw new RenderError(

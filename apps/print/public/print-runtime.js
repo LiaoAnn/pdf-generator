@@ -868,8 +868,51 @@
     return [...found].slice(0, 50);
   }
 
+  // Per laid-out [data-gt] element, `"<page> <left>,<top>,<right>,<bottom>"`
+  // in CSS px from its page's top left: lib.ts compares them just before and
+  // after printing, to catch a layout still changing (T07-20).
+  function gtBoxes() {
+    const pages = pagedPages();
+    const round = (/** @type {number} */ value) =>
+      Math.round(value * 100) / 100;
+    return [...document.querySelectorAll('[data-gt]')]
+      .filter(element => element.getClientRects().length > 0)
+      .map(element => {
+        const index = pages.findIndex(page => page.contains(element));
+        const origin = pages[index]?.getBoundingClientRect() ?? {
+          left: 0,
+          top: 0,
+        };
+        const { left, top, right, bottom } = element.getBoundingClientRect();
+        return `${index + 1} ${[left - origin.left, top - origin.top, right - origin.left, bottom - origin.top].map(round).join(',')}`;
+      });
+  }
+
+  // The largest Paged.js page, in CSS px: the viewport lib.ts emulates print
+  // media at before printing.
+  function pageSize() {
+    let width = 0;
+    let height = 0;
+    for (const page of pagedPages()) {
+      const rect = page.getBoundingClientRect();
+      width = Math.max(width, rect.width);
+      height = Math.max(height, rect.height);
+    }
+    return { width, height };
+  }
+
+  // Waits for what print media made the page load: fonts and images (lib.ts
+  // also waits for the requests themselves).
+  async function loadPrintResources() {
+    await document.fonts.ready;
+    await Promise.all(
+      [...document.images].map(image => image.decode().catch(() => undefined)),
+    );
+  }
+
   // What the PDF shows, measured in print media (lib.ts emulates it at the
-  // PDF's page width): the checks of the page boxes, the table rows and the
+  // page size), once before and once after printing: the data-gt boxes,
+  // fonts, animations, the checks of the page boxes, the table rows and the
   // data-gt text, and the scale guard's ink. Paged.js leaves stylesheets that
   // apply in one medium only live (`media="screen"`, data-pagedjs-ignore,
   // `@media all and (…)`), so these and the ground truth, which lib.ts reads
@@ -878,6 +921,8 @@
   function printed({ pageWidth }) {
     return {
       animations: animations(),
+      unloadedFaces: unloadedFaces(),
+      boxes: gtBoxes(),
       movedBoxes: movedBoxes({ print: true, pageWidth }),
       fragmentedRows: fragmentedRows(),
       plainInk: plainInk(),
@@ -885,7 +930,7 @@
     };
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[] }) => void} */
+  /** @type {(state: { pageCount: number, pageSize: { width: number, height: number }, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[] }) => void} */
   let resolveReady = () => {};
   /** @type {string[]} */
   let sourceViewportDependent = [];
@@ -893,8 +938,8 @@
     resolveReady = resolve;
   });
   Object.assign(window, {
-    // lib.ts calls printed() in print media, after printing the PDF.
-    __pdfgen: { ready, printed },
+    // lib.ts calls these in print media, before and after printing the PDF.
+    __pdfgen: { ready, loadPrintResources, printed },
     PagedConfig: {
       auto: true,
       before: async () => {
@@ -909,6 +954,7 @@
         fillPageNumbers(flow.total);
         resolveReady({
           pageCount: flow.total,
+          pageSize: pageSize(),
           unloadedFaces: unloadedFaces(),
           movedBoxes: movedBoxes(),
           animations: animations(),

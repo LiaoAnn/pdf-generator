@@ -178,6 +178,7 @@ describe('template author error explanations', () => {
     'page_box_moved',
     'viewport_dependent',
     'css_animation',
+    'layout_unsettled',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -279,6 +280,38 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toContain('標準答案');
     expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
     expect(issue?.explanation).toMatch(/移除|停用|關閉|取消|去除|不要|避免|勿/);
+  });
+
+  // Regression: without its own explanation the user sees the unknown-code
+  // fallback and cannot tell that a resource loading while printing, such as
+  // a print-only image or font, made the PDF differ from the ground truth.
+  test('preview layout_unsettled refusals explain that the layout changed while printing and how to avoid it', () => {
+    const raw = 'data-gt boxes changed while the PDF was printed';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'layout_unsettled', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('layout_unsettled');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toMatch(cjk);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.explanation).toMatch(
+      /列印(?:時|過程|期間|當下)|印出(?:時|過程)/,
+    );
+    expect(issue?.explanation).toMatch(/版面|排版|位置/);
+    expect(issue?.explanation).toMatch(/改變|變動|變了|移動|位移|不同/);
+    expect(issue?.explanation).toMatch(/載入|讀取/);
+    expect(issue?.explanation).toMatch(/圖片|圖檔/);
+    expect(issue?.explanation).toMatch(/字型/);
+    expect(issue?.explanation).toMatch(/螢幕/);
+    expect(issue?.explanation).toMatch(/列印專用|只在列印|僅在列印|只有列印/);
+    expect(issue?.explanation).toContain('PDF');
+    expect(issue?.explanation).toContain('標準答案');
+    expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
+    expect(issue?.explanation).toMatch(/改用|移除|避免|不要|勿|一樣|相同|同樣/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -483,6 +516,7 @@ describe('stored fixture print errors', () => {
     'page_box_moved',
     'viewport_dependent',
     'css_animation',
+    'layout_unsettled',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',

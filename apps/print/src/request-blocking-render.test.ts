@@ -22,6 +22,7 @@ const request = {
 } as const;
 const ready = {
   pageCount: 1,
+  pageSize: { width: 793.7, height: 1122.5 },
   unloadedFaces: [] as string[],
 } satisfies PrintReadyState;
 
@@ -39,7 +40,12 @@ function fakeTab(options: FakeTabOptions = {}) {
   const fetch = fakeFetch();
   const requests: Record<string, string> = {};
   let documentUrl = '';
+  // The print reads its layout (`printed`) before and after the PDF: a stage
+  // still makes its requests once.
+  const fired = new Set<Stage>();
   const fire = (stage: Stage) => {
+    if (fired.has(stage)) return;
+    fired.add(stage);
     for (const template of options.fire?.[stage] ?? []) {
       const url = template.replace(
         '{id}',

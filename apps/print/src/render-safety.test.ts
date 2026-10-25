@@ -39,6 +39,7 @@ test.each([
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
       pageCount: 3,
+      pageSize: { width: 793.7, height: 1122.5 },
       unloadedFaces: fixture.unloadedFaces,
       fragmentedRows: fixture.fragmentedRows,
     })),
