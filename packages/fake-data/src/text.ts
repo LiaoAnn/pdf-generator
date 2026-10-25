@@ -277,7 +277,8 @@ export function fillerText(
  * a mark, then a whole phrase or the head of a longer one and the end mark.
  * Length 1 is the first character of a phrase. When nothing fits the end
  * exactly (all phrases nearly one length), the text ends with a phrase head
- * and no end mark.
+ * and no end mark. Each choice takes a phrase this text hasn't used yet when
+ * one fits, so a phrase repeats only once the fitting ones run out.
  */
 export function phraseText(
   rng: Rng,
@@ -286,50 +287,73 @@ export function phraseText(
   length: number,
 ): string {
   const { marks, end, gap } = styles[lang];
-  const pool = phrases.map(phrase => Array.from(phrase));
-  const head = (n: number) => rng.pick(pool).slice(0, n).join('');
-  const lengths = new Set(pool.map(p => p.length));
-  const longest = Math.max(...lengths);
-  if (length === 1) return head(1);
+  const pool = [...new Set(phrases)].map(phrase => Array.from(phrase));
+  const used = new Set<string[]>();
+  const unused = (list: string[][]) => list.filter(p => !used.has(p));
+  const prefer = (list: string[][]) => {
+    const fresh = unused(list);
+    return fresh.length > 0 ? fresh : list;
+  };
+  const take = (list: string[][], n?: number) => {
+    const phrase = rng.pick(prefer(list));
+    used.add(phrase);
+    return phrase.slice(0, n).join('');
+  };
+  const longest = Math.max(...pool.map(p => p.length));
+  if (length === 1) return take(pool, 1);
   let out = '';
   let left = length;
   for (;;) {
-    const exact = pool.filter(p => p.length === left - 1);
     // A phrase, its mark and the gap, leaving room for a character and the end.
-    const next = pool.filter(p => p.length + 1 + gap.length <= left - 2);
+    const fits = pool.filter(p => p.length + 1 + gap.length <= left - 2);
+    const exact = pool.filter(p => p.length === left - 1);
+    // Once no unused phrase can go on, end with an unused one, whole or its
+    // head, before repeating one.
+    const ending = unused(pool.filter(p => p.length >= left - 1));
+    const next =
+      unused(fits).length > 0 ? unused(fits) : ending.length > 0 ? [] : fits;
+    const closer =
+      unused(exact).length > 0
+        ? exact
+        : next.length === 0 && ending.length === 0
+          ? exact
+          : [];
     if (
-      exact.length > 0 &&
+      closer.length > 0 &&
       (next.length === 0 || left <= 30 || rng.chance(0.3))
     ) {
-      return `${out + rng.pick(exact).join('')}${end}`;
+      return `${out + take(closer)}${end}`;
     }
     if (next.length === 0) break;
-    // Prefer a phrase after which a whole phrase can end the text, else one
-    // leaving room for a few characters, so the text rarely ends on a stub.
+    // Prefer a phrase after which an unused whole phrase can end the text,
+    // else one leaving room for a few characters, so the text rarely ends on
+    // a stub.
     const tail = (p: string[]) => left - p.length - 2 - gap.length;
-    const closing = next.filter(p => lengths.has(tail(p)));
+    const fresh = unused(pool).length > 0;
+    const enders = new Map<number, number>();
+    for (const q of fresh ? unused(pool) : pool) {
+      enders.set(q.length, (enders.get(q.length) ?? 0) + 1);
+    }
+    // The phrase itself can't also be the one that ends the text.
+    const self = (p: string[]) =>
+      p.length === tail(p) && !(fresh && used.has(p)) ? 1 : 0;
+    const closing = next.filter(p => (enders.get(tail(p)) ?? 0) > self(p));
     const roomy = next.filter(p => tail(p) >= Math.min(4, longest));
     const phrase = rng.pick(
       closing.length > 0 ? closing : roomy.length > 0 ? roomy : next,
     );
+    used.add(phrase);
     out += phrase.join('') + rng.pick(marks) + gap;
     left -= phrase.length + 1 + gap.length;
   }
   const longer = pool.filter(p => p.length > left - 1);
-  if (longer.length > 0) {
-    return `${
-      out +
-      rng
-        .pick(longer)
-        .slice(0, left - 1)
-        .join('')
-    }${end}`;
-  }
+  if (longer.length > 0) return `${out + take(longer, left - 1)}${end}`;
   // Dead end: every phrase is a little too short to end the text and too long
   // to leave room for another. Close one with a mark and start the next.
-  const phrase = rng.pick(pool);
+  const phrase = rng.pick(prefer(pool));
+  used.add(phrase);
   const rest = left - phrase.length - 1 - gap.length;
   return rest > 0
-    ? `${out + phrase.join('') + rng.pick(marks) + gap}${head(rest)}`
-    : `${out + phrase.join('') + rng.pick(marks)}${head(rest + gap.length)}`;
+    ? `${out + phrase.join('') + rng.pick(marks) + gap}${take(pool, rest)}`
+    : `${out + phrase.join('') + rng.pick(marks)}${take(pool, rest + gap.length)}`;
 }
