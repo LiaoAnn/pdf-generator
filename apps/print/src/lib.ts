@@ -284,6 +284,10 @@ async function blockOtherRequests(
   };
 }
 
+// How long a failed print waits for its tab's requests before choosing its
+// error; a request still loading after that is not waited for.
+const settleRequestsMs = 1000;
+
 // Nothing listens on the discard port, so a connection to it is refused.
 const refusingProxy = 'http://127.0.0.1:9';
 
@@ -362,7 +366,20 @@ export async function renderPdf<T = undefined>(
     const printing = print(page, files.documentUrl, options, requests);
     printing.catch(() => undefined);
     const result = await Promise.race([printing, stopped]).catch(
-      (error: unknown) => {
+      async (error: unknown) => {
+        // A check can fail as a blocked request is still on its way to the
+        // session: an SVG <set> sends its request as the page becomes ready
+        // (T07-24). Waiting for what the tab sent lets request_blocked win.
+        if (blocked.size === 0) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          await Promise.race([
+            requests.loaded(),
+            new Promise<void>(resolve => {
+              timer = setTimeout(resolve, settleRequestsMs);
+            }),
+          ]);
+          clearTimeout(timer);
+        }
         throw blocked.size > 0 ? blockedError() : error;
       },
     );
