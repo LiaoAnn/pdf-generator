@@ -61,6 +61,8 @@ export interface PrintReadyState {
  * only can make differ from the screen's (T07-20).
  */
 export interface PrintedState {
+  /** As `PrintReadyState.viewportDependent`, in print media. */
+  viewportDependent?: string[];
   /** As `PrintReadyState.unloadedFaces`, in print media. */
   unloadedFaces?: string[];
   /**
@@ -374,6 +376,18 @@ export async function renderPdf<T = undefined>(
   }
 }
 
+// Measured at the page size rounded down to whole CSS px, such CSS can lay
+// out differently than Chrome prints it (T07-20).
+function rejectViewportDependent(found: string[] | undefined) {
+  if (found && found.length > 0) {
+    throw new RenderError(
+      'viewport_dependent',
+      "The template's CSS depends on the viewport size",
+      found,
+    );
+  }
+}
+
 // The PDF and the ground truth would each catch it at a different moment.
 function rejectAnimations(animations: string[] | undefined) {
   if (animations && animations.length > 0) {
@@ -435,15 +449,7 @@ async function print<T>(
     );
   }
   rejectAnimations(ready.animations);
-  // Measured at the PDF page size rounded down to whole CSS px, such CSS
-  // can lay out differently than Chrome prints it (T07-20).
-  if (ready.viewportDependent && ready.viewportDependent.length > 0) {
-    throw new RenderError(
-      'viewport_dependent',
-      "The template's CSS depends on the viewport size",
-      ready.viewportDependent,
-    );
-  }
+  rejectViewportDependent(ready.viewportDependent);
   // Ground truth is read relative to each page's box, so a page box a
   // template moved misplaces every block in it (T07-18).
   rejectMovedBoxes(ready.movedBoxes);
@@ -502,6 +508,7 @@ async function print<T>(
   // An animation short enough to end while the PDF is printed is gone from
   // the read after it.
   rejectAnimations(before.animations);
+  rejectViewportDependent(before.viewportDependent);
   const pdf = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,

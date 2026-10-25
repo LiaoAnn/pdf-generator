@@ -70,6 +70,15 @@ const svg =
 const animationRefusals: (Omit<Fixture, 'diagnostic'> & {
   diagnostic: RegExp;
 })[] = [
+  {
+    name: 'animation-name list with none followed by active pulse',
+    head: `<style data-pagedjs-ignore>
+      @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
+      .target { animation-name: none, pulse; animation-duration: 999s;
+        animation-iteration-count: infinite; }
+      </style>`,
+    diagnostic: /pulse/i,
+  },
   ...[1, 2, 3].map(attempt => ({
     name: `short print-only descendant animation (attempt ${attempt})`,
     head: `<style data-pagedjs-ignore>
@@ -259,6 +268,46 @@ const refusals: Fixture[] = [
     files: { 'outer.css': '@import "inner.css";', 'inner.css': rule },
     diagnostic: '50vw',
   },
+  // These imports are inactive on screen. Inspecting only the stylesheets
+  // loaded before print media misses the rules Chrome uses for the PDF.
+  {
+    name: 'print-only late import chain with a min-width query',
+    head: '<style data-pagedjs-ignore media="print">@import url(a.css);</style>',
+    files: {
+      'a.css': '@import url(b.css);',
+      'b.css':
+        '@media (min-width:793.5px) { .target { position:relative; left:100px; } }',
+    },
+    diagnostic: 'min-width',
+  },
+  {
+    name: 'print-only late import with a viewport length',
+    head: '<style data-pagedjs-ignore media="print">@import url(c.css);</style>',
+    files: { 'c.css': rule },
+    diagnostic: '50vw',
+  },
+  // Chrome repeats fixed ink on every printed page, but the DOM has only
+  // one element for ground truth. Stable before/after boxes cannot catch it.
+  ...[
+    [
+      'plain stylesheet',
+      '<style>.target { position:fixed; left:100px; top:100px; }</style>',
+    ],
+    [
+      'print-only ignored stylesheet',
+      '<style data-pagedjs-ignore>@media print { .target { position:fixed; left:100px; top:100px; } }</style>',
+    ],
+    [
+      'unmarked descendant in print media',
+      '<style data-pagedjs-ignore>@media print { .ink { position:fixed; left:100px; top:100px; } }</style>',
+    ],
+  ].map(([name, head]) => ({
+    name: `computed position fixed from ${name}`,
+    head,
+    body: `<div data-gt="image" style="width:40px;height:40px"><div class="ink" style="width:10px;height:10px;background:black"></div></div>
+      <p data-gt="paragraph" style="break-before:page">SECOND_PAGE_MARKER</p>`,
+    diagnostic: 'fixed',
+  })),
   ...[
     '(width: 800px)',
     '(min-width: 800px)',
@@ -415,6 +464,25 @@ test.each(refusals)(
 // Regression: scanning raw HTML/CSS tokens instead of values refuses innocent
 // strings, asset names, content attr(), and fixed or font-relative dimensions.
 const controls: Omit<Fixture, 'diagnostic'>[] = [
+  {
+    name: 'animation-name list containing only none',
+    head: `<style data-pagedjs-ignore>
+      @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
+      .target { animation-name: none, none; animation-duration: 999s;
+        animation-iteration-count: infinite; }
+      </style>`,
+  },
+  ...['absolute', 'relative', 'sticky'].map(position => ({
+    name: `computed position ${position}`,
+    head: `<style data-pagedjs-ignore>.target { position:${position}; left:10px; top:10px; }</style>`,
+  })),
+  {
+    name: 'fixed declaration overridden to computed relative on screen and print',
+    head: `<style data-pagedjs-ignore>
+      .target { position:fixed; left:10px; top:10px; }
+      .target { position:relative; }
+      </style>`,
+  },
   {
     name: 'transition declared without any screen-to-print style change',
     head: '<style data-pagedjs-ignore>.target { transition: width 999s linear; }</style>',

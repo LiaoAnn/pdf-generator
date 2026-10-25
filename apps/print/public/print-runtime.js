@@ -655,7 +655,8 @@
 
   // CSS whose result depends on the viewport's size: viewport and container
   // query units (container units fall back to the small viewport), media
-  // queries on the viewport's size, and attr() outside `content` (a typed
+  // queries on the viewport's size, position: fixed (printed on every page),
+  // and attr() outside `content` (a typed
   // attr() turns an attribute such as data-w="50vw" into a length). lib.ts
   // measures in print media at the PDF page size rounded down to whole CSS
   // px, while Chrome prints at the exact page size, so such CSS can lay out
@@ -665,7 +666,8 @@
   // attributes, `sizes`), and in the source text of <style> elements and
   // `style` attributes, since a Chrome without typed attr() drops it from
   // the CSSOM. Strings, comments and url()s don't count. Run before
-  // Paged.js reads the pack's stylesheets and again once it has paginated.
+  // Paged.js reads the pack's stylesheets, once it has paginated and in
+  // print media, once what print media loads (late @imports) has loaded.
   function viewportDependent() {
     /** @type {Set<string>} */
     const found = new Set();
@@ -795,6 +797,12 @@
       }
       const source = element.getAttribute('style');
       if (source) checkSource(`${tag} style`, source);
+      // Placed relative to the viewport, and printed on every page.
+      for (const pseudo of ['', '::before', '::after']) {
+        if (getComputedStyle(element, pseudo || null).position === 'fixed') {
+          report(`${tag}${pseudo}`, 'position: fixed');
+        }
+      }
       if (element instanceof SVGElement) {
         for (const { name, value } of element.attributes) {
           if (name !== 'style' && units.test(bare(value))) {
@@ -861,7 +869,7 @@
       // still runs from its start when Chrome prints.
       for (const pseudo of ['', '::before', '::after']) {
         const { animationName } = getComputedStyle(element, pseudo || null);
-        if (animationName && animationName !== 'none') {
+        if (animationName.split(',').some(name => name.trim() !== 'none')) {
           found.add(
             `<${element.localName}>${pseudo}: animation ${animationName}`,
           );
@@ -939,6 +947,7 @@
   function printed({ pageWidth }) {
     return {
       animations: animations(),
+      viewportDependent: viewportDependent(),
       unloadedFaces: unloadedFaces(),
       boxes: gtBoxes(),
       movedBoxes: movedBoxes({ print: true, pageWidth }),

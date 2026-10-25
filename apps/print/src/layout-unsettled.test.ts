@@ -54,6 +54,26 @@ async function run(fake: ReturnType<typeof fakeBrowser>) {
 
 const settled = ['1 72,72,300,96', '1 72,100,300,124'];
 
+// A print-only import may finish after the screen scan. Its diagnostic must
+// stop printing even when the boxes are stable and the screen scan was clean.
+test.each(['<style>: @media (min-width: 793.5px)', '.target: width: 50vw'])(
+  'viewport dependence first reported in print media refuses %s',
+  async diagnostic => {
+    const printed = { boxes: settled, viewportDependent: [diagnostic] };
+    const fake = fakeBrowser(printed);
+    const outcome = await run(fake);
+    const { error } = outcome as { error: unknown };
+    expect.soft(error).toBeInstanceOf(RenderError);
+    expect.soft(error).toMatchObject({
+      code: 'viewport_dependent',
+      details: [diagnostic],
+    });
+    expect.soft(fake.page.pdf).not.toHaveBeenCalled();
+    expect.soft(outcome.inspect).not.toHaveBeenCalled();
+    expect(fake.page.close).toHaveBeenCalledTimes(1);
+  },
+);
+
 // A short print-only animation can finish during page.pdf(), leaving identical
 // block boxes and no animation in the post-PDF read despite changing the ink.
 test('an animation present only before the PDF fails with css_animation before printing', async () => {
