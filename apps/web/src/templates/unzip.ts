@@ -5,9 +5,17 @@
 // and stops at the first entry larger than it says or once the pack is larger
 // than `maxBytes`. Entries are counted too, directories included: walking
 // hundreds of thousands of tiny ones takes seconds. A name may appear only
-// once: with two, which file a reader gets depends on the reader.
+// once: with two, which file a reader gets depends on the reader. And a
+// deflated entry's blocks are counted before it is inflated (deflate-blocks).
 import type { PackIssue } from '@pdf-generator/template-tools';
-import { Unzip, UnzipInflate, unzipSync } from 'fflate';
+import {
+  type FlateError,
+  Inflate,
+  Unzip,
+  type UnzipDecoder,
+  unzipSync,
+} from 'fflate';
+import { scanDeflate } from './deflate-blocks.ts';
 
 /** Input per step: one step inflates to at most ~1000 times this. */
 const slice = 8 * 1024;
@@ -44,6 +52,77 @@ const duplicate = (name: string): PackIssue => ({
   file: name,
   message: `${name} is in the zip more than once`,
 });
+
+function concat(chunks: Uint8Array[], size: number): Uint8Array {
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return bytes;
+}
+
+/** Why a deflated entry was refused before inflating it. */
+class TooManyBlocks extends Error implements FlateError {
+  code = 0;
+}
+
+/**
+ * fflate's inflater for deflated entries, run only once the entry's whole
+ * stream has been scanned and stays within its block budget. A stream may
+ * have at most the blocks the entry's size in the zip directory pays for.
+ */
+function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
+  return class implements UnzipDecoder {
+    static compression = 8;
+    ondata: UnzipDecoder['ondata'] = () => {};
+    readonly #name: string;
+    #chunks: Uint8Array[] = [];
+    #size = 0;
+    #stopped = false;
+
+    constructor(name: string) {
+      this.#name = name;
+    }
+
+    push(chunk: Uint8Array, final: boolean) {
+      this.#chunks.push(chunk);
+      this.#size += chunk.byteLength;
+      if (!final) return;
+      const stream = concat(this.#chunks, this.#size);
+      this.#chunks = [];
+      const scan = scanDeflate(stream, declared.get(this.#name) ?? 0);
+      // A stream larger than its header says is refused as it inflates.
+      if (!scan.ok && scan.reason !== 'too-much-output') {
+        const error =
+          scan.reason === 'too-many-blocks'
+            ? new TooManyBlocks(
+                `${this.#name} is split into more deflate blocks than its data pays for (8, plus one per 4096 bytes)`,
+              )
+            : Object.assign(new Error('invalid deflate data'), { code: 1 });
+        this.ondata(error, new Uint8Array(), true);
+        return;
+      }
+      const inflate = new Inflate((data, last) =>
+        this.ondata(null, data, last),
+      );
+      try {
+        for (let at = 0; at < stream.byteLength && !this.#stopped; ) {
+          const end = Math.min(at + slice, stream.byteLength);
+          inflate.push(stream.subarray(at, end), end === stream.byteLength);
+          at = end;
+        }
+      } catch (error) {
+        this.ondata(error as FlateError, new Uint8Array(), true);
+      }
+    }
+
+    terminate() {
+      this.#stopped = true;
+    }
+  };
+}
 
 /**
  * The pack's files (directories and macOS metadata left out), or the one
@@ -116,6 +195,14 @@ export function unzipBounded(
     let size = 0;
     file.ondata = (error, data, final) => {
       if (stop) return;
+      if (error instanceof TooManyBlocks) {
+        stop = {
+          code: 'zip-too-many-blocks',
+          file: file.name,
+          message: error.message,
+        };
+        return;
+      }
       if (error) {
         stop = whole(
           'zip-invalid',
@@ -139,19 +226,11 @@ export function unzipBounded(
         return;
       }
       chunks.push(data);
-      if (final) {
-        const bytes = new Uint8Array(size);
-        let at = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, at);
-          at += chunk.byteLength;
-        }
-        files[file.name] = bytes;
-      }
+      if (final) files[file.name] = concat(chunks, size);
     };
     file.start();
   });
-  unzip.register(UnzipInflate);
+  unzip.register(blockCheckedInflate(declared));
   try {
     for (let at = 0; at < zip.byteLength && !stop; at += slice) {
       const end = Math.min(at + slice, zip.byteLength);
