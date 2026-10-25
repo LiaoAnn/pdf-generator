@@ -47,18 +47,29 @@ const rootBits = 9;
 const rootMask = (1 << rootBits) - 1;
 const link = 1 << 20;
 
-/** The low `length` bits of `code`, in reverse order. */
-function reverse(code: number, length: number) {
-  let reversed = 0;
-  for (let bit = 0; bit < length; bit++) {
-    reversed |= ((code >> bit) & 1) << (length - 1 - bit);
-  }
-  return reversed;
+/** Each `rootBits`-bit number with its bits in reverse order. */
+const reversed = new Uint16Array(1 << rootBits);
+for (let n = 1; n < reversed.length; n++) {
+  reversed[n] = ((reversed[n >> 1] ?? 0) >> 1) | ((n & 1) << (rootBits - 1));
 }
+
+/** `code`, `length` bits long and no longer than `rootBits`, reversed. */
+const reverse = (code: number, length: number) =>
+  (reversed[code] ?? 0) >> (rootBits - length);
+
+// Scratch space for huffman(), which runs once per table: three for each
+// dynamic block, so allocating it each time would cost more than it does.
+const codes = new Uint16Array(320);
+/** By root slot: how many bits its subtable is indexed by, 0 for none. */
+const widest = new Uint8Array(1 << rootBits);
+const offsets = new Uint16Array(1 << rootBits);
 
 function huffman(lengths: Uint8Array): Huffman {
   const count = new Uint16Array(16);
-  for (const length of lengths) count[length] = (count[length] ?? 0) + 1;
+  for (let value = 0; value < lengths.length; value++) {
+    const length = lengths[value] ?? 0;
+    count[length] = (count[length] ?? 0) + 1;
+  }
   count[0] = 0;
   let left = 1;
   for (let length = 1; length < 16; length++) {
@@ -71,56 +82,52 @@ function huffman(lengths: Uint8Array): Huffman {
   for (let length = 1; length < 16; length++) {
     next[length] = ((next[length - 1] ?? 0) + (count[length - 1] ?? 0)) << 1;
   }
-  const codes = new Uint16Array(lengths.length);
   // Longer codes sharing their first `rootBits` bits share a subtable, as
   // wide as the longest of them needs.
-  const widest = new Uint8Array(1 << rootBits);
-  lengths.forEach((length, value) => {
-    if (!length) return;
+  const roots: number[] = [];
+  for (let value = 0; value < lengths.length; value++) {
+    const length = lengths[value] ?? 0;
+    if (!length) continue;
     const code = next[length] ?? 0;
     next[length] = code + 1;
     codes[value] = code;
-    if (length <= rootBits) return;
+    if (length <= rootBits) continue;
     const root = reverse(code >> (length - rootBits), rootBits);
+    if (!widest[root]) roots.push(root);
     widest[root] = Math.max(widest[root] ?? 0, length - rootBits);
-  });
+  }
   let size = 1 << rootBits;
-  const offsets = new Uint16Array(1 << rootBits);
-  widest.forEach((bits, root) => {
-    if (!bits) return;
+  for (const root of roots) {
     offsets[root] = size;
-    size += 1 << bits;
-  });
+    size += 1 << (widest[root] ?? 0);
+  }
   // Input bits come least significant first, so a code fills every slot
   // whose low bits are the code reversed.
   const table = new Int32Array(size);
-  widest.forEach((bits, root) => {
-    if (bits) table[root] = link | (bits << 16) | (offsets[root] ?? 0);
-  });
-  lengths.forEach((length, value) => {
-    if (!length) return;
+  for (const root of roots) {
+    table[root] = link | ((widest[root] ?? 0) << 16) | (offsets[root] ?? 0);
+  }
+  for (let value = 0; value < lengths.length; value++) {
+    const length = lengths[value] ?? 0;
+    if (!length) continue;
     const code = codes[value] ?? 0;
     const entry = (length << 16) | value;
     if (length <= rootBits) {
       const step = 1 << length;
-      for (
-        let slot = reverse(code, length);
-        slot < 1 << rootBits;
-        slot += step
-      ) {
+      for (let slot = reverse(code, length); slot <= rootMask; slot += step) {
         table[slot] = entry;
       }
-      return;
+      continue;
     }
     const rest = length - rootBits;
     const root = reverse(code >> rest, rootBits);
     const base = offsets[root] ?? 0;
     const end = 1 << (widest[root] ?? 0);
     const step = 1 << rest;
-    for (let slot = reverse(code, rest); slot < end; slot += step) {
-      table[base + slot] = entry;
-    }
-  });
+    const first = reverse(code & ((1 << rest) - 1), rest);
+    for (let slot = first; slot < end; slot += step) table[base + slot] = entry;
+  }
+  for (const root of roots) widest[root] = 0;
   return table;
 }
 
