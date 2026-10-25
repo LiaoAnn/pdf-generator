@@ -1,12 +1,15 @@
 // minimal-example acceptance on a running stack: zips pack/, uploads it,
 // prints a batch and checks it. Passes when every fixture's self-check
-// passes, including those whose blank recorder prints only its fill-in line.
+// passes, including those whose blank recorder prints only its fill-in line,
+// and every gt.json says what its data.json does (src/compare.ts): an empty
+// field block for a blank recorder, the attendees' checkboxes, every item.
 //   node src/acceptance.ts \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t10-2]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { parseArgs } from 'node:util';
 import type { GroundTruth } from '@pdf-generator/contract';
 import { unzipSync } from 'fflate';
+import { compare, type MeetingRecord } from './compare.ts';
 import { packZip } from './index.ts';
 
 const { values } = parseArgs({
@@ -38,8 +41,6 @@ async function api(path: string, init: RequestInit = {}): Promise<Response> {
   }
   return response;
 }
-
-type MeetingRecord = { recorder: string | null };
 
 const decoder = new TextDecoder();
 const json = (bytes: Uint8Array | undefined): unknown =>
@@ -104,7 +105,7 @@ for (const fixture of fixtures) {
     ...(fixture.check?.passed
       ? []
       : [`self-check ${JSON.stringify(fixture.check ?? null)}`]),
-    ...(gt && record ? [] : ['gt.json or data.json missing']),
+    ...(gt && record ? compare(gt, record) : ['gt.json or data.json missing']),
   ];
   if (problems.length > 0) failures += 1;
   const summary = gt
@@ -117,7 +118,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and record what their data says`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,
