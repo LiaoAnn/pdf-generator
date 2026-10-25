@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
-import type { Browser } from '@cloudflare/puppeteer';
 import { apiErrorSchema } from '@pdf-generator/contract';
 import { getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
@@ -84,8 +84,7 @@ test('renderPdf throws RenderError when the PDF has two pages but Paged.js repor
   // HTTP can pin the error code/status, but cannot distinguish RenderError
   // from an unrelated exception translated by the route.
   const tab = {
-    setRequestInterception: vi.fn(async () => {}),
-    on: vi.fn(),
+    ...fakeFetch(),
     goto: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
       pageCount: 1,
@@ -103,7 +102,7 @@ test('renderPdf throws RenderError when the PDF has two pages but Paged.js repor
     close: vi.fn(async () => {}),
   };
   const outcome = await renderPdf(
-    { newPage: async () => tab } as unknown as Browser,
+    fakeBrowserContext(tab).browser,
     { html: `<!doctype html><html><body>${image}</body></html>`, page },
     {
       assetOrigin: 'https://print-assets.example.test',

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
-import type { Browser } from '@cloudflare/puppeteer';
 import { afterEach, expect, test, vi } from 'vitest';
+import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';
 
 const request = {
@@ -54,8 +54,7 @@ test.each([
     const failure = new Error(`${stage} failed`);
     let availableAtNavigation = 0;
     const page = {
-      setRequestInterception: vi.fn(async () => {}),
-      on: vi.fn(),
+      ...fakeFetch(),
       goto: vi.fn(async (_url: string) => {
         availableAtNavigation = stored.size;
         if (stage === 'goto') throw failure;
@@ -80,7 +79,7 @@ test.each([
       }),
       close: vi.fn(async () => {}),
     };
-    const browser = { newPage: async () => page } as unknown as Browser;
+    const browser = fakeBrowserContext(page).browser;
     const rendering = renderPdf(browser, request, {
       assetOrigin: 'https://print-assets.example.test',
       store,

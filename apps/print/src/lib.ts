@@ -145,38 +145,89 @@ const runtimePaths = new Set(['/print-runtime.js', '/paged.polyfill.js']);
 const isFavicon = (url: URL) => url.pathname === '/favicon.ico';
 
 /**
- * Lets the tab load only the print's files and the platform's, and aborts
+ * Lets the tab load only the print's files and the platform's, and fails
  * everything else, reporting it to `onBlocked`. Interception only continues
- * or aborts: the browser loads every file by URL itself (T03 Must not 3).
+ * or fails: the browser loads every file by URL itself (T03 Must not 3).
  * data: URLs can't be intercepted; what they load in turn can.
+ *
+ * Returns `settle`, which resolves once every answer sent so far is
+ * acknowledged (or refused): Chrome continues each request still paused
+ * when the session detaches, so the tab must settle before it closes. The
+ * session is our own rather than puppeteer's interception, which holds back
+ * paused requests it can't yet pair with their network event. Settling
+ * can't cover requests still on their way to the session as the tab closes
+ * (Paged.js fetches an @import'ed sheet a second time); the print's proxy
+ * keeps those from leaving (see `printContext`).
  */
 async function blockOtherRequests(
   page: Page,
   origin: string,
   files: PublishedFiles,
   onBlocked: (url: string) => void,
-): Promise<void> {
-  await page.setRequestInterception(true);
-  page.on('request', request => {
-    if (request.isInterceptResolutionHandled()) return;
-    const url = request.url();
+): Promise<() => Promise<void>> {
+  const allow = (url: string) => {
     const parsed = URL.parse(url);
     const platform =
       parsed?.origin === origin &&
       (runtimePaths.has(parsed.pathname) ||
         parsed.pathname.startsWith('/fonts/'));
-    if (url.startsWith('data:') || platform || files.serves(url)) {
-      void request.continue().catch(() => undefined);
-      return;
-    }
+    if (url.startsWith('data:') || platform || files.serves(url)) return true;
     if (!(parsed?.origin === origin && isFavicon(parsed))) onBlocked(url);
-    void request.abort('blockedbyclient').catch(() => undefined);
+    return false;
+  };
+  // As puppeteer's interception did: a cached response skips Fetch.
+  await page.setCacheEnabled(false);
+  const cdp = await page.createCDPSession();
+  const answering = new Set<Promise<unknown>>();
+  cdp.on('Fetch.requestPaused', event => {
+    const { requestId } = event;
+    const answer = (
+      allow(event.request.url + (event.request.urlFragment ?? ''))
+        ? cdp.send('Fetch.continueRequest', { requestId })
+        : cdp.send('Fetch.failRequest', {
+            requestId,
+            errorReason: 'BlockedByClient',
+          })
+    ).catch(() => undefined);
+    answering.add(answer);
+    void answer.then(() => answering.delete(answer));
+  });
+  await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] });
+  return async () => {
+    while (answering.size > 0) await Promise.all(answering);
+  };
+}
+
+// Nothing listens on the discard port, so a connection to it is refused.
+const refusingProxy = 'http://127.0.0.1:9';
+
+/**
+ * A browser context for one print whose connections all go to a proxy that
+ * refuses them, except those to the print Worker. Interception decides what
+ * the tab may load; this makes sure nothing else leaves, whatever the timing:
+ * Chrome continues requests still paused when a DevTools session detaches,
+ * and under load about 1 print in 150 sent a blocked request to the outside
+ * server that way, even with a browser-level session as a backstop, which
+ * could detach before the released request reached it (T07-8). It also
+ * covers connections without a request, such as <link rel=preconnect>.
+ * `<-loopback>` stops Chrome from bypassing the proxy for loopback hosts.
+ */
+function printContext(browser: Browser, origin: string) {
+  // A rule without scheme and port would let every port of the host through.
+  const { protocol, hostname, port } = new URL(origin);
+  const effectivePort = port || (protocol === 'https:' ? '443' : '80');
+  return browser.createBrowserContext({
+    proxyServer: refusingProxy,
+    proxyBypassList: [
+      '<-loopback>',
+      `${protocol}//${hostname}:${effectivePort}`,
+    ],
   });
 }
 
 /**
- * Prints one document on a new tab of `browser`, then closes the tab and
- * deletes the print's files from the store. A tab that requested anything
+ * Prints one document on a new tab of `browser`, in a context of its own,
+ * then closes both and deletes the print's files from the store. A tab that requested anything
  * but its files fails with `request_blocked`, whatever else happened.
  */
 export async function renderPdf<T = undefined>(
@@ -184,7 +235,11 @@ export async function renderPdf<T = undefined>(
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
-  const page = await browser.newPage();
+  const context = await printContext(browser, options.assetOrigin);
+  const page = await context.newPage().catch(async (error: unknown) => {
+    await context.close().catch(() => undefined);
+    throw error;
+  });
   let files: PublishedFiles | undefined;
   const blocked = new Set<string>();
   const blockedError = () =>
@@ -200,6 +255,7 @@ export async function renderPdf<T = undefined>(
     stop = reject;
   });
   stopped.catch(() => undefined);
+  let settle: (() => Promise<void>) | undefined;
   try {
     files = await publishFiles(
       options.store,
@@ -207,7 +263,7 @@ export async function renderPdf<T = undefined>(
       prepareHtml(request.html, { page: request.page }),
       request.pack,
     );
-    await blockOtherRequests(page, options.assetOrigin, files, url => {
+    settle = await blockOtherRequests(page, options.assetOrigin, files, url => {
       blocked.add(url);
       stop(blockedError());
     });
@@ -221,8 +277,10 @@ export async function renderPdf<T = undefined>(
     if (blocked.size > 0) throw blockedError();
     return result;
   } finally {
+    await settle?.();
     await page.close().catch(() => undefined);
     await files?.remove();
+    await context.close().catch(() => undefined);
   }
 }
 
