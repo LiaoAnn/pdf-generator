@@ -126,6 +126,23 @@ export class RenderError extends Error {
 
 const defaultTimeoutMs = 60_000;
 
+/** `work`, or `error()` once `timeoutMs` has passed. */
+async function withinTimeout<R>(
+  work: Promise<R>,
+  timeoutMs: number,
+  error: () => RenderError,
+): Promise<R> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(error()), timeoutMs);
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Waits until Paged.js has finished paginating a page prepared with
  * `prepareHtml` (its `PagedConfig.after`, T03 Must 1). Rejects with a
@@ -135,34 +152,22 @@ export async function waitForPrintReady(
   page: PrintPage,
   timeoutMs = defaultTimeoutMs,
 ): Promise<PrintReadyState> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
+  return withinTimeout(
+    page.evaluate(
       () =>
-        reject(
-          new RenderError(
-            'pagination_timeout',
-            `Paged.js did not finish within ${timeoutMs} ms`,
-          ),
-        ),
-      timeoutMs,
-    );
-  });
-  try {
-    return await Promise.race([
-      page.evaluate(
-        () =>
-          (
-            globalThis as unknown as {
-              __pdfgen: { ready: Promise<PrintReadyState> };
-            }
-          ).__pdfgen.ready,
+        (
+          globalThis as unknown as {
+            __pdfgen: { ready: Promise<PrintReadyState> };
+          }
+        ).__pdfgen.ready,
+    ),
+    timeoutMs,
+    () =>
+      new RenderError(
+        'pagination_timeout',
+        `Paged.js did not finish within ${timeoutMs} ms`,
       ),
-      timeout,
-    ]);
-  } finally {
-    clearTimeout(timer);
-  }
+  );
 }
 
 export interface RenderOptions<T> {
@@ -208,15 +213,19 @@ const isFavicon = (url: URL) => url.pathname === '/favicon.ico';
  * keeps those from leaving (see `printContext`).
  *
  * Also returns `loaded`, which resolves once no request the tab sent is
- * still loading: print media makes a page load what its print-only CSS
- * uses (T07-20).
+ * still loading, and `started`, how many it has sent: print media makes a
+ * page load what its print-only CSS uses (T07-20).
  */
 async function blockOtherRequests(
   page: Page,
   origin: string,
   files: PublishedFiles,
   onBlocked: (url: string) => void,
-): Promise<{ settle: () => Promise<void>; loaded: () => Promise<void> }> {
+): Promise<{
+  settle: () => Promise<void>;
+  loaded: () => Promise<void>;
+  started: () => number;
+}> {
   const allow = (url: string) => {
     const parsed = URL.parse(url);
     const platform =
@@ -245,8 +254,10 @@ async function blockOtherRequests(
     void answer.then(() => answering.delete(answer));
   });
   const loading = new Set<string>();
+  let started = 0;
   let onIdle = () => {};
   cdp.on('Network.requestWillBeSent', event => {
+    started++;
     loading.add(event.requestId);
   });
   const done = ({ requestId }: { requestId: string }) => {
@@ -267,6 +278,7 @@ async function blockOtherRequests(
         : new Promise<void>(resolve => {
             onIdle = resolve;
           }),
+    started: () => started,
   };
 }
 
@@ -345,7 +357,7 @@ export async function renderPdf<T = undefined>(
       },
     );
     settle = requests.settle;
-    const printing = print(page, files.documentUrl, options, requests.loaded);
+    const printing = print(page, files.documentUrl, options, requests);
     printing.catch(() => undefined);
     const result = await Promise.race([printing, stopped]).catch(
       (error: unknown) => {
@@ -411,7 +423,7 @@ async function print<T>(
   page: Page,
   documentUrl: string,
   options: RenderOptions<T>,
-  loaded: () => Promise<void>,
+  requests: { loaded: () => Promise<void>; started: () => number },
 ): Promise<RenderResult<T>> {
   await page.goto(documentUrl);
   const ready = await waitForPrintReady(page, options.timeoutMs);
@@ -456,10 +468,28 @@ async function print<T>(
     await setViewport(ready.pageSize.width, ready.pageSize.height);
   }
   await page.emulateMediaType('print');
-  await page.evaluate(() =>
-    (globalThis as unknown as PrintedReader).__pdfgen.loadPrintResources(),
+  // Until a round starts no request: what one load lays out can ask for the
+  // next (an @import'ed sheet's images).
+  await withinTimeout(
+    (async () => {
+      for (;;) {
+        const started = requests.started();
+        await page.evaluate(() =>
+          (
+            globalThis as unknown as PrintedReader
+          ).__pdfgen.loadPrintResources(),
+        );
+        await requests.loaded();
+        if (requests.started() === started) return;
+      }
+    })(),
+    options.timeoutMs ?? defaultTimeoutMs,
+    () =>
+      new RenderError(
+        'layout_unsettled',
+        'What print media loads did not finish loading',
+      ),
   );
-  await loaded();
   const readPrinted = (pageWidth: number) =>
     page.evaluate(
       width =>
@@ -469,6 +499,9 @@ async function print<T>(
       pageWidth,
     );
   const before = await readPrinted(ready.pageSize?.width ?? 0);
+  // An animation short enough to end while the PDF is printed is gone from
+  // the read after it.
+  rejectAnimations(before.animations);
   const pdf = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,

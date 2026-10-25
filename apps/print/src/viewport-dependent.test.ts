@@ -65,11 +65,22 @@ const rule = '.target { width: 50vw; }';
 const svg =
   '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>';
 
-// Long-running changes stay active through pagination and measurement. Only
-// the first case starts on entering print media, catching a screen-only check.
+// Print-only changes catch a screen-only check; short animations additionally
+// catch a check that only reads animations after printing the PDF.
 const animationRefusals: (Omit<Fixture, 'diagnostic'> & {
   diagnostic: RegExp;
 })[] = [
+  ...[1, 2, 3].map(attempt => ({
+    name: `short print-only descendant animation (attempt ${attempt})`,
+    head: `<style data-pagedjs-ignore>
+      .target { background: none !important; width:40px; height:40px }
+      .ink { width:40px; height:40px; background:black }
+      @keyframes move { from { transform:translateX(100px) } to { transform:translateX(200px) } }
+      @media print { .ink { animation:move 10ms linear } }
+      </style>`,
+    body: '<div data-gt="image" class="target"><div class="ink"></div></div>',
+    diagnostic: /move|animation/i,
+  })),
   {
     name: 'transition started only when print media is emulated',
     head: `<style data-pagedjs-ignore>

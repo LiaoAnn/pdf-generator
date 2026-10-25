@@ -829,7 +829,7 @@
     return [...found].slice(0, 50);
   }
 
-  // What moves over time: running CSS animations and transitions (entering
+  // What moves over time: CSS animations, running transitions (entering
   // print media starts the transitions of what its rules change), SVG
   // animation elements and <marquee>. The PDF and the ground truth would
   // each catch them at a different moment (T07-20).
@@ -857,6 +857,16 @@
       'set',
     ]);
     for (const element of document.querySelectorAll('*')) {
+      // Applied animations, whether or not they run now: one that has ended
+      // still runs from its start when Chrome prints.
+      for (const pseudo of ['', '::before', '::after']) {
+        const { animationName } = getComputedStyle(element, pseudo || null);
+        if (animationName && animationName !== 'none') {
+          found.add(
+            `<${element.localName}>${pseudo}: animation ${animationName}`,
+          );
+        }
+      }
       const name = element.localName.toLowerCase();
       if (
         (element instanceof SVGElement && animating.has(name)) ||
@@ -902,8 +912,16 @@
   }
 
   // Waits for what print media made the page load: fonts and images (lib.ts
-  // also waits for the requests themselves).
+  // also waits for the requests themselves, and calls this until no new
+  // request starts).
   async function loadPrintResources() {
+    // Style and layout start the requests print media needs (background and
+    // generated images, fonts); a frame lets them go out.
+    document.body?.getBoundingClientRect();
+    await new Promise(resolve => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+      setTimeout(resolve, 100);
+    });
     await document.fonts.ready;
     await Promise.all(
       [...document.images].map(image => image.decode().catch(() => undefined)),

@@ -54,6 +54,25 @@ async function run(fake: ReturnType<typeof fakeBrowser>) {
 
 const settled = ['1 72,72,300,96', '1 72,100,300,124'];
 
+// A short print-only animation can finish during page.pdf(), leaving identical
+// block boxes and no animation in the post-PDF read despite changing the ink.
+test('an animation present only before the PDF fails with css_animation before printing', async () => {
+  const fake = fakeBrowser(
+    { boxes: settled, animations: ['<div>: animation move'] },
+    { boxes: [...settled] },
+  );
+  const outcome = await run(fake);
+  const { error } = outcome as { error: unknown };
+  expect.soft(error).toBeInstanceOf(RenderError);
+  expect.soft(error).toMatchObject({
+    code: 'css_animation',
+    details: ['<div>: animation move'],
+  });
+  expect.soft(fake.page.pdf).not.toHaveBeenCalled();
+  expect.soft(outcome.inspect).not.toHaveBeenCalled();
+  expect(fake.page.close).toHaveBeenCalledTimes(1);
+});
+
 // Regression: ground truth is measured in print media after the PDF is
 // printed; without comparing it with the layout from before, a resource that
 // arrived while printing moves boxes (an image 62 pt tall) and gt.json no

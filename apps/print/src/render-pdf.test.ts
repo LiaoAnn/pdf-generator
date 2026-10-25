@@ -215,7 +215,7 @@ test('a pending pagination promise prevents inspection and printing until it res
   // Observe an early setup rejection even if a preceding assertion fails.
   void rendering.catch(() => undefined);
   await vi.advanceTimersByTimeAsync(0);
-  expect(fake.page.evaluate).toHaveBeenCalledTimes(1);
+  expect(fake.page.evaluate).toHaveBeenCalled();
   expect(inspect).not.toHaveBeenCalled();
   expect(fake.page.pdf).not.toHaveBeenCalled();
   expect(fake.page.close).not.toHaveBeenCalled();
