@@ -19,7 +19,6 @@ export const maxPackBytes = 20 * 1024 * 1024;
  * 24 MiB for the whole pack is above maxPackBytes.
  */
 const maxFileBytes = 16 * 1024 * 1024;
-const maxFiles = 200;
 const maxTextFileBytes = 64 * 1024;
 const maxTextBytes = 256 * 1024;
 
@@ -41,16 +40,6 @@ export function unzipWithinLimits(
   const unzipped = unzipBounded(zip, maxPackBytes);
   if ('issue' in unzipped) return { issues: [unzipped.issue] };
   const entries = Object.entries(unzipped.files);
-  if (entries.length > maxFiles) {
-    return {
-      issues: [
-        whole(
-          'pack-too-many-files',
-          `the pack has ${entries.length} files, more than the limit of ${maxFiles}`,
-        ),
-      ],
-    };
-  }
   const issues: PackIssue[] = [];
   let text = 0;
   for (const [path, bytes] of entries) {

@@ -5,8 +5,10 @@
 // and stops at the first entry larger than it says or once the pack is larger
 // than `maxBytes`. Entries are counted too, directories included: walking
 // hundreds of thousands of tiny ones takes seconds. A name may appear only
-// once: with two, which file a reader gets depends on the reader. And a
-// deflated entry's blocks are counted before it is inflated (deflate-blocks).
+// once: with two, which file a reader gets depends on the reader. The pack's
+// files are counted from the directory too, before anything is inflated. And
+// a deflated entry's blocks are counted before it is inflated
+// (deflate-blocks).
 import type { PackIssue } from '@pdf-generator/template-tools';
 import {
   type FlateError,
@@ -21,6 +23,8 @@ import { scanDeflate } from './deflate-blocks.ts';
 const slice = 8 * 1024;
 /** Most entries a pack's zip may have, directories included. */
 const maxEntries = 1000;
+/** Most files a pack may have, directories and macOS metadata left out. */
+const maxFiles = 200;
 
 /** Directory entries and macOS metadata, which checkPack ignores too. */
 const ignored = (path: string) =>
@@ -39,6 +43,12 @@ const tooMany = () =>
   whole(
     'pack-too-many-files',
     `the zip has more than ${maxEntries} entries (files and folders)`,
+  );
+
+const tooManyFiles = (files: number) =>
+  whole(
+    'pack-too-many-files',
+    `the pack has ${files} files, more than the limit of ${maxFiles}`,
   );
 
 const tooLarge = (size: number, maxBytes: number) =>
@@ -145,9 +155,9 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
 
 /**
  * The pack's files (directories and macOS metadata left out), or the one
- * issue that stops the upload: an unreadable zip, a name used twice, an
- * entry whose data is larger than its header says, or more than `maxBytes`
- * in all.
+ * issue that stops the upload: an unreadable zip, a name used twice, more
+ * than 200 files, an entry whose data is larger than its header says, or
+ * more than `maxBytes` in all.
  */
 export function unzipBounded(
   zip: Uint8Array,
@@ -158,6 +168,7 @@ export function unzipBounded(
   const declared = new Map<string, number>();
   let total = 0;
   let listed = 0;
+  let packFiles = 0;
   const overflow = new Error('too many entries');
   let repeated: string | undefined;
   try {
@@ -170,6 +181,7 @@ export function unzipBounded(
         }
         declared.set(entry.name, entry.originalSize);
         total += entry.originalSize;
+        if (!ignored(entry.name)) packFiles++;
         return false;
       },
     });
@@ -184,6 +196,10 @@ export function unzipBounded(
     };
   }
   if (total > maxBytes) return { issue: tooLarge(total, maxBytes) };
+  // Counted from the directory, before inflating anything. A zip whose data
+  // holds fewer of them than its directory lists is refused too: which files
+  // a reader finds would depend on the reader.
+  if (packFiles > maxFiles) return { issue: tooManyFiles(packFiles) };
 
   const files: Record<string, Uint8Array> = {};
   let inflated = 0;
