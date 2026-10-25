@@ -119,6 +119,8 @@ const printIssues: Record<string, string> = {
     '印出來的 PDF 頁數和 Paged.js 排出的頁數不同，標準答案的頁碼會對不上。常見原因是樣板 CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的版面（例如邊界、內距、高度、定位或分頁），讓內容跑出 Paged.js 排好的頁面。請用 @page 設定頁面大小與邊界，不要改 .pagedjs_* 與 body 的版面。',
   layout_unsettled:
     '印 PDF 的過程中版面還在變：通常是只在列印時才用到的圖片或字型（例如 data-pagedjs-ignore 或 @media print 裡引用的檔案）還在載入。PDF 和量測標準答案時的版面不同，PDF 會和標準答案對不上。請讓圖片與字型在螢幕和列印時用同樣的方式載入，不要用只在列印時才載入的資源。',
+  print_overflow:
+    '有 data-gt 的內容只在列印時變高或變寬，超出頁面：Paged.js 在螢幕上分頁時沒有套用只在列印時生效的樣式（例如 data-pagedjs-ignore 樣式表或 <body> 裡的 <style> 中的 @media print），排好的頁面放不下列印時的尺寸。PDF 會把超出的部分裁切或漏印，和標準答案對不上。請讓螢幕和列印時的尺寸相同，或把列印樣式放進樣板包的一般樣式表，Paged.js 分頁時會套用。',
   page_box_moved:
     '樣板 CSS 移動了 Paged.js 排好的頁面元素（.pagedjs_*）或 html／body 的位置，PDF 印出來的內容會和標準答案的框對不上。沒有寫出 .pagedjs 的選擇器（例如 body > div > div）也算。請用 @page 設定頁邊界，不要改這些元素的邊界、內距、定位或變形。',
   pagination_timeout:

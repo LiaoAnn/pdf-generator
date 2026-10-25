@@ -179,6 +179,7 @@ describe('template author error explanations', () => {
     'viewport_dependent',
     'css_animation',
     'layout_unsettled',
+    'print_overflow',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -326,6 +327,53 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toContain('標準答案');
     expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
     expect(issue?.explanation).toMatch(/改用|移除|避免|不要|勿|一樣|相同|同樣/);
+  });
+
+  // Regression: a print-only size change needs different advice from loading
+  // resources or moving page boxes: Paged.js never paginated the larger content.
+  test('preview print_overflow refusals explain clipped content, print-only styles and how to keep pagination consistent', () => {
+    const raw =
+      'Content reaches outside its page only in print, where Paged.js did not paginate';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'print_overflow', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('print_overflow');
+    expect(issue?.raw).toBe(raw);
+    const text = issue?.explanation;
+    expect.soft(text).toMatch(cjk);
+    expect.soft(text).not.toBe(fallback());
+    expect.soft(text).toContain('列印時');
+    expect.soft(text).toMatch(/變高|高度|尺寸/);
+    expect.soft(text).toMatch(/變寬|寬度|尺寸/);
+    expect.soft(text).toMatch(/只在列印|僅在列印|只有列印|列印專用/);
+    expect.soft(text).toContain('超出頁面');
+    expect.soft(text).toContain('PDF');
+    expect.soft(text).toMatch(/裁切|截斷|切掉|切除|漏印|漏掉|少印|遺漏|印不出/);
+    expect.soft(text).toContain('標準答案');
+    expect.soft(text).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
+    expect.soft(text).toContain('data-pagedjs-ignore');
+    expect.soft(text).toContain('@media print');
+    expect.soft(text).toContain('<body>');
+    expect.soft(text).toContain('<style>');
+    expect.soft(text).toMatch(/Paged\.js/);
+    expect
+      .soft(text)
+      .toMatch(
+        /分頁.{0,30}(?:不會|沒有|未|不套用)|(?:不會|沒有|未).{0,30}分頁/,
+      );
+    expect.soft(text).toContain('螢幕');
+    expect.soft(text).toMatch(/相同|一致|同樣/);
+    expect.soft(text).toMatch(/請|改用|移到|放進|放到/);
+    expect
+      .soft(text)
+      .toMatch(/一般.{0,5}樣式表|正常.{0,5}樣式表|樣板包.{0,15}樣式表/);
+    expect
+      .soft(text)
+      .toMatch(/分頁.{0,30}(?:套用|處理)|(?:套用|處理).{0,30}分頁/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -531,6 +579,7 @@ describe('stored fixture print errors', () => {
     'viewport_dependent',
     'css_animation',
     'layout_unsettled',
+    'print_overflow',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
