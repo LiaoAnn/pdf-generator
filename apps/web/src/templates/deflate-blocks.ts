@@ -6,8 +6,9 @@
 // stream may have only a few blocks more than one per 4 KiB it produces.
 //
 // The walk decodes every symbol to find where a block ends, as an inflater
-// must, but writes nothing and builds only small canonical tables (puff
-// style, RFC 1951), so each block costs little more than its own bits.
+// must, but writes nothing. Its tables are zlib's two-level ones: a 9-bit
+// table, and a small subtable for each 9-bit prefix of longer codes, so a
+// 15-bit code costs two lookups, and building them costs each block little.
 
 /** Blocks any stream may have, whatever it produces. */
 const freeBlocks = 8;
@@ -34,19 +35,26 @@ export type BlockScan =
 
 class Invalid extends Error {}
 
-interface Huffman {
-  /** Codes of each length, 0 to 15. */
-  count: Uint16Array;
-  /** Symbols in canonical order. */
-  symbol: Uint16Array;
-  /**
-   * By the next `fastBits` bits of input: `length << 16 | symbol` for codes
-   * that short, 0 for longer ones.
-   */
-  fast: Int32Array;
-}
+/**
+ * A code's decoding table, indexed by the next `rootBits` bits of input:
+ * `length << 16 | symbol` where a code that short starts, or for longer
+ * codes `link | bits << 16 | at`, a subtable at `at` indexed by the `bits`
+ * bits after those. 0 where no code starts, as in an incomplete code.
+ */
+type Huffman = Int32Array;
 
-const fastBits = 9;
+const rootBits = 9;
+const rootMask = (1 << rootBits) - 1;
+const link = 1 << 20;
+
+/** The low `length` bits of `code`, in reverse order. */
+function reverse(code: number, length: number) {
+  let reversed = 0;
+  for (let bit = 0; bit < length; bit++) {
+    reversed |= ((code >> bit) & 1) << (length - 1 - bit);
+  }
+  return reversed;
+}
 
 function huffman(lengths: Uint8Array): Huffman {
   const count = new Uint16Array(16);
@@ -57,36 +65,63 @@ function huffman(lengths: Uint8Array): Huffman {
     left = left * 2 - (count[length] ?? 0);
     if (left < 0) throw new Invalid('over-subscribed code');
   }
-  const offsets = new Uint16Array(16);
-  for (let length = 1; length < 15; length++) {
-    offsets[length + 1] = (offsets[length] ?? 0) + (count[length] ?? 0);
+  // Canonical codes, most significant bit first: each length's codes follow
+  // the shorter ones', in symbol order.
+  const next = new Uint16Array(16);
+  for (let length = 1; length < 16; length++) {
+    next[length] = ((next[length - 1] ?? 0) + (count[length - 1] ?? 0)) << 1;
   }
-  const symbol = new Uint16Array(lengths.length);
+  const codes = new Uint16Array(lengths.length);
+  // Longer codes sharing their first `rootBits` bits share a subtable, as
+  // wide as the longest of them needs.
+  const widest = new Uint8Array(1 << rootBits);
   lengths.forEach((length, value) => {
     if (!length) return;
-    const slot = offsets[length] ?? 0;
-    offsets[length] = slot + 1;
-    symbol[slot] = value;
+    const code = next[length] ?? 0;
+    next[length] = code + 1;
+    codes[value] = code;
+    if (length <= rootBits) return;
+    const root = reverse(code >> (length - rootBits), rootBits);
+    widest[root] = Math.max(widest[root] ?? 0, length - rootBits);
   });
-  // Canonical codes are read most significant bit first, input bits least
-  // significant first: each short code fills every slot it is a prefix of.
-  const fast = new Int32Array(1 << fastBits);
-  let code = 0;
-  let index = 0;
-  for (let length = 1; length <= fastBits; length++) {
-    for (let n = count[length] ?? 0; n > 0; n--, code++, index++) {
-      let reversed = 0;
-      for (let bit = 0; bit < length; bit++) {
-        reversed |= ((code >> bit) & 1) << (length - 1 - bit);
+  let size = 1 << rootBits;
+  const offsets = new Uint16Array(1 << rootBits);
+  widest.forEach((bits, root) => {
+    if (!bits) return;
+    offsets[root] = size;
+    size += 1 << bits;
+  });
+  // Input bits come least significant first, so a code fills every slot
+  // whose low bits are the code reversed.
+  const table = new Int32Array(size);
+  widest.forEach((bits, root) => {
+    if (bits) table[root] = link | (bits << 16) | (offsets[root] ?? 0);
+  });
+  lengths.forEach((length, value) => {
+    if (!length) return;
+    const code = codes[value] ?? 0;
+    const entry = (length << 16) | value;
+    if (length <= rootBits) {
+      const step = 1 << length;
+      for (
+        let slot = reverse(code, length);
+        slot < 1 << rootBits;
+        slot += step
+      ) {
+        table[slot] = entry;
       }
-      const entry = (length << 16) | (symbol[index] ?? 0);
-      for (let slot = reversed; slot < fast.length; slot += 1 << length) {
-        fast[slot] = entry;
-      }
+      return;
     }
-    code <<= 1;
-  }
-  return { count, symbol, fast };
+    const rest = length - rootBits;
+    const root = reverse(code >> rest, rootBits);
+    const base = offsets[root] ?? 0;
+    const end = 1 << (widest[root] ?? 0);
+    const step = 1 << rest;
+    for (let slot = reverse(code, rest); slot < end; slot += step) {
+      table[base + slot] = entry;
+    }
+  });
+  return table;
 }
 
 const lengthBase = [
@@ -106,6 +141,14 @@ const lengthOrder = [
   16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15,
 ];
 
+/** The table entry for the code at the start of `buffer`, 0 if none. */
+function lookup(table: Huffman, buffer: number) {
+  const entry = table[buffer & rootMask] ?? 0;
+  if (!(entry & link)) return entry;
+  const sub = (buffer >>> rootBits) & ((1 << ((entry >>> 16) & 0xf)) - 1);
+  return table[(entry & 0xffff) + sub] ?? 0;
+}
+
 let fixed: { literals: Huffman; distances: Huffman } | undefined;
 function fixedCodes() {
   if (!fixed) {
@@ -120,6 +163,17 @@ function fixedCodes() {
   return fixed;
 }
 
+/** At least 17 bits of `stream` from bit `pos` on, zeros past its end. */
+function peek(stream: Uint8Array, pos: number) {
+  const at = pos >> 3;
+  return (
+    ((stream[at] ?? 0) |
+      ((stream[at + 1] ?? 0) << 8) |
+      ((stream[at + 2] ?? 0) << 16)) >>>
+    (pos & 7)
+  );
+}
+
 /**
  * Walks a raw deflate stream block by block. Stops as soon as it produces
  * more than `maxOutput` bytes or has more blocks than `blockBudget(maxOutput)`,
@@ -128,52 +182,25 @@ function fixedCodes() {
  */
 export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
   const cap = blockBudget(maxOutput);
-  let at = 0;
-  let buffer = 0;
-  let held = 0;
+  const end = stream.length * 8;
+  /** Bits read so far. */
+  let pos = 0;
   let blocks = 0;
   let output = 0;
 
   const bits = (need: number) => {
-    while (held < need) {
-      if (at >= stream.length) throw new Invalid('stream ends early');
-      buffer |= (stream[at++] ?? 0) << held;
-      held += 8;
-    }
-    const value = buffer & ((1 << need) - 1);
-    buffer >>>= need;
-    held -= need;
+    const value = peek(stream, pos) & ((1 << need) - 1);
+    pos += need;
+    if (pos > end) throw new Invalid('stream ends early');
     return value;
   };
 
-  const decode = (codes: Huffman) => {
-    while (held < fastBits && at < stream.length) {
-      buffer |= (stream[at++] ?? 0) << held;
-      held += 8;
-    }
-    const entry = codes.fast[buffer & ((1 << fastBits) - 1)] ?? 0;
-    const length = entry >>> 16;
-    if (entry && length <= held) {
-      buffer >>>= length;
-      held -= length;
-      return entry & 0xffff;
-    }
-    return decodeSlowly(codes);
-  };
-
-  const decodeSlowly = ({ count, symbol }: Huffman) => {
-    let code = 0;
-    let first = 0;
-    let index = 0;
-    for (let length = 1; length < 16; length++) {
-      code |= bits(1);
-      const n = count[length] ?? 0;
-      if (code - n < first) return symbol[index + code - first] ?? 0;
-      index += n;
-      first = (first + n) << 1;
-      code <<= 1;
-    }
-    throw new Invalid('no such code');
+  const decode = (table: Huffman) => {
+    const entry = lookup(table, peek(stream, pos));
+    if (!entry) throw new Invalid('no such code');
+    pos += entry >>> 16;
+    if (pos > end) throw new Invalid('stream ends early');
+    return entry & 0xffff;
   };
 
   const dynamicCodes = () => {
@@ -224,10 +251,8 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
       last = bits(1);
       const type = bits(2);
       if (type === 0) {
-        // Skip to the next byte; whole bytes read ahead go back.
-        at -= held >> 3;
-        buffer = 0;
-        held = 0;
+        // Stored data starts at the next byte.
+        let at = (pos + 7) >> 3;
         if (at + 4 > stream.length) throw new Invalid('stream ends early');
         const length = (stream[at] ?? 0) | ((stream[at + 1] ?? 0) << 8);
         const check = (stream[at + 2] ?? 0) | ((stream[at + 3] ?? 0) << 8);
@@ -235,6 +260,7 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
           throw new Invalid('bad stored length');
         at += 4 + length;
         if (at > stream.length) throw new Invalid('stream ends early');
+        pos = at * 8;
         output += length;
         if (output > maxOutput) {
           return { ok: false, reason: 'too-much-output', blocks };
@@ -244,8 +270,14 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
       if (type === 3) throw new Invalid('reserved block type');
       const { literals, distances } =
         type === 1 ? fixedCodes() : dynamicCodes();
+      // Most of a stream's bits: decoded inline, past the end of the stream
+      // as if it went on with zeros, and checked once per symbol.
       for (;;) {
-        const symbol = decode(literals);
+        let entry = lookup(literals, peek(stream, pos));
+        if (!entry) throw new Invalid('no such code');
+        pos += entry >>> 16;
+        if (pos > end) throw new Invalid('stream ends early');
+        const symbol = entry & 0xffff;
         if (symbol < 256) {
           output++;
         } else if (symbol === 256) {
@@ -253,10 +285,17 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
         } else {
           const index = symbol - 257;
           if (index >= 29) throw new Invalid('bad length code');
-          output += (lengthBase[index] ?? 0) + bits(lengthExtra[index] ?? 0);
-          const distance = decode(distances);
+          const extra = lengthExtra[index] ?? 0;
+          output +=
+            (lengthBase[index] ?? 0) + (peek(stream, pos) & ((1 << extra) - 1));
+          pos += extra;
+          entry = lookup(distances, peek(stream, pos));
+          if (!entry) throw new Invalid('no such code');
+          pos += entry >>> 16;
+          const distance = entry & 0xffff;
           if (distance >= 30) throw new Invalid('bad distance code');
-          bits(distanceExtra[distance] ?? 0);
+          pos += distanceExtra[distance] ?? 0;
+          if (pos > end) throw new Invalid('stream ends early');
         }
         if (output > maxOutput) break;
       }
@@ -272,5 +311,5 @@ export function scanDeflate(stream: Uint8Array, maxOutput: number): BlockScan {
   if (blocks > blockBudget(output)) {
     return { ok: false, reason: 'too-many-blocks', blocks };
   }
-  return { ok: true, blocks, output, length: at - (held >> 3) };
+  return { ok: true, blocks, output, length: (pos + 7) >> 3 };
 }
