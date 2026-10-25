@@ -769,3 +769,21 @@
 - **驗收測試**：文件與 `packages/template-tools`、`packages/self-check` 的實際行為一致；skill 的範例片段仍通過 `skill.test.ts`
 - **不做**：改平台程式
 - **來源**：PR #48（T10-1）
+
+### T14-6 樣板：空白欄位要有墨跡（minimal-example 與其他樣板）
+- **目標**：T14-4 之後，沒有文字的區塊必須在框內畫出東西。`templates/minimal-example` 的 `.pair [data-gt="field"]` 有大小但沒有墨跡，`recorder` 為空（`blankProbability` 0.3）的紀錄都以 `ink`「paints nothing」失敗（T10-2 批次 10 份中 2 份）。加上底線（例如 `border-bottom: 0.5pt solid #000`）。同時檢查其他 5 個樣板裡所有可能為空的欄位、勾選框與圖片，找出同樣的問題一併修好（T14-4 的驗收各批 10 份全過，可能只是剛好沒抽到空值）
+- **Blocked by**：T14-4
+- **Blocks**：—
+- **撞車風險**：`templates/*`；與正在改同一樣板的票不要同時派
+- **驗收測試**：每個樣板用會讓每個可空欄位至少為空一次的 seed 或資料跑批次，自我檢查全過；列出檢查過的欄位
+- **不做**：改平台程式
+- **來源**：PR #50（T10-2）
+
+### T06-3 樣板工具：`css-page-box` 漏掉帶引號的屬性選擇器
+- **目標**：`[class*="pagedjs"] { margin: 20mm }` 能通過 checkPack，因為字串遮罩在找選擇器之前就先執行；不帶引號的寫法會被擋。改成帶引號的屬性選擇器也會被擋
+- **Blocked by**：T14-4
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools`
+- **驗收測試**：帶單、雙引號與不帶引號的 `[class*=pagedjs]`、`[class^=pagedjs]` 都被擋；5 個既有樣板與 minimal-example 仍通過 checkPack
+- **不做**：其他 CSS 規則
+- **來源**：PR #50（T10-2）
