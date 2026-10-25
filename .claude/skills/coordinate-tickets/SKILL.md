@@ -135,7 +135,7 @@ Then `gh pr merge <n> --squash`, with the subject `<type>: <summary> (TNN)`. Don
 
 - Work out which tickets it made ready.
 - Send the worker `[TNN] DONE`.
-- For every other open PR, send its worker "main moved (TNN merged): rebase", most urgently those that touch the same files or the lockfile/migrations.
+- For every other open PR, send its worker "main moved (TNN merged): rebase", most urgently those that touch the same files or the lockfile/migrations. Skip it when the merge was docs-only: the merge bar tolerates those, and a queued rebase can run after you merge that worker's PR, leaving its worktree mid-rebase (T07-8, 2026-10-25).
 - Tell the user, and dispatch what became ready.
 - Check that the worker freed its tmux sessions and previews (`wt-status <worker path>`, `t3_preview_list`); if not, tell it to.
 - Once the worker has stopped with nothing left running, settle its thread: `t3_thread_organize` with `action: "settle"`.

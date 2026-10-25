@@ -452,7 +452,7 @@
 - **撞車風險**：`apps/print`、`apps/web` 的 vitest 設定與測試；不要跟 T16-3 同時派
 - **驗收測試**：記錄下每種失敗的原因；修正後完整 `pnpm verify` 連跑 10 次（CI=1）都通過，CI 連跑 3 次都通過
 - **不做**：改功能程式（除非原因是真的漏洞，那就另開票）
-- **來源**：PR #14、PR #18
+- **來源**：PR #14、PR #18（`request-blocking.test.ts` 的 `/imported.css` 偶發失敗已由 T07-8，PR #51 修好）
 
 ### T02-3 契約：錯誤細節加 `code`、批次進度加自我檢查數（使用者 2026-10-24 同意）
 - **目標**：`ApiError` 的 `details[]` 加選用欄位 `code`，讓問題代碼不必塞在 message 開頭；網頁與本地工具改讀這個欄位。`Batch.progress`（目前是嚴格的 `{ completed, failed }`，只算列印結果）加自我檢查的通過／失敗數，並接到 `GET /api/batches/:id`（T16-1 先只做每份的 `Fixture.check`，批次層級的數字等這張）
