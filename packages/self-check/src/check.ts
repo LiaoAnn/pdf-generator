@@ -250,7 +250,8 @@ function prefixes(raw: string): { at: number; text: string }[] {
  * text run, so two `data-gt` blocks side by side (`姓名：` `王小明`) arrive as
  * one item; whole, it would belong to one block and leave the other empty.
  * The blocks are those whose box holds the item's anchor height and overlaps
- * its x range, left to right. The item's text must split into the end of the
+ * its x range, in reading order (`blocks` is; their boxes can't order wrapped
+ * spans, which share a left edge). The item's text must split into the end of the
  * first block's text, the whole text of each block between, and the start of
  * the last one's; the split's x is where the boxes meet: the left box's right
  * edge and the right box's left edge, which must agree unless whitespace
@@ -270,14 +271,12 @@ function splitAcross(
   if (item.dir) return whole;
   const t = boxTolerancePt;
   const [, y] = anchorOf(item);
-  const crossed = blocks
-    .filter(
-      ({ bbox }) =>
-        y >= bbox[1] &&
-        y <= bbox[3] &&
-        Math.min(item.x1, bbox[2]) - Math.max(item.x0, bbox[0]) > t,
-    )
-    .sort((a, b) => a.bbox[0] - b.bbox[0] || a.bbox[2] - b.bbox[2]);
+  const crossed = blocks.filter(
+    ({ bbox }) =>
+      y >= bbox[1] &&
+      y <= bbox[3] &&
+      Math.min(item.x1, bbox[2]) - Math.max(item.x0, bbox[0]) > t,
+  );
   if (crossed.length < 2) return whole;
   const wanted = crossed.map(block => wantedText.get(block) ?? '');
   const full = comparable(item.text);

@@ -40,6 +40,14 @@ const cases = [
     wrapped: 'both',
     sharedText: 'CityBob',
   },
+  {
+    name: 'both blocks wrapping with the second box narrower at the same left edge',
+    texts: ['Alice Chen lives in Taipei City', 'Bob accounting department'],
+    width: 150,
+    wrapped: 'both',
+    sharedText: 'CityBob',
+    narrowerSecond: true,
+  },
 ];
 const ids = ['lbl', 'val', 'tail'];
 const fixtures = new Map<string, { pdf: Uint8Array; gt: GroundTruth }>();
@@ -147,6 +155,15 @@ test.each(cases)(
       if (scenario.wrapped === 'both') {
         const value = block(gt, 'val');
         expect(value.bbox[3] - value.bbox[1]).toBeGreaterThan(24);
+        if (scenario.narrowerSecond) {
+          expect(items.some(item => item.text.startsWith('CityBob'))).toBe(
+            true,
+          );
+          expect(value.bbox[0]).toBeCloseTo(wrapped.bbox[0], 2);
+          expect(value.bbox[2] - value.bbox[0]).toBeLessThan(
+            wrapped.bbox[2] - wrapped.bbox[0],
+          );
+        }
       }
       if (scenario.wrapped === 'lbl') {
         expect(block(gt, 'val').bbox[1] - wrapped.bbox[1]).toBeCloseTo(24, 1);
@@ -162,6 +179,51 @@ test.each(cases)(
     expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
   },
 );
+
+const narrowerFixture =
+  'both blocks wrapping with the second box narrower at the same left edge';
+
+test.each([
+  {
+    name: 'second block text wrong at its start',
+    affected: ['val'],
+    change: (gt: GroundTruth) => {
+      block(gt, 'val').text = 'Rob accounting department';
+    },
+  },
+  {
+    name: 'swapped block texts',
+    affected: ['lbl', 'val'],
+    change: (gt: GroundTruth) => {
+      const label = block(gt, 'lbl');
+      const value = block(gt, 'val');
+      [label.text, value.text] = [value.text, label.text];
+    },
+  },
+])(
+  '$name is rejected when both wrap and the second box is narrower',
+  async scenario => {
+    const { pdf, gt: correct } = fixture(narrowerFixture);
+    const gt = structuredClone(correct);
+    scenario.change(gt);
+    const report = await checkPdf(pdf, gtSchema.parse(gt));
+    expect(report.ok).toBe(false);
+    for (const blockId of scenario.affected) {
+      expect(report.differences).toEqual(
+        expect.arrayContaining([expect.objectContaining({ blockId })]),
+      );
+    }
+  },
+);
+
+test('swapped block orders are rejected when both wrap and the second box is narrower', async () => {
+  const { pdf, gt: correct } = fixture(narrowerFixture);
+  const gt = structuredClone(correct);
+  const label = block(gt, 'lbl');
+  const value = block(gt, 'val');
+  [label.order, value.order] = [value.order, label.order];
+  expect((await checkPdf(pdf, gtSchema.parse(gt))).ok).toBe(false);
+});
 
 test.each([
   {
