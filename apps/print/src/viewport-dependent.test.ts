@@ -62,7 +62,6 @@ async function post(fixture: Omit<Fixture, 'name' | 'diagnostic'>) {
   });
 }
 
-const rule = '.target { width: 50vw; }';
 const blackTarget =
   '<div class="target" data-gt="image" style="width:40px;height:40px;background:black"></div>';
 const svg =
@@ -178,8 +177,7 @@ test.each(animationRefusals)(
   },
 );
 
-// Each row isolates a bypass: detecting another unit or another source cannot
-// make this row pass. The declarations deliberately keep the page printable.
+// These mechanisms remain unsafe even when every measured box is stable.
 const refusals: Fixture[] = [
   ...['before', 'after'].flatMap(pseudo =>
     [false, true].map(markHost => ({
@@ -196,15 +194,6 @@ const refusals: Fixture[] = [
       diagnostic: 'fixed',
     })),
   ),
-  ...['html', 'body'].map(selector => ({
-    name: `viewport-sized ${selector} container outside Paged.js pages`,
-    head: `<style data-pagedjs-ignore>
-      ${selector} { container-type: inline-size; }
-      @container (min-width: 793.5px) { .target { position: relative; left: 100px; } }
-      </style>`,
-    target: blackTarget,
-    diagnostic: 'container',
-  })),
   {
     name: 'generated fixed before pseudo-element',
     head: `<style data-pagedjs-ignore>
@@ -212,123 +201,6 @@ const refusals: Fixture[] = [
       </style>`,
     target: blackTarget,
     diagnostic: 'fixed',
-  },
-  ...[
-    'vw',
-    'vh',
-    'vi',
-    'vb',
-    'vmin',
-    'vmax',
-    'svw',
-    'svh',
-    'svi',
-    'svb',
-    'svmin',
-    'svmax',
-    'lvw',
-    'lvh',
-    'lvi',
-    'lvb',
-    'lvmin',
-    'lvmax',
-    'dvw',
-    'dvh',
-    'dvi',
-    'dvb',
-    'dvmin',
-    'dvmax',
-    'cqw',
-    'cqh',
-    'cqi',
-    'cqb',
-    'cqmin',
-    'cqmax',
-    'Vw',
-  ].map(unit => ({
-    name: `${unit} length in a stylesheet declaration`,
-    head: `<style>.target { width: 1${unit}; }</style>`,
-    diagnostic: `1${unit}`,
-  })),
-  ...[
-    ['head style', `<style>${rule}</style>`, ''],
-    ['body style', '', `<style>${rule}</style>`],
-    ['screen-only style', `<style media="screen">${rule}</style>`, ''],
-    [
-      'Paged.js ignored style',
-      `<style data-pagedjs-ignore>${rule}</style>`,
-      '',
-    ],
-    ['nested media rule', `<style>@media print { ${rule} }</style>`, ''],
-    [
-      'supports group',
-      `<style>@supports (display: block) { ${rule} }</style>`,
-      '',
-    ],
-    ['layer group', `<style>@layer pack { ${rule} }</style>`, ''],
-    ['CSS nesting', '<style>.target { & span { width: 50vw; } }</style>', ''],
-    ['page rule', '<style>@page { margin-left: 1vw; }</style>', ''],
-    [
-      'keyframes',
-      '<style>@keyframes unused { from { left: 50vw; } to { left: 0; } }</style>',
-      '',
-    ],
-    ['custom property', '<style>.target { --unused-width: 50vw; }</style>', ''],
-    ['style attribute', '', '<div style="width: 50vw"></div>'],
-    [
-      'SVG presentation attribute',
-      '',
-      '<svg width="100" height="10"><rect width="50vw" height="10"/></svg>',
-    ],
-  ].map(([name, head, body]) => ({
-    name: name ?? '',
-    head,
-    body,
-    diagnostic: name === 'page rule' ? '1vw' : '50vw',
-  })),
-  ...[
-    ['head linked stylesheet', '<link rel="stylesheet" href="sheet.css">', ''],
-    ['body linked stylesheet', '', '<link rel="stylesheet" href="sheet.css">'],
-    [
-      'screen-only linked stylesheet',
-      '<link rel="stylesheet" media="screen" href="sheet.css">',
-      '',
-    ],
-    [
-      'Paged.js ignored linked stylesheet',
-      '<link rel="stylesheet" data-pagedjs-ignore href="sheet.css">',
-      '',
-    ],
-  ].map(([name, head, body]) => ({
-    name: name ?? '',
-    head,
-    body,
-    files: { 'sheet.css': rule },
-    diagnostic: '50vw',
-  })),
-  {
-    name: 'transitively imported stylesheet',
-    head: '<link rel="stylesheet" href="outer.css">',
-    files: { 'outer.css': '@import "inner.css";', 'inner.css': rule },
-    diagnostic: '50vw',
-  },
-  // These imports are inactive on screen. Inspecting only the stylesheets
-  // loaded before print media misses the rules Chrome uses for the PDF.
-  {
-    name: 'print-only late import chain with a min-width query',
-    head: '<style data-pagedjs-ignore media="print">@import url(a.css);</style>',
-    files: {
-      'a.css': '@import url(b.css);',
-      'b.css':
-        '@media (min-width:793.5px) { .target { position:relative; left:100px; } }',
-    },
-    diagnostic: 'min-width',
-  },
-  {
-    name: 'print-only late import with a viewport length',
-    head: '<style data-pagedjs-ignore media="print">@import url(c.css);</style>',
-    files: { 'c.css': rule },
-    diagnostic: '50vw',
   },
   // Chrome repeats fixed ink on every printed page, but the DOM has only
   // one element for ground truth. Stable before/after boxes cannot catch it.
@@ -352,92 +224,6 @@ const refusals: Fixture[] = [
       <p data-gt="paragraph" style="break-before:page">SECOND_PAGE_MARKER</p>`,
     diagnostic: 'fixed',
   })),
-  ...[
-    '(width: 800px)',
-    '(min-width: 800px)',
-    '(max-width: 800px)',
-    '(height: 1000px)',
-    '(min-height: 1000px)',
-    '(max-height: 1000px)',
-    '(aspect-ratio: 4/3)',
-    '(min-aspect-ratio: 4/3)',
-    '(max-aspect-ratio: 4/3)',
-    '(orientation: portrait)',
-    '(device-width: 800px)',
-    '(min-device-width: 800px)',
-    '(max-device-height: 1000px)',
-    '(device-aspect-ratio: 4/3)',
-    '(width >= 800px)',
-    '(400px < width < 900px)',
-    '(HEIGHT <= 1000px)',
-  ].map(query => ({
-    name: `viewport media query ${query}`,
-    // Paged.js cannot parse range syntax; Chrome can. Ignored sheets must
-    // still be inspected, without making this a pagination-parser test.
-    head: `<style${/[<>=]/.test(query) ? ' data-pagedjs-ignore' : ''}>@media ${query} { .target { color: black; } }</style>`,
-    // Whitespace/case normalization is allowed; require the identifying feature.
-    diagnostic: /aspect-ratio/i.test(query)
-      ? 'aspect-ratio'
-      : /orientation/i.test(query)
-        ? 'orientation'
-        : /height/i.test(query)
-          ? 'height'
-          : 'width',
-  })),
-  {
-    name: 'style media attribute size query',
-    head: '<style media="print and (min-width: 1px)">.target { color: black; }</style>',
-    diagnostic: 'min-width',
-  },
-  {
-    name: 'link media attribute size query',
-    head: '<link rel="stylesheet" media="(orientation: landscape)" href="safe.css">',
-    files: { 'safe.css': '.target { color: black; }' },
-    diagnostic: 'orientation',
-  },
-  {
-    name: 'import media list size query',
-    head: '<style>@import "safe.css" print and (min-width: 1px);</style>',
-    files: { 'safe.css': '.target { color: black; }' },
-    diagnostic: 'min-width',
-  },
-  {
-    name: 'typed attr in a property',
-    body: '<div data-width="50vw" style="width: attr(data-width type(<length>), 1px)"></div>',
-    diagnostic: 'attr(',
-  },
-  {
-    name: 'attr in an unused custom property',
-    head: '<style>.target { --unused-width: attr(data-width); }</style>',
-    diagnostic: 'attr(',
-  },
-  {
-    name: 'attr in a stylesheet property',
-    head: '<style>.target { width: attr(data-width type(<length>), 10px); }</style>',
-    diagnostic: 'attr(',
-  },
-  {
-    name: 'attr outside content in a linked stylesheet',
-    head: '<link rel="stylesheet" href="sheet.css">',
-    files: { 'sheet.css': '.target { --w: attr(data-width); }' },
-    diagnostic: 'attr(',
-  },
-  ...[
-    [
-      'hex escape in a custom property viewport unit',
-      String.raw`100v\77`,
-      'vw',
-    ],
-    ['escaped letter in a viewport unit', String.raw`50\vw`, 'vw'],
-    ['terminated hex escape in a viewport unit', String.raw`1\76 h`, 'vh'],
-  ].map(([name, value, diagnostic]) => ({
-    name: name ?? '',
-    head:
-      diagnostic === 'vw' && value === String.raw`100v\77`
-        ? `<style>.target { --w: ${value}; width: calc((var(--w) - 790px) * 100); }</style>`
-        : `<style>.target { --w: ${value}; width: var(--w); }</style>`,
-    diagnostic: diagnostic ?? '',
-  })),
   {
     name: 'picture source media attribute size query',
     body: '<picture><source media="(min-width: 793.5px)" srcset="wide.svg"><img data-gt="image" src="narrow.svg"></picture>',
@@ -447,38 +233,12 @@ const refusals: Fixture[] = [
     },
     diagnostic: 'min-width',
   },
-  ...['img', 'source'].map(tag => ({
-    name: `${tag} width-descriptor srcset without sizes`,
-    body:
-      tag === 'img'
-        ? '<img data-gt="image" src="a.svg" srcset="a.svg 100w, b.svg 2000w">'
-        : '<picture><source srcset="a.svg 100w, b.svg 2000w"><img data-gt="image" src="a.svg"></picture>',
-    files: { 'a.svg': svg, 'b.svg': svg },
-    diagnostic: 'srcset',
-  })),
-  ...['img', 'source'].flatMap(tag =>
-    ['invalid', '10px'].map(sizes => ({
-      name: `${tag} width-descriptor srcset with sizes="${sizes}"`,
-      body:
-        tag === 'img'
-          ? `<img data-gt="image" src="a.svg" srcset="a.svg 1000w" sizes="${sizes}">`
-          : `<picture><source srcset="a.svg 1000w" sizes="${sizes}"><img data-gt="image" src="a.svg"></picture>`,
-      files: { 'a.svg': svg },
-      diagnostic: 'srcset',
-    })),
-  ),
   ...['print', 'screen'].map(media => ({
     name: `picture source with plain ${media} media`,
     body: `<picture><source media="${media}" srcset="pixel.svg"><img data-gt="image" src="pixel.svg"></picture>`,
     files: { 'pixel.svg': svg },
     diagnostic: media,
   })),
-  {
-    name: 'source sizes viewport length with srcset',
-    body: '<picture><source srcset="pixel.svg" sizes="50vw"><img src="pixel.svg" width="10" height="10"></picture>',
-    files: { 'pixel.svg': svg },
-    diagnostic: '50vw',
-  },
 ];
 
 test.each(refusals)(

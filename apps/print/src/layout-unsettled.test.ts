@@ -56,7 +56,7 @@ const settled = ['1 72,72,300,96', '1 72,100,300,124'];
 
 // A print-only import may finish after the screen scan. Its diagnostic must
 // stop printing even when the boxes are stable and the screen scan was clean.
-test.each(['<style>: @media (min-width: 793.5px)', '.target: width: 50vw'])(
+test.each(['.target: position: fixed', '<source>: media=print'])(
   'viewport dependence first reported in print media refuses %s',
   async diagnostic => {
     const printed = { boxes: settled, viewportDependent: [diagnostic] };

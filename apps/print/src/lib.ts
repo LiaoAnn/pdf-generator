@@ -47,12 +47,17 @@ export interface PrintReadyState {
    */
   movedBoxes?: string[];
   /**
-   * `"<where>: <declaration, media query or attribute>"` of the document's
-   * CSS whose result depends on the viewport's size.
+   * `"<where>: <what>"` of what depends on the viewport without moving a
+   * data-gt box (`position: fixed`, `<picture>` sources chosen by media).
    */
   viewportDependent?: string[];
   /** `"<where>: <what>"` of everything that moves over time, on screen. */
   animations?: string[];
+  /**
+   * `"<page> <left>,<top>,<right>,<bottom>"` of every data-gt box, on screen
+   * at the viewport Paged.js paginated at.
+   */
+  boxes?: string[];
 }
 
 /**
@@ -393,8 +398,8 @@ export async function renderPdf<T = undefined>(
   }
 }
 
-// Measured at the page size rounded down to whole CSS px, such CSS can lay
-// out differently than Chrome prints it (T07-20).
+// What depends on the viewport but doesn't show in the data-gt boxes that
+// `rejectViewportBoxes` compares (T07-20).
 function rejectViewportDependent(found: string[] | undefined) {
   if (found && found.length > 0) {
     throw new RenderError(
@@ -426,8 +431,12 @@ function rejectMovedBoxes(moved: string[] | undefined) {
   }
 }
 
-// Box entries in one list and not the other, for `layout_unsettled`.
-function changedBoxes(before: string[], after: string[]): string[] {
+// Box entries in one list and not the other.
+function changedBoxes(
+  before: string[],
+  after: string[],
+  labels = ['before printing', 'after printing'],
+): string[] {
   const missing = (from: string[], other: string[]) => {
     const rest = [...other];
     return from.filter(box => {
@@ -438,15 +447,48 @@ function changedBoxes(before: string[], after: string[]): string[] {
     });
   };
   return [
-    ...missing(before, after).map(box => `before printing: ${box}`),
-    ...missing(after, before).map(box => `after printing: ${box}`),
+    ...missing(before, after).map(box => `${labels[0]}: ${box}`),
+    ...missing(after, before).map(box => `${labels[1]}: ${box}`),
   ];
+}
+
+type Viewport = { width: number; height: number };
+const size = ({ width, height }: Viewport) => `${width}x${height}`;
+
+// The data-gt boxes at two viewports, as `{ boxes }` from the runtime (no
+// array: nothing to compare). Chrome prints at the exact page size, between
+// its floor and ceil in CSS px, and Paged.js breaks pages where the layout
+// at its own viewport put them: a layout that differs between two of these
+// can print differently than gt.json describes it (T07-22).
+function rejectViewportBoxes(
+  medium: string,
+  a: { viewport: Viewport; boxes?: unknown },
+  b: { viewport: Viewport; boxes?: unknown },
+) {
+  if (!Array.isArray(a.boxes) || !Array.isArray(b.boxes)) return;
+  const changed = changedBoxes(a.boxes, b.boxes, [
+    `at ${size(a.viewport)}`,
+    `at ${size(b.viewport)}`,
+  ]);
+  if (changed.length > 0) {
+    throw new RenderError(
+      'viewport_dependent',
+      'The data-gt boxes depend on the viewport size',
+      changed
+        .slice(0, 50)
+        .map(
+          box =>
+            `${medium}, ${size(a.viewport)} vs ${size(b.viewport)}: ${box}`,
+        ),
+    );
+  }
 }
 
 type PrintedReader = {
   __pdfgen: {
     loadPrintResources(): Promise<void>;
     printed(options: { pageWidth: number }): PrintedState;
+    boxes(): { boxes: string[] };
   };
 };
 
@@ -478,41 +520,65 @@ async function print<T>(
   // document wider than its page is shrunk to fit, which moves every box.
   // Print media is in place before the PDF is printed, and what it makes
   // the page load (print-only images and fonts) has loaded.
-  let viewport = { width: 0, height: 0 };
-  const setViewport = async (width: number, height: number) => {
-    const next = { width: Math.floor(width), height: Math.floor(height) };
+  let viewport: Viewport = { width: 0, height: 0 };
+  const setViewport = async (next: Viewport) => {
     if (next.width === viewport.width && next.height === viewport.height) {
       return;
     }
     viewport = next;
     await page.setViewport(next);
   };
-  if (ready.pageSize) {
-    await setViewport(ready.pageSize.width, ready.pageSize.height);
+  const floor = (width: number, height: number) => ({
+    width: Math.floor(width),
+    height: Math.floor(height),
+  });
+  const readBoxes = () =>
+    page.evaluate(() =>
+      (globalThis as unknown as PrintedReader).__pdfgen.boxes(),
+    );
+  // Waits for what the medium or viewport makes the page load and lay out
+  // (a `sizes` image switches after a frame), until a round starts no
+  // request: what one load lays out can ask for the next (an @import'ed
+  // sheet's images).
+  const loadResources = () =>
+    withinTimeout(
+      (async () => {
+        for (;;) {
+          const started = requests.started();
+          await page.evaluate(() =>
+            (
+              globalThis as unknown as PrintedReader
+            ).__pdfgen.loadPrintResources(),
+          );
+          await requests.loaded();
+          if (requests.started() === started) return;
+        }
+      })(),
+      options.timeoutMs ?? defaultTimeoutMs,
+      () =>
+        new RenderError(
+          'layout_unsettled',
+          'What print media loads did not finish loading',
+        ),
+    );
+  const paginated = await page.evaluate(() => ({
+    width: globalThis.innerWidth,
+    height: globalThis.innerHeight,
+  }));
+  const pageViewport = ready.pageSize
+    ? floor(ready.pageSize.width, ready.pageSize.height)
+    : undefined;
+  if (pageViewport) {
+    await setViewport(pageViewport);
+    await loadResources();
+    rejectViewportBoxes(
+      'screen media at the pagination viewport',
+      { viewport: paginated, boxes: ready.boxes },
+      { viewport: pageViewport, ...(await readBoxes()) },
+    );
   }
   await page.emulateMediaType('print');
-  // Until a round starts no request: what one load lays out can ask for the
-  // next (an @import'ed sheet's images).
-  await withinTimeout(
-    (async () => {
-      for (;;) {
-        const started = requests.started();
-        await page.evaluate(() =>
-          (
-            globalThis as unknown as PrintedReader
-          ).__pdfgen.loadPrintResources(),
-        );
-        await requests.loaded();
-        if (requests.started() === started) return;
-      }
-    })(),
-    options.timeoutMs ?? defaultTimeoutMs,
-    () =>
-      new RenderError(
-        'layout_unsettled',
-        'What print media loads did not finish loading',
-      ),
-  );
+  await loadResources();
   const readPrinted = (pageWidth: number) =>
     page.evaluate(
       width =>
@@ -526,6 +592,27 @@ async function print<T>(
   // the read after it.
   rejectAnimations(before.animations);
   rejectViewportDependent(before.viewportDependent);
+  // The same in print media, a CSS px wider and taller, with what that
+  // loads: Chrome prints between the two.
+  if (ready.pageSize && pageViewport) {
+    const ceil = {
+      width: Math.ceil(ready.pageSize.width),
+      height: Math.ceil(ready.pageSize.height),
+    };
+    if (
+      ceil.width !== pageViewport.width ||
+      ceil.height !== pageViewport.height
+    ) {
+      await setViewport(ceil);
+      await loadResources();
+      rejectViewportBoxes(
+        'print media',
+        { viewport: pageViewport, boxes: before.boxes },
+        { viewport: ceil, ...(await readBoxes()) },
+      );
+      await setViewport(pageViewport);
+    }
+  }
   const pdf = await page.pdf({
     preferCSSPageSize: true,
     printBackground: true,
@@ -551,7 +638,7 @@ async function print<T>(
     pageWidth = Math.max(pageWidth, (x1 - x0) / 0.75);
     pageHeight = Math.max(pageHeight, (y1 - y0) / 0.75);
   }
-  await setViewport(pageWidth, pageHeight);
+  await setViewport(floor(pageWidth, pageHeight));
   const printed = await readPrinted(pageWidth);
   // What arrived while the PDF was printed moved boxes after it: the PDF
   // and the ground truth would describe different layouts.
