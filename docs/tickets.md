@@ -787,3 +787,21 @@
 - **驗收測試**：帶單、雙引號與不帶引號的 `[class*=pagedjs]`、`[class^=pagedjs]` 都被擋；5 個既有樣板與 minimal-example 仍通過 checkPack
 - **不做**：其他 CSS 規則
 - **來源**：PR #50（T10-2）
+
+### T07-19 印 PDF：缺字檢查支援旋轉文字
+- **目標**：`packages/self-check` 的 `missingText`（apps/print 的列印缺字檢查在用）仍把每個文字項目的 x 範圍當成橫排，所以旋轉 +90° 與 180° 的文字被誤判 `text_missing`（例如 `page 1: 內部使用`、`倒置文字`）。T14-1 讓 `readPdf` 為非橫排文字回報可選的 `dir`，改用它判斷
+- **Blocked by**：T14-1
+- **Blocks**：—
+- **撞車風險**：`packages/self-check` 的 `missingText`、`apps/print`
+- **驗收測試**：+90°、180°、-90° 的文字都能列印並通過自我檢查；故意移出框外的對照組仍被擋；既有樣板 gt.json 不變
+- **不做**：改橫排文字的判斷
+- **來源**：PR #52（T14-1）。另（選做、目前沒有樣板需要）：用 CSS 重排的相鄰行內區塊（flex `order`、`row-reverse`），在未標記的 PDF 裡仍會誤判
+
+### T14-7 樣板：minimal-example 的驗收程式
+- **目標**：其他樣板都有 `src/acceptance.ts`，minimal-example 沒有（T14-6 用暫時的腳本跑批次）。補上，至少涵蓋自我檢查全過與空白 `recorder` 的情況
+- **Blocked by**：T14-6
+- **Blocks**：—
+- **撞車風險**：`templates/minimal-example`
+- **驗收測試**：`node src/acceptance.ts --url …` 在 seed t10-2 跑 10 份通過；故意拿掉底線時失敗
+- **不做**：改樣板外觀
+- **來源**：PR #53（T14-6）
