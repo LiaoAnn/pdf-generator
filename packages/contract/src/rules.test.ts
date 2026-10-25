@@ -48,15 +48,18 @@ describe('rules consumed by the seeded data engine', () => {
   test('invalid fixture differs only by a missing phone kind', () => {
     const invalid = example('invalid');
     const valid = example('valid') as Rules;
-    // The invalid fixture keeps its legacy unsorted array; only the valid
-    // fixture is updated to demonstrate date sorting.
+    // The invalid fixture keeps legacy text and array settings; only the valid
+    // fixture demonstrates pack phrases and date sorting.
     const transactions = { ...valid.fields.transactions };
     Reflect.deleteProperty(transactions, 'sortBy');
+    const memo = { ...valid.fields.memo };
+    Reflect.deleteProperty(memo, 'phrases');
     expect(invalid).toEqual({
       ...valid,
       fields: {
         ...valid.fields,
         transactions,
+        memo,
         mobile: { type: 'phone' },
       },
     });
