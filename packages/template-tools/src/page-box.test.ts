@@ -83,6 +83,79 @@ describe('page-box upload guard', () => {
     selector => rejects(pack(`\n  ${selector} { color: red }`), selector),
   );
 
+  describe.each(['manifest stylesheet', 'template <style>'])(
+    'quoted Paged.js selectors in %s',
+    source => {
+      function rejectsCss(css: string, token: string) {
+        if (source === 'manifest stylesheet') rejects(pack(css), token);
+        else
+          rejects(
+            pack('', `<style>\n${css}\n</style>${paragraph}`),
+            token,
+            templateFile,
+          );
+      }
+
+      it.each(
+        ['=', '~=', '|=', '^=', '$=', '*='].flatMap(operator =>
+          [
+            'pagedjs',
+            'PAGEDJS',
+            "'pagedjs'",
+            "'PAGEDJS'",
+            '"pagedjs"',
+            '"PAGEDJS"',
+          ].flatMap(value =>
+            ['', ' i', ' s'].map(flag => `[class${operator}${value}${flag}]`),
+          ),
+        ),
+      )(
+        'rejects attribute value %s regardless of quoting, operator, case or flag at the selector start',
+        selector =>
+          rejectsCss(
+            `p { color: black }\n  ${selector} { margin: 20mm }`,
+            selector,
+          ),
+      );
+
+      describe.each([
+        '',
+        '@media print',
+        '@supports (display: grid)',
+        '@layer print',
+      ])('selector context %s', wrapper => {
+        it.each([
+          ['p, [class^="pagedjs"]', '[class^="pagedjs"]'],
+          ["p, [class^='pagedjs']", "[class^='pagedjs']"],
+          ['p:not([class*="pagedjs"])', 'p:not('],
+          ["p:not([class*='pagedjs'])", 'p:not('],
+          ['p:is(.report, [class*="pagedjs"])', 'p:is('],
+          ["p:is(.report, [class*='pagedjs'])", 'p:is('],
+        ])(
+          'rejects quoted Paged.js in %s at the offending selector rather than the value',
+          (selector, token) => {
+            const rule = `\n  ${selector} { color: red }\n`;
+            rejectsCss(wrapper ? `${wrapper} {${rule}}` : rule, token);
+          },
+        );
+      });
+
+      it.each([
+        '[title="}"]',
+        "[title='}']",
+        '[title="a;b{c}"]',
+        "[title='a;b{c}']",
+      ])(
+        'keeps parsing after quoted selector punctuation in %s and rejects only the later body padding',
+        selector =>
+          rejectsCss(
+            `\n  ${selector} { color: red }\n  body { padding: 1mm }`,
+            'padding',
+          ),
+      );
+    },
+  );
+
   describe.each(['@media print', '@supports (display: grid)', '@layer print'])(
     'inside %s',
     wrapper => {
@@ -169,6 +242,12 @@ describe('page-box upload guard', () => {
     'p { margin: 4mm } .body { padding: 3mm } .html-note { margin: 1mm } tbody { border: 1px solid } div.body { padding: 2mm }',
     'body p { margin: 4mm } html > div { padding: 3mm }',
     '/* .pagedjs_page { margin-top: -20mm } */ p::before { content: "pagedjs" }',
+    '[title="a{b"] { color: red } p { margin: 1mm }',
+    "[title='a{b'] { color: red } p { margin: 1mm }",
+    'p { font-family: "pagedjs" }',
+    "p { font-family: 'pagedjs' }",
+    '[class*="report"] { margin: 2mm }',
+    "[class*='report'] { margin: 2mm }",
   ])('allows legitimate pack CSS without broadening the guard: %s', css => {
     expect(checkPack(pack(css))).toMatchObject({ ok: true, issues: [] });
     expect(

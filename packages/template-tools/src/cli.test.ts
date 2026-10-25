@@ -424,6 +424,16 @@ describe('page-box upload guard CLI acceptance', () => {
       '@page { margin: 20mm }\nbody {\n  padding-left: 10mm;\n}',
       'padding-left',
     ],
+    [
+      'double-quoted Paged.js attribute selector',
+      '\n  [class*="pagedjs"] { margin: 20mm }',
+      '[class*="pagedjs"]',
+    ],
+    [
+      'single-quoted Paged.js attribute selector',
+      "\n  [class^='pagedjs'] { margin: 20mm }",
+      "[class^='pagedjs']",
+    ],
   ])('CLI rejects the %s repro with a source location', (_name, css, token) => {
     const directory = join(tempDirectory(), 'pack');
     cpSync(join(fixtures, 'valid'), directory, { recursive: true });

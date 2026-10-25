@@ -7,8 +7,11 @@
 /** One rule this guard refuses, at an offset into the CSS as given. */
 export type PageBoxProblem = { offset: number; message: string };
 
-/** The CSS with comments and string contents blanked, offsets unchanged. */
-function masked(css: string): string {
+/**
+ * The CSS with comments and (unless kept) string contents blanked, offsets
+ * unchanged.
+ */
+function masked(css: string, keepStrings = false): string {
   let out = '';
   let i = 0;
   while (i < css.length) {
@@ -23,7 +26,8 @@ function masked(css: string): string {
       while (end < css.length && css[end] !== c && css[end] !== '\n') end++;
       // The closing quote, when there is one, ends the string.
       const close = css[end] === c ? c : '';
-      out += `${c}${css.slice(i + 1, end).replace(/[^\n]/g, ' ')}${close}`;
+      const inside = css.slice(i + 1, end);
+      out += `${c}${keepStrings ? inside : inside.replace(/[^\n]/g, ' ')}${close}`;
       i = end + close.length;
     } else {
       out += c;
@@ -108,6 +112,8 @@ function neutral(property: string, value: string): boolean | undefined {
  */
 export function pageBoxProblems(css: string): PageBoxProblem[] {
   const text = masked(css);
+  // Selectors are read with their strings: `[class*="pagedjs"]` names one.
+  const selectors = masked(css, true);
   const problems: PageBoxProblem[] = [];
   // For each open block: does it hold declarations of a root-box rule?
   const stack: ('root' | 'rule' | 'at')[] = [];
@@ -142,14 +148,16 @@ export function pageBoxProblems(css: string): PageBoxProblem[] {
         // The first selector of the list that names one, from its start.
         let at = start;
         const pagedjs = splitList(prelude).find(selector => {
-          if (/pagedjs/i.test(selector)) return true;
-          at += selector.length + 1;
-          return false;
+          const named = /pagedjs/i.test(
+            selectors.slice(at, at + selector.length),
+          );
+          if (!named) at += selector.length + 1;
+          return named;
         });
         if (pagedjs) {
           problems.push({
             offset: at + pagedjs.search(/\S/),
-            message: `${head} selects Paged.js's page elements: their layout is the platform's, and changing it moves the printed page away from its ground truth`,
+            message: `${selectors.slice(start, i).trim()} selects Paged.js's page elements: their layout is the platform's, and changing it moves the printed page away from its ground truth`,
           });
         }
         stack.push(splitList(head).some(selectsRoot) ? 'root' : 'rule');
