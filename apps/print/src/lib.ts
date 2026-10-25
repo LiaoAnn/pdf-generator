@@ -40,6 +40,11 @@ export interface PrintReadyState {
   /** `"page <n>: <row text>"` of every table row split or outside its page. */
   fragmentedRows: string[];
   /**
+   * `"page <n> <box> <property>: <value>"` of every Paged.js page box (or
+   * html/body) a template moved from where Paged.js put it, on screen.
+   */
+  movedBoxes?: string[];
+  /**
    * Per page, each `[data-gt]` element's box and the text of its visible text
    * nodes (NFKC, no whitespace): what the PDF's text layer must contain
    * there.
@@ -64,6 +69,7 @@ export type RenderErrorCode =
   | 'row_fragmented'
   | 'text_missing'
   | 'page_count_mismatch'
+  | 'page_box_moved'
   | 'request_blocked';
 
 /** A render that must not produce a PDF. */
@@ -284,6 +290,16 @@ export async function renderPdf<T = undefined>(
   }
 }
 
+function rejectMovedBoxes(moved: string[] | undefined) {
+  if (moved && moved.length > 0) {
+    throw new RenderError(
+      'page_box_moved',
+      'The template moved Paged.js page boxes or html/body',
+      moved,
+    );
+  }
+}
+
 async function print<T>(
   page: Page,
   documentUrl: string,
@@ -305,6 +321,9 @@ async function print<T>(
       ready.fragmentedRows,
     );
   }
+  // Ground truth is read relative to each page's box, so a page box a
+  // template moved misplaces every block in it (T07-18).
+  rejectMovedBoxes(ready.movedBoxes);
   const inspected = options.inspect ? await options.inspect(page) : undefined;
   const pdf = await page.pdf({
     preferCSSPageSize: true,
@@ -322,6 +341,19 @@ async function print<T>(
       [`PDF pages: ${numPages}; Paged.js pages: ${ready.pageCount}`],
     );
   }
+  // Again as printed: Paged.js leaves screen-only stylesheets live, and its
+  // own @media print rules apply only here.
+  await page.emulateMediaType('print');
+  const printed = await page.evaluate(() =>
+    (
+      globalThis as unknown as {
+        __pdfgen: {
+          movedBoxes(options: { print: boolean }): string[];
+        };
+      }
+    ).__pdfgen.movedBoxes({ print: true }),
+  );
+  rejectMovedBoxes(printed);
   if (
     ready.expectedText?.some(blocks =>
       blocks.some(block => block.texts.length > 0),

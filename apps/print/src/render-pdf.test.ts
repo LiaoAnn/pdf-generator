@@ -83,10 +83,14 @@ test('inspection sees the completed page on the printing tab before PDF and its 
     ),
   ).toBe(true);
   expect(fake.page.setContent).not.toHaveBeenCalled();
-  expect(fake.calls).toEqual([
+  // A print-media recheck may evaluate again; the first ready state must
+  // still precede inspection, which must precede PDF creation.
+  expect(fake.calls.indexOf('ready')).toBeLessThan(
+    fake.calls.indexOf('inspect'),
+  );
+  expect(fake.calls.filter(call => call !== 'ready')).toEqual([
     'newPage',
     'goto',
-    'ready',
     'inspect',
     'pdf',
     'close',

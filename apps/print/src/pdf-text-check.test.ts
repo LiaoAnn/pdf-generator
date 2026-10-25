@@ -148,7 +148,7 @@ test.each([
       .soft(outcome)
       .toMatchObject({ code: 'text_missing', details: [detail] });
     expect(fake.calls).toEqual(['inspect', 'pdf', 'close']);
-    expect(fake.page.evaluate).toHaveBeenCalledTimes(1);
+    expect(fake.page.evaluate).toHaveBeenCalled();
     expect(fake.page.close).toHaveBeenCalledTimes(1);
   },
 );
