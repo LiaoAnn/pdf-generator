@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "minimal-example",
+    "templateVersion": 1,
+    "seed": "t10-2",
+    "index": 0
+  },
+  "pages": [
+    {
+      "width": 595.28,
+      "height": 841.89
+    }
+  ],
+  "blocks": [
+    {
+      "id": "title-1",
+      "page": 1,
+      "bbox": [89.85, 84, 505.41, 107.25],
+      "order": 0,
+      "text": "建大食品股份有限公司業務會議紀錄",
+      "type": "title"
+    },
+    {
+      "id": "label-1",
+      "page": 1,
+      "bbox": [89.85, 110.25, 149.86, 127.5],
+      "order": 1,
+      "text": "會議日期：",
+      "type": "label"
+    },
+    {
+      "id": "field-1",
+      "page": 1,
+      "bbox": [149.86, 110.25, 221.86, 128.25],
+      "order": 2,
+      "text": "2025-06-28",
+      "type": "field"
+    },
+    {
+      "id": "label-2",
+      "page": 1,
+      "bbox": [89.85, 128.25, 149.86, 145.5],
+      "order": 3,
+      "text": "會議地點：",
+      "type": "label"
+    },
+    {
+      "id": "field-2",
+      "page": 1,
+      "bbox": [149.86, 128.25, 309.01, 146.25],
+      "order": 4,
+      "text": "648雲林縣西螺鎮中興路129號",
+      "type": "field"
+    },
+    {
+      "id": "label-3",
+      "page": 1,
+      "bbox": [89.85, 146.25, 149.86, 163.5],
+      "order": 5,
+      "text": "主　　席：",
+      "type": "label"
+    },
+    {
+      "id": "field-3",
+      "page": 1,
+      "bbox": [149.86, 146.25, 221.86, 164.25],
+      "order": 6,
+      "text": "詹宜詩",
+      "type": "field"
+    },
+    {
+      "id": "label-4",
+      "page": 1,
+      "bbox": [89.85, 164.25, 149.86, 181.5],
+      "order": 7,
+      "text": "記　　錄：",
+      "type": "label"
+    },
+    {
+      "id": "field-4",
+      "page": 1,
+      "bbox": [149.86, 164.25, 221.86, 182.25],
+      "order": 8,
+      "text": "吳美佳",
+      "type": "field"
+    },
+    {
+      "id": "heading-1",
+      "page": 1,
+      "bbox": [89.85, 191.25, 505.41, 217.5],
+      "order": 9,
+      "text": "一、出席人員",
+      "type": "heading"
+    },
+    {
+      "id": "table-1",
+      "page": 1,
+      "bbox": [89.85, 226.5, 505.41, 332.25],
+      "order": 10,
+      "text": "姓名\t職稱\t是否出席\n戴宗偉\t主任\t☑是　☐否\n翁志振\t助理\t☑是　☐否\n張傑翰\t經理\t☑是　☐否\n蔡軒明\t主任\t☑是　☐否",
+      "type": "table",
+      "table": {
+        "rows": 5,
+        "cols": 3,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "姓名",
+            "bbox": [90.22, 226.88, 214.66, 244.88]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "職稱",
+            "bbox": [214.66, 226.88, 339.11, 244.88]
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "是否出席",
+            "bbox": [339.11, 226.88, 505.03, 244.88]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "戴宗偉",
+            "bbox": [90.22, 244.88, 214.66, 266.63]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "主任",
+            "bbox": [214.66, 244.88, 339.11, 266.63]
+          },
+          {
+            "row": 1,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 244.88, 505.03, 266.63],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 246, 354.73, 266.25]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 246, 388.59, 266.25]
+              }
+            ]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "翁志振",
+            "bbox": [90.22, 266.63, 214.66, 288.38]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "助理",
+            "bbox": [214.66, 266.63, 339.11, 288.38]
+          },
+          {
+            "row": 2,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 266.63, 505.03, 288.38],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 267.75, 354.73, 288]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 267.75, 388.59, 288]
+              }
+            ]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "張傑翰",
+            "bbox": [90.22, 288.38, 214.66, 310.13]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "經理",
+            "bbox": [214.66, 288.38, 339.11, 310.13]
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 288.38, 505.03, 310.13],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 289.5, 354.73, 309.75]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 289.5, 388.59, 309.75]
+              }
+            ]
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "蔡軒明",
+            "bbox": [90.22, 310.13, 214.66, 331.88]
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "主任",
+            "bbox": [214.66, 310.13, 339.11, 331.88]
+          },
+          {
+            "row": 4,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 310.13, 505.03, 331.88],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 311.25, 354.73, 331.5]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 311.25, 388.59, 331.5]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "heading-2",
+      "page": 1,
+      "bbox": [89.85, 341.25, 505.41, 367.5],
+      "order": 11,
+      "text": "二、討論事項",
+      "type": "heading"
+    },
+    {
+      "id": "paragraph-1",
+      "page": 1,
+      "bbox": [89.85, 376.5, 505.41, 393.75],
+      "order": 12,
+      "text": "會員人數維持穩定，設備維護請各單位配合；設備維護待下次會議討論。",
+      "type": "paragraph"
+    },
+    {
+      "id": "list_item-1",
+      "page": 1,
+      "bbox": [89.85, 393.75, 505.41, 411],
+      "order": 13,
+      "text": "・本季有效降低；本季明顯增加。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-2",
+      "page": 1,
+      "bbox": [89.85, 411, 505.41, 445.5],
+      "order": 14,
+      "text": "・研發團隊明顯增加，訂單數符合預期，新產品符合預期，新產品符合預期，教育訓練完成。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-3",
+      "page": 1,
+      "bbox": [89.85, 445.5, 505.41, 462.75],
+      "order": 15,
+      "text": "・研發團隊符合預期；營運成本完成，會員人數延後。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-4",
+      "page": 1,
+      "bbox": [89.85, 462.75, 505.41, 480],
+      "order": 16,
+      "text": "・客戶滿意度待下次會議討論。",
+      "type": "list_item"
+    },
+    {
+      "id": "heading-3",
+      "page": 1,
+      "bbox": [89.85, 489, 505.41, 515.25],
+      "order": 17,
+      "text": "三、確認",
+      "type": "heading"
+    },
+    {
+      "id": "checkbox-1",
+      "page": 1,
+      "bbox": [89.85, 524.25, 505.41, 545.25],
+      "order": 18,
+      "text": "☐本紀錄已經主席確認無誤。",
+      "type": "checkbox",
+      "checked": false
+    },
+    {
+      "id": "page_footer-1",
+      "page": 1,
+      "bbox": [89.85, 779.53, 505.41, 792.28],
+      "order": 19,
+      "text": "本文件內容為測試用假資料，與真實人物、公司無關。",
+      "type": "page_footer"
+    }
+  ]
+}

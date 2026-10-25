@@ -1,0 +1,367 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "templateId": "minimal-example",
+    "templateVersion": 1,
+    "seed": "t10-2",
+    "index": 4
+  },
+  "pages": [
+    {
+      "width": 595.28,
+      "height": 841.89
+    }
+  ],
+  "blocks": [
+    {
+      "id": "title-1",
+      "page": 1,
+      "bbox": [89.85, 84, 505.41, 107.25],
+      "order": 0,
+      "text": "光寶建設有限公司業務會議紀錄",
+      "type": "title"
+    },
+    {
+      "id": "label-1",
+      "page": 1,
+      "bbox": [89.85, 110.25, 149.86, 127.5],
+      "order": 1,
+      "text": "會議日期：",
+      "type": "label"
+    },
+    {
+      "id": "field-1",
+      "page": 1,
+      "bbox": [149.86, 110.25, 221.86, 128.25],
+      "order": 2,
+      "text": "2025-03-08",
+      "type": "field"
+    },
+    {
+      "id": "label-2",
+      "page": 1,
+      "bbox": [89.85, 128.25, 149.86, 145.5],
+      "order": 3,
+      "text": "會議地點：",
+      "type": "label"
+    },
+    {
+      "id": "field-2",
+      "page": 1,
+      "bbox": [149.86, 128.25, 326.66, 146.25],
+      "order": 4,
+      "text": "251新北市淡水區大同路198號4樓",
+      "type": "field"
+    },
+    {
+      "id": "label-3",
+      "page": 1,
+      "bbox": [89.85, 146.25, 149.86, 163.5],
+      "order": 5,
+      "text": "主　　席：",
+      "type": "label"
+    },
+    {
+      "id": "field-3",
+      "page": 1,
+      "bbox": [149.86, 146.25, 221.86, 164.25],
+      "order": 6,
+      "text": "潘宜婷",
+      "type": "field"
+    },
+    {
+      "id": "label-4",
+      "page": 1,
+      "bbox": [89.85, 164.25, 149.86, 181.5],
+      "order": 7,
+      "text": "記　　錄：",
+      "type": "label"
+    },
+    {
+      "id": "field-4",
+      "page": 1,
+      "bbox": [149.86, 164.25, 221.86, 181.5],
+      "order": 8,
+      "text": "",
+      "type": "field"
+    },
+    {
+      "id": "heading-1",
+      "page": 1,
+      "bbox": [89.85, 190.5, 505.41, 216.75],
+      "order": 9,
+      "text": "一、出席人員",
+      "type": "heading"
+    },
+    {
+      "id": "table-1",
+      "page": 1,
+      "bbox": [89.85, 225.75, 505.41, 331.5],
+      "order": 10,
+      "text": "姓名\t職稱\t是否出席\n洪蓁芬\t副理\t☑是　☐否\n鄭柏文\t主任\t☑是　☐否\n王瑜婷\t助理\t☑是　☐否\n蘇萍宜\t主任\t☐是　☑否",
+      "type": "table",
+      "table": {
+        "rows": 5,
+        "cols": 3,
+        "cells": [
+          {
+            "row": 0,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "姓名",
+            "bbox": [90.22, 226.13, 214.66, 244.13]
+          },
+          {
+            "row": 0,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "職稱",
+            "bbox": [214.66, 226.13, 339.11, 244.13]
+          },
+          {
+            "row": 0,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": true,
+            "text": "是否出席",
+            "bbox": [339.11, 226.13, 505.03, 244.13]
+          },
+          {
+            "row": 1,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "洪蓁芬",
+            "bbox": [90.22, 244.13, 214.66, 265.88]
+          },
+          {
+            "row": 1,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "副理",
+            "bbox": [214.66, 244.13, 339.11, 265.88]
+          },
+          {
+            "row": 1,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 244.13, 505.03, 265.88],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 245.25, 354.73, 265.5]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 245.25, 388.59, 265.5]
+              }
+            ]
+          },
+          {
+            "row": 2,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "鄭柏文",
+            "bbox": [90.22, 265.88, 214.66, 287.63]
+          },
+          {
+            "row": 2,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "主任",
+            "bbox": [214.66, 265.88, 339.11, 287.63]
+          },
+          {
+            "row": 2,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 265.88, 505.03, 287.63],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 267, 354.73, 287.25]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 267, 388.59, 287.25]
+              }
+            ]
+          },
+          {
+            "row": 3,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "王瑜婷",
+            "bbox": [90.22, 287.63, 214.66, 309.38]
+          },
+          {
+            "row": 3,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "助理",
+            "bbox": [214.66, 287.63, 339.11, 309.38]
+          },
+          {
+            "row": 3,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☑是　☐否",
+            "bbox": [339.11, 287.63, 505.03, 309.38],
+            "checkboxes": [
+              {
+                "checked": true,
+                "text": "是",
+                "bbox": [344.87, 288.75, 354.73, 309]
+              },
+              {
+                "checked": false,
+                "text": "否",
+                "bbox": [378.74, 288.75, 388.59, 309]
+              }
+            ]
+          },
+          {
+            "row": 4,
+            "col": 0,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "蘇萍宜",
+            "bbox": [90.22, 309.38, 214.66, 331.13]
+          },
+          {
+            "row": 4,
+            "col": 1,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "主任",
+            "bbox": [214.66, 309.38, 339.11, 331.13]
+          },
+          {
+            "row": 4,
+            "col": 2,
+            "rowSpan": 1,
+            "colSpan": 1,
+            "header": false,
+            "text": "☐是　☑否",
+            "bbox": [339.11, 309.38, 505.03, 331.13],
+            "checkboxes": [
+              {
+                "checked": false,
+                "text": "是",
+                "bbox": [344.87, 310.5, 354.73, 330.75]
+              },
+              {
+                "checked": true,
+                "text": "否",
+                "bbox": [378.74, 310.5, 388.59, 330.75]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "heading-2",
+      "page": 1,
+      "bbox": [89.85, 340.5, 505.41, 366.75],
+      "order": 11,
+      "text": "二、討論事項",
+      "type": "heading"
+    },
+    {
+      "id": "paragraph-1",
+      "page": 1,
+      "bbox": [89.85, 375.75, 505.41, 427.5],
+      "order": 12,
+      "text": "系統效能調整，客戶滿意度待下次會議討論。營運成本明顯增加，人力成本延後，客戶滿意度待下次會議討論；客戶滿意度待下次會議討論，庫存數量待下次會議討論；網站流量完成。",
+      "type": "paragraph"
+    },
+    {
+      "id": "list_item-1",
+      "page": 1,
+      "bbox": [89.85, 427.5, 505.41, 444.75],
+      "order": 13,
+      "text": "・專案進度調整。物流費用逐步回升。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-2",
+      "page": 1,
+      "bbox": [89.85, 444.75, 505.41, 462],
+      "order": 14,
+      "text": "・本季延後，會員人數已送交審核，退貨率調整。退貨率提前達成目標。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-3",
+      "page": 1,
+      "bbox": [89.85, 462, 505.41, 479.25],
+      "order": 15,
+      "text": "・本季調整，品質檢驗延後，行銷活動待下次會議討論。",
+      "type": "list_item"
+    },
+    {
+      "id": "list_item-4",
+      "page": 1,
+      "bbox": [89.85, 479.25, 505.41, 496.5],
+      "order": 16,
+      "text": "・人力成本較上月提升，人力成本列入年度重點。",
+      "type": "list_item"
+    },
+    {
+      "id": "heading-3",
+      "page": 1,
+      "bbox": [89.85, 505.5, 505.41, 531.75],
+      "order": 17,
+      "text": "三、確認",
+      "type": "heading"
+    },
+    {
+      "id": "checkbox-1",
+      "page": 1,
+      "bbox": [89.85, 540.75, 505.41, 561.75],
+      "order": 18,
+      "text": "☑本紀錄已經主席確認無誤。",
+      "type": "checkbox",
+      "checked": true
+    },
+    {
+      "id": "page_footer-1",
+      "page": 1,
+      "bbox": [89.85, 779.53, 505.41, 792.28],
+      "order": 19,
+      "text": "本文件內容為測試用假資料，與真實人物、公司無關。",
+      "type": "page_footer"
+    }
+  ]
+}
