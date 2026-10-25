@@ -250,6 +250,9 @@ describe('template storage HTTP acceptance in workerd with local D1 and R2', () 
 
   test('uploaded WOFF and WOFF2 fonts with 42,926-byte name data retain both PostScript names in workerd', async () => {
     const files = pack({ id: 'large-font-name-data' });
+    // The valid pack's own font is real now: make it unreadable so this
+    // regression checks only the two large name-data fonts below.
+    files['assets/report.woff2'] = strToU8('not a font');
     addAssets(files, {
       'assets/katex.woff': woffFont('KaTeX_Main-Regular', 42_926),
       'assets/katex.woff2': budgetFont('KaTeX_Main-Regular-WOFF2', 42_926),
