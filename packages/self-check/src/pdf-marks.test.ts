@@ -164,7 +164,14 @@ test('workerd reports DOM-sized PNG, SVG, checkbox, border, underline and backgr
     entrypoint: fileURLToPath(import.meta.resolve('./test-worker.ts')),
     compatibilityDate: '2026-10-01',
     compatibilityFlags: ['nodejs_compat'],
-    dev: { server: { hostname: '127.0.0.1', port: 0 }, inspector: false },
+    dev: {
+      server: { hostname: '127.0.0.1', port: 0 },
+      inspector: false,
+      // In memory: by default both workerd tests (this file and pdf.test.ts
+      // run in parallel) keep state in the repo root's .wrangler/state, and
+      // the second workerd failed to start with SQLITE_BUSY (T07-21).
+      persist: false,
+    },
   });
   await worker.url;
   const response = await worker.fetch('http://fixture.test/read', {

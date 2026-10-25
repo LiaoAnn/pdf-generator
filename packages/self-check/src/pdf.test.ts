@@ -100,6 +100,10 @@ test('workerd reads Chromium MediaBoxes, CSS text geometry, embedded font names 
     dev: {
       server: { hostname: '127.0.0.1', port: 0 },
       inspector: false,
+      // In memory: by default both workerd tests (this file and pdf-marks.test.ts
+      // run in parallel) keep state in the repo root's .wrangler/state, and
+      // the second workerd failed to start with SQLITE_BUSY (T07-21).
+      persist: false,
     },
   });
   await worker.url;
