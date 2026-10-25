@@ -146,12 +146,37 @@ const comparable = (text: string) =>
 const joined = (items: readonly Item[]) =>
   items.map(item => item.text).join('');
 
-const inkBox = (item: PdfTextItem): Box => [
-  item.x0,
-  item.baseline - glyphBodyEm * item.size,
-  item.x1,
-  item.baseline,
-];
+/**
+ * The axis-aligned box of an item's glyph bodies: along its advance from its
+ * origin, and `glyphBodyEm` up from its baseline. Rotated text runs along
+ * `dir` from `(x0, baseline)`, for `x1 - x0`.
+ */
+function inkBox(item: PdfTextItem): Box {
+  const [dx, dy] = item.dir ?? [1, 0];
+  const length = item.x1 - item.x0;
+  const height = glyphBodyEm * item.size;
+  // "Up" from the baseline: the advance turned a quarter left (y down).
+  const xs = [0, length * dx];
+  const ys = [0, length * dy];
+  for (const i of [0, 1]) {
+    xs.push((xs[i] ?? 0) + height * dy);
+    ys.push((ys[i] ?? 0) - height * dx);
+  }
+  return [
+    item.x0 + Math.min(...xs),
+    item.baseline + Math.min(...ys),
+    item.x0 + Math.max(...xs),
+    item.baseline + Math.max(...ys),
+  ];
+}
+
+/** Halfway along the item's advance, `anchorEm` above its baseline. */
+function anchorOf(item: PdfTextItem): [number, number] {
+  const [dx, dy] = item.dir ?? [1, 0];
+  const half = (item.x1 - item.x0) / 2;
+  const up = anchorEm * item.size;
+  return [item.x0 + half * dx + up * dy, item.baseline + half * dy - up * dx];
+}
 
 function unionBox(items: readonly Item[]): Box {
   const boxes = items.map(inkBox);
@@ -310,8 +335,7 @@ export async function checkPdf(
   );
   const owner: (GtBlock | undefined)[][] = items.map((pageItems, i) =>
     pageItems.map(item => {
-      const x = (item.x0 + item.x1) / 2;
-      const y = item.baseline - anchorEm * item.size;
+      const [x, y] = anchorOf(item);
       const text = comparable(item.text);
       const rank = (block: GtBlock) => [
         wantedText.get(block)?.includes(text) ? 0 : 1,
@@ -618,11 +642,6 @@ function markState(text: string): boolean | undefined {
   }
   return undefined;
 }
-
-const anchorOf = (item: PdfTextItem): [number, number] => [
-  (item.x0 + item.x1) / 2,
-  item.baseline - anchorEm * item.size,
-];
 
 /**
  * The differences in a block's type-specific fields that the PDF can show:
