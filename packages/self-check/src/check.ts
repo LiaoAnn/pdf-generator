@@ -524,7 +524,9 @@ export async function checkPdf(
       ),
       wanted,
     );
-    if (run) {
+    // A run inside the box means the box holds more than the block's text:
+    // a text difference, below.
+    if (run?.some(item => outside(item, block.bbox))) {
       for (const item of own) pageOwner[item.index] = undefined;
       for (const item of run) pageOwner[item.index] = block;
       report(block.page, boxDifference(block, run));

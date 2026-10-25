@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Generated text inside a ground-truth block</title>
+    <style>
+      @page { size: A4; margin: 54pt; }
+      body { margin: 0; font: 12pt/24pt sans-serif; }
+      p { margin: 12pt 0; }
+      .note::after { content: "（extra not in gt）"; }
+    </style>
+  </head>
+  <body>
+    <p data-gt="paragraph" data-gt-id="title">Intro</p>
+    <p class="note" data-gt="paragraph" data-gt-id="note">Note</p>
+  </body>
+</html>
