@@ -76,6 +76,7 @@ export type RuleField = Common &
         lang: 'zh' | 'en' | 'mixed';
         minLength: number;
         maxLength: number;
+        phrases?: string[];
       }
     | { type: 'checkbox'; probability?: number }
     | { type: 'constant'; value: Scalar }
@@ -227,6 +228,14 @@ const ruleFieldSchema: z.ZodType<RuleField> = z
         lang: z.enum(['zh', 'en', 'mixed']),
         minLength: z.int().min(1),
         maxLength: z.int(),
+        phrases: z
+          .array(z.string().min(1).max(200).regex(/\S/))
+          .min(1)
+          .max(1000)
+          .optional()
+          .describe(
+            'Phrases the text is built from instead of the built-in business wording, joined with the punctuation of `lang`; a phrase longer than what is left is cut.',
+          ),
       })
       .refine(field => field.minLength <= field.maxLength, {
         message: 'minLength must not exceed maxLength',

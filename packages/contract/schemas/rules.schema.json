@@ -446,6 +446,18 @@
               "type": "integer",
               "minimum": -9007199254740991,
               "maximum": 9007199254740991
+            },
+            "phrases": {
+              "description": "Phrases the text is built from instead of the built-in business wording, joined with the punctuation of `lang`; a phrase longer than what is left is cut.",
+              "minItems": 1,
+              "maxItems": 1000,
+              "type": "array",
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "\\S"
+              }
             }
           },
           "required": [

@@ -60,6 +60,7 @@
       "lang": "mixed",
       "minLength": 10,
       "maxLength": 80,
+      "phrases": ["ATM 轉帳", "已入帳", "手續費 15 元", "請核對明細"],
       "blankProbability": 0.2
     },
     "paperless": {
