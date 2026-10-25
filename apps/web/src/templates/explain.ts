@@ -27,6 +27,8 @@ export interface Explanation {
 const packIssues: Record<string, string> = {
   'zip-invalid':
     '這個檔案不是可以讀取的 zip。請重新壓縮樣板包資料夾的內容後再上傳。',
+  'zip-duplicate-name':
+    'zip 裡有兩個以上同名的檔案，無法判斷該用哪一個。請重新壓縮樣板包資料夾的內容後再上傳。',
   'path-invalid':
     'zip 裡有不合規定的檔案路徑（例如以 / 開頭、含有 .. 或反斜線）。請只放樣板包資料夾裡的相對路徑。',
   'pack-too-large': '樣板包解壓縮後超過 20 MB。請縮小圖片或字型檔再上傳。',

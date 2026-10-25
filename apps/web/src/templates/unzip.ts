@@ -4,7 +4,8 @@
 // a few kilobytes of input at a time, counting what each entry really holds,
 // and stops at the first entry larger than it says or once the pack is larger
 // than `maxBytes`. Entries are counted too, directories included: walking
-// hundreds of thousands of tiny ones takes seconds.
+// hundreds of thousands of tiny ones takes seconds. A name may appear only
+// once: with two, which file a reader gets depends on the reader.
 import type { PackIssue } from '@pdf-generator/template-tools';
 import { Unzip, UnzipInflate, unzipSync } from 'fflate';
 
@@ -38,10 +39,17 @@ const tooLarge = (size: number, maxBytes: number) =>
     `the pack is more than ${size} bytes uncompressed, more than the limit of ${maxBytes}`,
   );
 
+const duplicate = (name: string): PackIssue => ({
+  code: 'zip-duplicate-name',
+  file: name,
+  message: `${name} is in the zip more than once`,
+});
+
 /**
  * The pack's files (directories and macOS metadata left out), or the one
- * issue that stops the upload: an unreadable zip, an entry whose data is
- * larger than its header says, or more than `maxBytes` in all.
+ * issue that stops the upload: an unreadable zip, a name used twice, an
+ * entry whose data is larger than its header says, or more than `maxBytes`
+ * in all.
  */
 export function unzipBounded(
   zip: Uint8Array,
@@ -51,17 +59,24 @@ export function unzipBounded(
   // says it holds. Its errors read as checkPack's own zip-invalid.
   const declared = new Map<string, number>();
   let total = 0;
+  let listed = 0;
   const overflow = new Error('too many entries');
+  let repeated: string | undefined;
   try {
     unzipSync(zip, {
       filter: entry => {
-        if (declared.size >= maxEntries) throw overflow;
+        if (++listed > maxEntries) throw overflow;
+        if (declared.has(entry.name)) {
+          repeated = entry.name;
+          throw overflow;
+        }
         declared.set(entry.name, entry.originalSize);
         total += entry.originalSize;
         return false;
       },
     });
   } catch (error) {
+    if (repeated !== undefined) return { issue: duplicate(repeated) };
     if (error === overflow) return { issue: tooMany() };
     return {
       issue: whole(
@@ -74,14 +89,19 @@ export function unzipBounded(
 
   const files: Record<string, Uint8Array> = {};
   let inflated = 0;
-  let entries = 0;
+  const seen = new Set<string>();
   let stop: PackIssue | undefined;
   const unzip = new Unzip(file => {
     if (stop) return;
-    if (++entries > maxEntries) {
+    if (seen.size >= maxEntries) {
       stop = tooMany();
       return;
     }
+    if (seen.has(file.name)) {
+      stop = duplicate(file.name);
+      return;
+    }
+    seen.add(file.name);
     const limit = declared.get(file.name);
     if (limit === undefined) {
       stop = {
