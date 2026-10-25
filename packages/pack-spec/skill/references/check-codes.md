@@ -37,7 +37,7 @@
 | `gt-attribute` | Unknown `data-gt-*`, a detail attribute on the wrong type, a block statement in `data-gt-checked` | `data-gt-checked` only on `checkbox` (or cell boxes), with `true`/`false`/one `{{field}}` |
 | `gt-id` | A `data-gt-id` with characters outside `A-Za-z0-9_-` or too long | Short ASCII ids, or none |
 | `gt-branch` | An element opened in one `{{#if}}` branch and closed in another | Each element whole inside one branch |
-| `gt-table` | `data-gt` on a `<td>`/`<tr>`, or `table` on a non-table | Mark only the `<table>`; cell boxes get `data-gt-checked` alone |
-| `gt-checkbox` | A `checkbox` block with neither `data-gt-checked` nor exactly one input | Add `data-gt-checked="{{field}}"` |
-| `gt-formula` | A `formula` block without LaTeX | Add `data-gt-latex` |
+| `gt-table` | `data-gt` on a `<td>`/`<tr>`, `table` on a non-table, or `data-gt-checked` in a table nested inside a cell | Mark only the `<table>`; cell boxes get `data-gt-checked` alone |
+| `gt-checkbox` | A `checkbox` block with neither `data-gt-checked` nor exactly one input in every branch, or a literal `data-gt-checked` that disagrees with an input's `checked` | Add `data-gt-checked="{{field}}"` |
+| `gt-formula` | A `formula` block without `data-gt-latex` or exactly one x-tex annotation in every branch | Add `data-gt-latex` |
 | `gt-image-text` | An `image` with `data-gt-text` that also contains printed text | Keep the text out of the image element |

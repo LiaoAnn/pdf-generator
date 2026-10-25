@@ -17,7 +17,19 @@ export type TemplateHtml = {
   inBranch: (offset: number, branch: number) => boolean;
   /** Every Handlebars tag (`{{…}}`) in the template, in source order. */
   statements: Statement[];
+  /**
+   * How many of the things at `items` (offsets inside the element starting
+   * at `container`) the filled template can print: the fewest and the most
+   * over every way its blocks can go (Infinity: an `{{#each}}` repeats one).
+   */
+  printedCount: (
+    container: number,
+    items: number[],
+  ) => { min: number; max: number };
 };
+
+/** A branch's block, by number, and whether it is the block's `{{else}}` part. */
+type BranchOf = { block: number; helper: string; inverse: boolean };
 
 /** One Handlebars tag: [start, end) offsets, and whether it prints a value. */
 type Statement = { start: number; end: number; mustache: boolean };
@@ -33,6 +45,7 @@ function asHtml(
 ): {
   html: string;
   branches: [number, number][];
+  owners: BranchOf[];
   statements: Statement[];
 } {
   // Lines as Handlebars' lexer counts them: CR LF, CR and LF each end one.
@@ -51,6 +64,8 @@ function asHtml(
     for (let i = start; i < end; i++) html[i] = source[i] ?? ' ';
   };
   const branches: [number, number][] = [];
+  const owners: BranchOf[] = [];
+  let blocks = 0;
   const content: [number, number][] = [];
   // Mustaches and comments, whose exact extent the AST knows (a comment can
   // contain `}}`), by start offset.
@@ -59,12 +74,13 @@ function asHtml(
     const start = offset(node.loc.start);
     known.set(start, { start, end: offset(node.loc.end), mustache });
   };
-  const visit = (program: hbs.AST.Program | undefined) => {
+  const visit = (program: hbs.AST.Program | undefined, owner?: BranchOf) => {
     const body = program?.body ?? [];
     const first = body[0];
     const last = body.at(-1);
-    if (program !== ast && first && last) {
+    if (owner && first && last) {
       branches.push([offset(first.loc.start), offset(last.loc.end)]);
+      owners.push(owner);
     }
     for (const statement of body) {
       if (statement.type === 'ContentStatement') {
@@ -77,8 +93,10 @@ function asHtml(
         record(statement, false);
       } else if (statement.type === 'BlockStatement') {
         const block = statement as hbs.AST.BlockStatement;
-        visit(block.program);
-        visit(block.inverse);
+        const number = blocks++;
+        const helper = (block.path as hbs.AST.PathExpression).original;
+        visit(block.program, { block: number, helper, inverse: false });
+        visit(block.inverse, { block: number, helper, inverse: true });
       }
     }
   };
@@ -102,7 +120,7 @@ function asHtml(
     }
     at = end;
   }
-  return { html: html.join(''), branches, statements };
+  return { html: html.join(''), branches, owners, statements };
 }
 
 /**
@@ -128,7 +146,7 @@ export function templateHtml(
   source: string,
   ast: hbs.AST.Program,
 ): TemplateHtml {
-  const { html, branches, statements } = asHtml(source, ast);
+  const { html, branches, owners, statements } = asHtml(source, ast);
   // Branches nest. Sorted by start, each one's parent is the nearest earlier
   // branch that contains it; the innermost branch containing an offset is
   // then the last one starting at or before it, or one of its ancestors.
@@ -167,12 +185,66 @@ export function templateHtml(
     const range = branches[branch];
     return range === undefined || (range[0] <= at && at < range[1]);
   };
+  const parentOf: number[] = [];
+  order.forEach(({ i }, k) => {
+    parentOf[i] = order[parents[k] ?? -1]?.i ?? -1;
+  });
+  const printedCount = (container: number, items: number[]) => {
+    const root = branchAt(container);
+    // The items directly in each branch, the blocks directly in each branch
+    // that hold an item, and each such block's branches that hold one.
+    const direct = new Map<number, number>();
+    const inner = new Map<number, Set<number>>();
+    const parts = new Map<number, Set<number>>();
+    const add = (map: Map<number, Set<number>>, key: number, value: number) =>
+      map.set(key, (map.get(key) ?? new Set()).add(value));
+    for (const at of items) {
+      let branch = branchAt(at);
+      direct.set(branch, (direct.get(branch) ?? 0) + 1);
+      for (; branch !== root && branch >= 0; branch = parentOf[branch] ?? -1) {
+        const block = owners[branch]?.block ?? -1;
+        add(inner, parentOf[branch] ?? -1, block);
+        add(parts, block, branch);
+      }
+    }
+    const none = { min: 0, max: 0 };
+    const inBranchCount = (branch: number): { min: number; max: number } => {
+      let min = direct.get(branch) ?? 0;
+      let max = min;
+      for (const block of inner.get(branch) ?? []) {
+        const count = inBlockCount(block);
+        min += count.min;
+        max += count.max;
+      }
+      return { min, max };
+    };
+    const inBlockCount = (block: number) => {
+      let printed = none;
+      let otherwise = none;
+      let helper = '';
+      for (const branch of parts.get(block) ?? []) {
+        const owner = owners[branch];
+        helper = owner?.helper ?? '';
+        if (owner?.inverse) otherwise = inBranchCount(branch);
+        else printed = inBranchCount(branch);
+      }
+      // if, unless and with print one of their two parts; each prints its
+      // {{else}} part for an empty list, else its body once per item.
+      const min = Math.min(printed.min, otherwise.min);
+      if (helper === 'each') {
+        return { min, max: printed.max > 0 ? Infinity : otherwise.max };
+      }
+      return { min, max: Math.max(printed.max, otherwise.max) };
+    };
+    return inBranchCount(root);
+  };
   return {
     html,
     document: parse(html, { sourceCodeLocationInfo: true }),
     branchAt,
     inBranch,
     statements,
+    printedCount,
   };
 }
 

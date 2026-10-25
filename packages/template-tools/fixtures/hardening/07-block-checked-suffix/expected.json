@@ -1,0 +1,11 @@
+{
+  "description": "rejects block checked state with literal suffix around a statement",
+  "issues": [
+    {
+      "code": "gt-attribute",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 25
+    }
+  ]
+}

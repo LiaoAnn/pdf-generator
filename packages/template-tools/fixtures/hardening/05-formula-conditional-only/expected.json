@@ -1,0 +1,11 @@
+{
+  "description": "rejects a formula fallback missing from the false branch even when the sample takes the true branch",
+  "issues": [
+    {
+      "code": "gt-formula",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 6
+    }
+  ]
+}

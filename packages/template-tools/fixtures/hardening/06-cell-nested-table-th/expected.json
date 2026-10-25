@@ -1,0 +1,11 @@
+{
+  "description": "rejects checkbox metadata in a nested table th outside the block table own cells",
+  "issues": [
+    {
+      "code": "gt-table",
+      "file": "templates/report.hbs",
+      "line": 4,
+      "column": 24
+    }
+  ]
+}

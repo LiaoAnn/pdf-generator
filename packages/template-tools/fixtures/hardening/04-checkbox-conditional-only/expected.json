@@ -1,0 +1,11 @@
+{
+  "description": "rejects a checkbox fallback missing from the false branch even when the sample takes the true branch",
+  "issues": [
+    {
+      "code": "gt-checkbox",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 6
+    }
+  ]
+}

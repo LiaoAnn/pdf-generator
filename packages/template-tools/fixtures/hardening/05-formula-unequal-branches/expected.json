@@ -1,0 +1,11 @@
+{
+  "description": "rejects a formula fallback count of two versus zero across exclusive branches",
+  "issues": [
+    {
+      "code": "gt-formula",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 6
+    }
+  ]
+}

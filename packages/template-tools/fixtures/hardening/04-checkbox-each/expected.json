@@ -1,0 +1,11 @@
+{
+  "description": "rejects a repeated checkbox fallback even when the sample has exactly one row",
+  "issues": [
+    {
+      "code": "gt-checkbox",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 6
+    }
+  ]
+}

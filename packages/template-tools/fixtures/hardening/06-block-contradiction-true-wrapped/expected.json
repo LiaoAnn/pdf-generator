@@ -1,0 +1,11 @@
+{
+  "description": "rejects block literal true contradicting its wrapped checkbox checked state",
+  "issues": [
+    {
+      "code": "gt-checkbox",
+      "file": "templates/report.hbs",
+      "line": 3,
+      "column": 25
+    }
+  ]
+}
