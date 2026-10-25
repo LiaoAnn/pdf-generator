@@ -9,6 +9,7 @@ import {
   type PublishedFiles,
   publishFiles,
 } from './pack-files.ts';
+import { scaledPages } from './pdf-scale.ts';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
 
@@ -44,6 +45,12 @@ export interface PrintReadyState {
    * html/body) a template moved from where Paged.js put it, on screen.
    */
   movedBoxes?: string[];
+  /**
+   * Per page, whether it paints text, a background or a border at its own
+   * scale (outside SVG and CSS transforms): what the PDF must draw at 0.75 pt
+   * per CSS px unless Chrome shrank the page.
+   */
+  plainInk?: boolean[];
   /**
    * Per page, each `[data-gt]` element's box and the text of its visible text
    * nodes (NFKC, no whitespace): what the PDF's text layer must contain
@@ -388,5 +395,6 @@ async function print<T>(
     pageWidth,
   );
   rejectMovedBoxes(printed);
+  rejectMovedBoxes(await scaledPages(printedPdf, ready.plainInk));
   return { pdf, pageCount: ready.pageCount, inspected };
 }

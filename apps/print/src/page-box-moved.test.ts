@@ -166,15 +166,36 @@ test.each([
     name: 'html min-width of 1300px triggers Chromium shrink-to-fit',
     css: 'html { min-width: 1300px; }',
   },
+  // Regression: columns overflow only during Chrome's print layout, leaving
+  // the screen and print DOM guard measurements unchanged.
+  {
+    name: 'container columns shrink a text-free page despite decoy ink',
+    css: 'body > div { columns: 2; column-gap: 0; }',
+  },
+  {
+    // A drawing-only scale check must also reject a scaled text layer.
+    // Leave the paragraph unmarked so text_missing cannot mask the scale bug.
+    name: 'container columns shrink a page containing ordinary Chinese text',
+    css: 'body > div { columns: 2; column-gap: 0; }',
+    body: '<div id="target" data-gt="image"></div><p>這是一份測試文件，確認列印比例與文字位置。</p>',
+  },
+  {
+    // Default column balancing already trips the DOM guard on later pages.
+    // Keep rejecting this multi-page document as PDF scale checks are added.
+    name: 'container columns on three pages without other frame changes',
+    css: `body > div { columns: 2; column-gap: 0; }
+      section + section { break-before: page; }`,
+    body: '<section><div id="target" data-gt="image"></div></section><section><div class="shrink-target" data-gt="image"></div></section><section><div class="shrink-target" data-gt="image"></div></section>',
+  },
 ])('POST /print rejects $name with 422 page_box_moved', async fixture => {
   const response = await post(
     document(
       `html, body { margin: 0; padding: 0; }
-      #target { position: relative; width: 20px; height: 20px; background: black; }
-      #target::after { content: ""; position: absolute; left: 37.5px; top: 37.5px;
+      #target, .shrink-target { position: relative; width: 20px; height: 20px; background: black; }
+      #target::after, .shrink-target::after { content: ""; position: absolute; left: 37.5px; top: 37.5px;
         width: 30px; height: 30px; background: black; }
       ${fixture.css}`,
-      '<div id="target" data-gt="image"></div>',
+      fixture.body ?? '<div id="target" data-gt="image"></div>',
     ),
   );
   expect(response.status).toBe(422);
@@ -219,6 +240,50 @@ test.each([
     html: document('@page { size: A4 landscape; }'),
     pages: 1,
     page: { size: 'A4', orientation: 'landscape' } as const,
+  },
+  {
+    // SVG viewBox transforms are content scaling, not page shrink-to-fit.
+    name: 'an inline SVG scales several paths beside ordinary text',
+    html: document(
+      '',
+      `<svg data-gt="image" viewBox="0 0 200 100" width="100" height="50">
+        <path d="M0 0H80V100H0Z" fill="black"/>
+        <path d="M100 0L200 50L100 100Z" fill="blue"/>
+        <path d="M10 10L70 90" stroke="red" stroke-width="4"/>
+      </svg><p data-gt="paragraph">Normal page scale</p>`,
+    ),
+    pages: 1,
+  },
+  {
+    // A nested CSS transform must not be mistaken for the page's PDF scale.
+    name: 'a CSS scale(1.5) drawing beside unscaled text',
+    html: document(
+      '.target { transform: scale(1.5); transform-origin: top left; }',
+      `${image}<p data-gt="paragraph">Normal page scale</p>`,
+    ),
+    pages: 1,
+  },
+  {
+    // No text layer is available to distinguish image scaling from page scaling.
+    // Use inline SVG: pack rules disallow data: image URLs.
+    name: 'an image-only page with a scaled inline SVG',
+    html: document(
+      '',
+      `<svg data-gt="image" viewBox="0 0 200 100" width="100" height="50">
+        <path d="M0 0H200V100H0Z" fill="black"/>
+        <path d="M20 20H180V80H20Z" fill="white"/>
+      </svg>`,
+    ),
+    pages: 1,
+  },
+  {
+    // An absent content drawing is not evidence of an invalid page scale.
+    name: 'a page with no drawing beyond its background',
+    html: document(
+      '@page { background: #eeeeee; }',
+      '<div style="height: 40px"></div>',
+    ),
+    pages: 1,
   },
 ])('POST /print accepts ordinary layout: $name', async fixture => {
   const response = await post(fixture.html, false, fixture.page ?? page);

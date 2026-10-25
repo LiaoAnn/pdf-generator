@@ -489,6 +489,66 @@
     }
   }
 
+  // Per page, whether it paints anything at the page's own scale: text, or a
+  // background or border, of an element (or its ::before/::after) outside
+  // SVG drawings and outside CSS transforms and filters. Chrome draws those at
+  // 0.75 pt per CSS px, so lib.ts can tell from the PDF whether such a page
+  // was printed at another scale (T07-18); a page that paints only SVG or
+  // transformed content can't be told apart from a scaled one.
+  function plainInk() {
+    /** @param {CSSStyleDeclaration} style */
+    const paints = style =>
+      !/^(?:transparent|rgba\(.*,\s*0\))$/.test(style.backgroundColor) ||
+      ['top', 'right', 'bottom', 'left'].some(
+        side =>
+          Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) >
+            0 &&
+          !/^(?:none|hidden)$/.test(
+            style.getPropertyValue(`border-${side}-style`),
+          ),
+      );
+    /** @param {CSSStyleDeclaration} style */
+    const plain = style =>
+      ['transform', 'translate', 'rotate', 'scale', 'filter'].every(
+        property => style.getPropertyValue(property) === 'none',
+      );
+    return pagedPages().map(page => {
+      const outside = new Set();
+      for (const element of page.querySelectorAll('*')) {
+        if (element instanceof SVGElement) continue;
+        const style = getComputedStyle(element);
+        const parent = element.parentElement;
+        if (
+          !plain(style) ||
+          (parent && parent !== page && outside.has(parent))
+        ) {
+          outside.add(element);
+          continue;
+        }
+        if (style.visibility !== 'visible') continue;
+        const text = [...element.childNodes].some(
+          node =>
+            node.nodeType === Node.TEXT_NODE &&
+            (node.textContent ?? '').trim() !== '',
+        );
+        if ((text || paints(style)) && element.getClientRects().length > 0) {
+          return true;
+        }
+        for (const pseudo of ['::before', '::after']) {
+          const box = getComputedStyle(element, pseudo);
+          if (
+            box.content !== 'none' &&
+            box.content !== 'normal' &&
+            paints(box)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }
+
   // Faces that did not load: Paged.js only warns about them (T03 Must 5).
   function unloadedFaces() {
     /** @type {string[]} */
@@ -589,7 +649,7 @@
     });
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], movedBoxes: string[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], movedBoxes: string[], plainInk: boolean[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
@@ -611,6 +671,7 @@
           unloadedFaces: unloadedFaces(),
           fragmentedRows: fragmentedRows(),
           movedBoxes: movedBoxes(),
+          plainInk: plainInk(),
           expectedText: expectedText(),
         });
       },
