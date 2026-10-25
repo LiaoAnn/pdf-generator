@@ -12,6 +12,7 @@ The T23 template pack: a form-style fixture for OCR and layout models. The pack 
 | Checkboxes | 事故類型, 傷害程度 (one checked), 危害因素, 已採取措施 (any), 是否送醫 (是 / 否 per row) | cell `checkboxes[]` with `checked` and the label |
 | ROC dates | 通報日期 `{{rocDate reportDate format="full"}}` (中華民國115年7月10日, the form's formal heading); 發生日期, 簽核日期 `{{rocDate …}}` (民國115年7月9日, the usual field form). data.json stays ISO | cell and `field` text as printed |
 | Rows that vary | 傷者名單, 1–8 rows; long lists run onto page 2 with the header repeated | `table` block on each page, the second `continues` the first |
+| Incident wording | 事故經過, 備註 and each 傷者 備註 are built from the field's own `phrases` in `rules.json` (fake occupational-incident clauses, no real names, no `，` `；` `。` inside a phrase); the sample's 事故經過 is made of those phrases | cell text as printed |
 
 How it stays honest:
 
@@ -37,6 +38,7 @@ T3CODE_WORKTREE_PATH=<worktree> wt-exec bash -lc "pnpm exec vitest run --project
 ```
 
 - `pack.test.ts`: the pack passes `checkPack`, the sample shows every feature, generated records are valid, only printable resources are used.
+- `phrases.test.ts`: over 20 seeds and in the sample, every text field is made only of its own phrases.
 - `rendered-records.test.ts`: over 100 seeds, row counts, checkboxes and blanks vary, and every filled record sets each `data-gt-checked` and glyph from the data and leaves blanks empty.
 
 ## Acceptance

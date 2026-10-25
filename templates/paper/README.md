@@ -31,6 +31,8 @@ T3CODE_WORKTREE_PATH=<worktree> wt-exec bash -lc "pnpm --filter @pdf-generator/p
 
 Edit `pack/styles/paper.css`, `pack/data/` and `pack/manifest.json` directly; they aren't generated. Reference numbers come from an `eq @index` chain written out up to 8, which matches `references.maxItems` in the rules: raise both together.
 
+Every `text` rule (摘要, Abstract and the section paragraphs) has its own `phrases`: fake document-AI wording, in English for `abstractEn`. Keep the Chinese phrases free of `，` `；` `。` and the English ones free of `.`, so `phrases.test.ts` can split the text back into phrases, and keep their characters in Noto Serif TC. `data/sample.json` is `generate(rules, 'sample')`: regenerate it after changing the rules (`pack.test.ts` fails while it is stale).
+
 ## Layout rules it relies on
 
 - Paragraphs, formulas and references in `.columns` have `break-inside: avoid`. A block split across two columns gets a single gt box spanning both, which is wrong.
@@ -45,6 +47,7 @@ T3CODE_WORKTREE_PATH=<worktree> wt-exec bash -lc "pnpm exec vitest run --project
 
 - `build.test.ts`: the generated files are current, every formula option fills with its exact LaTeX, the shipped faces cover what KaTeX prints, the stylesheet is KaTeX's own (no pack overrides), and the size budget.
 - `pack.test.ts`: `checkPack` on the pack and on 100 generated records, reading order of every block, reference numbering and language branches, footnotes, and the 64 KiB template limit.
+- `phrases.test.ts`: over 20 seeds, every text field is made only of its own phrases.
 - `compare.test.ts`: the acceptance's per-fixture check, against a real printed fixture (`src/fixtures/`) and mutations of it.
 
 ## Acceptance
