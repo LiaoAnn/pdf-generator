@@ -37,6 +37,16 @@ function masked(css: string, keepStrings = false): string {
   return out;
 }
 
+/** CSS escapes decoded: `\70 agedjs` and `\pagedjs` both read `pagedjs`. */
+const unescaped = (text: string) =>
+  text.replace(
+    /\\(?:([0-9a-f]{1,6})(?:\r\n|[ \t\n\r\f])?|([^\n\r\f]))/gi,
+    (_, hex, char) =>
+      hex
+        ? String.fromCodePoint(Math.min(Number.parseInt(hex, 16), 0x10ffff))
+        : char,
+  );
+
 /** Splits at top-level commas (not inside parentheses or brackets). */
 function splitList(text: string): string[] {
   const parts: string[] = [];
@@ -112,7 +122,8 @@ function neutral(property: string, value: string): boolean | undefined {
  */
 export function pageBoxProblems(css: string): PageBoxProblem[] {
   const text = masked(css);
-  // Selectors are read with their strings: `[class*="pagedjs"]` names one.
+  // Selectors are read with their strings and escapes: `[class*="pagedjs"]`
+  // and `.\70 agedjs_page` name one.
   const selectors = masked(css, true);
   const problems: PageBoxProblem[] = [];
   // For each open block: does it hold declarations of a root-box rule?
@@ -149,7 +160,7 @@ export function pageBoxProblems(css: string): PageBoxProblem[] {
         let at = start;
         const pagedjs = splitList(prelude).find(selector => {
           const named = /pagedjs/i.test(
-            selectors.slice(at, at + selector.length),
+            unescaped(selectors.slice(at, at + selector.length)),
           );
           if (!named) at += selector.length + 1;
           return named;
