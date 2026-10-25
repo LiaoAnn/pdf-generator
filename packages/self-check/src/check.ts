@@ -231,6 +231,115 @@ function findRun(items: readonly Item[], wanted: string): Item[] | undefined {
 }
 
 /**
+ * Comparable positions of `raw`: for each code-point boundary, the
+ * comparable form of the text before it.
+ */
+function prefixes(raw: string): { at: number; text: string }[] {
+  const out = [{ at: 0, text: '' }];
+  let at = 0;
+  for (const char of raw) {
+    at += char.length;
+    out.push({ at, text: comparable(raw.slice(0, at)) });
+  }
+  return out;
+}
+
+/**
+ * Splits an item that runs across adjacent inline blocks into one piece per
+ * block. Chrome prints spans in one font with no gap between them as one
+ * text run, so two `data-gt` blocks side by side (`姓名：` `王小明`) arrive as
+ * one item; whole, it would belong to one block and leave the other empty.
+ * The blocks are those whose box holds the item's anchor height and overlaps
+ * its x range, left to right. The item's text must split into the end of the
+ * first block's text, the whole text of each block between, and the start of
+ * the last one's; the split's x is where the boxes meet: the left box's right
+ * edge and the right box's left edge, which must agree unless whitespace
+ * separates them (an edge outside the item, of a block that continues on
+ * another line, doesn't count). The item's outer edges stay as printed, so
+ * text sticking out of the outer boxes is still a `bbox` difference.
+ * Anything else, and rotated text, stays one item.
+ */
+function splitAcross(
+  item: PdfTextItem,
+  blocks: readonly GtBlock[],
+  wantedText: ReadonlyMap<GtBlock, string>,
+): PdfTextItem[] {
+  if (item.dir) return [item];
+  const t = boxTolerancePt;
+  const [, y] = anchorOf(item);
+  const crossed = blocks
+    .filter(
+      ({ bbox }) =>
+        y >= bbox[1] &&
+        y <= bbox[3] &&
+        Math.min(item.x1, bbox[2]) - Math.max(item.x0, bbox[0]) > t,
+    )
+    .sort((a, b) => a.bbox[0] - b.bbox[0] || a.bbox[2] - b.bbox[2]);
+  if (crossed.length < 2) return [item];
+  const wanted = crossed.map(block => wantedText.get(block) ?? '');
+  const full = comparable(item.text);
+  // Comparable lengths of each piece: the first is the longest end of its
+  // block's text that lets the rest fit.
+  let lengths: number[] | undefined;
+  const first = wanted[0] ?? '';
+  for (let length = Math.min(first.length, full.length); length > 0; length--) {
+    if (!first.endsWith(full.slice(0, length))) continue;
+    const found = [length];
+    let at = length;
+    for (const text of wanted.slice(1, -1)) {
+      if (text === '' || !full.startsWith(text, at)) break;
+      found.push(text.length);
+      at += text.length;
+    }
+    const rest = full.slice(at);
+    if (
+      found.length === crossed.length - 1 &&
+      rest !== '' &&
+      (wanted.at(-1) ?? '').startsWith(rest)
+    ) {
+      lengths = [...found, rest.length];
+      break;
+    }
+  }
+  if (!lengths) return [item];
+  const marks = prefixes(item.text);
+  const pieces: PdfTextItem[] = [];
+  let start = 0;
+  let x0 = item.x0;
+  let at = 0;
+  for (let j = 0; j < crossed.length - 1; j++) {
+    at += lengths[j] ?? 0;
+    const target = full.slice(0, at);
+    // Raw cuts with this comparable prefix: more than one when whitespace
+    // follows it, which goes with the next piece.
+    const cuts = marks.filter(mark => mark.text === target);
+    const cut = cuts[0];
+    if (!cut) return [item];
+    const spaced = cuts.length > 1;
+    const right = crossed[j]?.bbox[2] ?? 0;
+    const left = crossed[j + 1]?.bbox[0] ?? 0;
+    const inItem = (x: number) => x > item.x0 + t && x < item.x1 - t;
+    let end: number;
+    let next: number;
+    if (inItem(right) && inItem(left)) {
+      const gap = left - right;
+      if (gap < -t || (gap > t && !spaced)) return [item];
+      end = right;
+      next = left;
+    } else if (inItem(right)) end = next = right;
+    else if (inItem(left)) end = next = left;
+    else return [item];
+    if (end <= x0) return [item];
+    pieces.push({ ...item, text: item.text.slice(start, cut.at), x0, x1: end });
+    start = cut.at;
+    x0 = next;
+  }
+  if (item.x1 <= x0) return [item];
+  pieces.push({ ...item, text: item.text.slice(start), x0, x1: item.x1 });
+  return pieces;
+}
+
+/**
  * Whether `pieces` (comparable form), each used once and whole, in any order,
  * spell `wanted` exactly. A formula's text items: Chrome paints the spans
  * KaTeX positions (sub/superscripts, fraction parts, delimiters, `\tag`)
@@ -330,9 +439,12 @@ export async function checkPdf(
   const wantedText = new Map(
     blocks.map(block => [block, comparable(block.text)]),
   );
-  const items: Item[][] = pages.map((page: PdfPage) =>
-    page.items.map((item, index) => ({ ...item, index })),
-  );
+  const items: Item[][] = pages.map((page: PdfPage, i) => {
+    const onPage = blocks.filter(block => block.page === i + 1);
+    return page.items
+      .flatMap(item => splitAcross(item, onPage, wantedText))
+      .map((item, index) => ({ ...item, index }));
+  });
   const owner: (GtBlock | undefined)[][] = items.map((pageItems, i) =>
     pageItems.map(item => {
       const [x, y] = anchorOf(item);
