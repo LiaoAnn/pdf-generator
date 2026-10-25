@@ -13,6 +13,7 @@ function fakeBrowser(
     pageSize?: Size;
     pagination?: string[];
     boxes?: (medium: string, viewport: Size) => string[] | undefined;
+    movedBoxes?: (medium: string, viewport: Size) => string[];
   } = {},
 ) {
   let medium = 'screen';
@@ -22,7 +23,12 @@ function fakeBrowser(
   const sample = () => {
     reads.push({ medium, viewport: { ...viewport }, afterPdf });
     const boxes = options.boxes ? options.boxes(medium, viewport) : [...stable];
-    return boxes === undefined ? {} : { boxes };
+    return {
+      ...(boxes === undefined ? {} : { boxes }),
+      ...(options.movedBoxes
+        ? { movedBoxes: options.movedBoxes(medium, viewport) }
+        : {}),
+    };
   };
   const page = {
     ...fakeFetch(),
@@ -121,6 +127,34 @@ test.each([
     expect(fake.context.close).toHaveBeenCalledTimes(1);
   },
 );
+
+test('ceil-only moved page diagnostics reject before PDF and GT despite identical page-relative boxes', async () => {
+  const movedBoxes = [
+    'page 1 .pagedjs_page transform: matrix(1, 0, 0, 1, -40, 0)',
+  ];
+  const fake = fakeBrowser({
+    movedBoxes: (medium, viewport) =>
+      medium === 'print' &&
+      viewport.width === ceil.width &&
+      viewport.height === ceil.height
+        ? movedBoxes
+        : [],
+  });
+  const error = await fake.run().catch((error: unknown) => error);
+  expect.soft(error).toBeInstanceOf(RenderError);
+  expect
+    .soft(error)
+    .toMatchObject({ code: 'page_box_moved', details: movedBoxes });
+  expect(fake.reads).toContainEqual({
+    medium: 'print',
+    viewport: ceil,
+    afterPdf: false,
+  });
+  expect.soft(fake.page.pdf).not.toHaveBeenCalled();
+  expect.soft(fake.inspect).not.toHaveBeenCalled();
+  expect(fake.page.close).toHaveBeenCalledTimes(1);
+  expect(fake.context.close).toHaveBeenCalledTimes(1);
+});
 
 test('pagination bracket compares ready screen boxes with screen boxes at the page floor', async () => {
   const changed = ['1 172,72,212,112', stable[1] ?? ''];

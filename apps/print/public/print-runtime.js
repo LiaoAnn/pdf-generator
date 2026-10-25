@@ -926,10 +926,14 @@
       ready,
       loadPrintResources,
       printed,
-      boxes: () => ({
+      /** @param {number} [pageWidth] in print media: check the page boxes */
+      boxes: pageWidth => ({
         boxes: layoutBoxes(),
         viewportDependent: viewportDependent(),
         animations: animations(),
+        ...(pageWidth === undefined
+          ? {}
+          : { movedBoxes: movedBoxes({ print: true, pageWidth }) }),
       }),
     },
     PagedConfig: {

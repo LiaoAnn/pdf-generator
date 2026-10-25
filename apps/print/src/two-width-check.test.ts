@@ -170,6 +170,30 @@ test.each(printRefusals)(
   },
 );
 
+test('POST /print refuses a ceil-only page transform even when all page-relative boxes stay unchanged', async () => {
+  const response = await post({
+    name: 'ceil-only page transform',
+    head: `<style data-pagedjs-ignore>
+      @media print and (min-width: 793.5px) {
+        .pagedjs_page { transform: translateX(-40px) !important; }
+      }
+      </style>`,
+    target: '<p data-gt="paragraph">Page frame regression</p>',
+  });
+  // Moving the page and its descendants together cancels out of page-relative
+  // boxes, while Chromium prints the text 30pt left of its GT coordinates.
+  expect(response.status, 'unsafe page frame printed successfully').toBe(422);
+  expect(response.headers.get('content-type')).toMatch(/application\/json/i);
+  expect(response.headers.has('x-page-count')).toBe(false);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(['page_box_moved', 'viewport_dependent']).toContain(error.code);
+  const details = (error.details ?? [])
+    .map(detail => detail.message)
+    .join('\n');
+  expect(details).toMatch(/page\s+1\b/i);
+  expect(details).toContain('.pagedjs_page');
+});
+
 test('POST /print refuses generated before pseudo-element fixed only at the ceil print viewport', async () => {
   const response = await post({
     name: 'ceil-only fixed pseudo-element',

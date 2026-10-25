@@ -490,10 +490,11 @@ type PrintedReader = {
   __pdfgen: {
     loadPrintResources(): Promise<void>;
     printed(options: { pageWidth: number }): PrintedState;
-    boxes(): {
+    boxes(pageWidth?: number): {
       boxes: string[];
       viewportDependent: string[];
       animations: string[];
+      movedBoxes?: string[];
     };
   };
 };
@@ -538,9 +539,11 @@ async function print<T>(
     width: Math.floor(width),
     height: Math.floor(height),
   });
-  const readBoxes = () =>
-    page.evaluate(() =>
-      (globalThis as unknown as PrintedReader).__pdfgen.boxes(),
+  // With the page width, in print media, the page boxes are checked too.
+  const readBoxes = (pageWidth?: number) =>
+    page.evaluate(
+      width => (globalThis as unknown as PrintedReader).__pdfgen.boxes(width),
+      pageWidth,
     );
   // Waits for what the medium or viewport makes the page load and lay out
   // (a `sizes` image switches after a frame), until a round starts no
@@ -600,7 +603,8 @@ async function print<T>(
   rejectViewportDependent(before.viewportDependent);
   // The same in print media, a CSS px wider and taller, with what that
   // loads: Chrome prints between the two. What the boxes don't show (fixed
-  // pseudo-elements, animations) is checked there too.
+  // pseudo-elements, animations, the page boxes they are measured from) is
+  // checked there too.
   if (ready.pageSize && pageViewport) {
     const ceil = {
       width: Math.ceil(ready.pageSize.width),
@@ -610,10 +614,10 @@ async function print<T>(
       ceil.width !== pageViewport.width ||
       ceil.height !== pageViewport.height
     ) {
-      const atFloor = await readBoxes();
+      const atFloor = await readBoxes(ready.pageSize.width);
       await setViewport(ceil);
       await loadResources();
-      const atCeil = await readBoxes();
+      const atCeil = await readBoxes(ready.pageSize.width);
       rejectViewportBoxes(
         'print media',
         { viewport: pageViewport, ...atFloor },
@@ -621,6 +625,11 @@ async function print<T>(
       );
       rejectAnimations(atCeil.animations);
       rejectViewportDependent(atCeil.viewportDependent);
+      // Page boxes moved at both sizes are refused after printing, where a
+      // sheet they add counts first (T08-1).
+      rejectMovedBoxes(
+        atCeil.movedBoxes?.filter(box => !atFloor.movedBoxes?.includes(box)),
+      );
       await setViewport(pageViewport);
     }
   }
