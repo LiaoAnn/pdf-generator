@@ -788,6 +788,15 @@
 - **不做**：改平台程式
 - **來源**：PR #63（T12-2）
 
+### T12-4 假資料：`phrases` 少重複
+- **目標**：T12-2 的 `phraseText` 偏好能補齊長度的句子，同一段裡常把同一句重複 2–3 次（T27 的通報單與論文看得出來）。改成優先選這段還沒用過的句子，句子用完才重複；仍由 seed 決定
+- **Blocked by**：T12-2
+- **Blocks**：—
+- **撞車風險**：`packages/fake-data/src/text.ts`
+- **驗收測試**：句子數夠多時，同一段內沒有重複的句子；同 seed 穩定；長度上下限照舊；沒有 `phrases` 的規則產出不變。用 `phrases` 的樣板（incident-form、paper）產出會變，更新它們的 sample 與快照並在 PR 寫清楚
+- **不做**：改契約
+- **來源**：PR #65（T27）
+
 ### T14-6 樣板：空白欄位要有墨跡（minimal-example 與其他樣板）
 - **目標**：T14-4 之後，沒有文字的區塊必須在框內畫出東西。`templates/minimal-example` 的 `.pair [data-gt="field"]` 有大小但沒有墨跡，`recorder` 為空（`blankProbability` 0.3）的紀錄都以 `ink`「paints nothing」失敗（T10-2 批次 10 份中 2 份）。加上底線（例如 `border-bottom: 0.5pt solid #000`）。同時檢查其他 5 個樣板裡所有可能為空的欄位、勾選框與圖片，找出同樣的問題一併修好（T14-4 的驗收各批 10 份全過，可能只是剛好沒抽到空值）
 - **Blocked by**：T14-4
