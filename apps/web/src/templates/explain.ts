@@ -115,6 +115,8 @@ const printIssues: Record<string, string> = {
     '列印時有字型載入失敗：可能是字型檔損壞或路徑錯誤，或列印服務還不支援樣板包自帶的字型。請先改用平台內建的中文字型試試。',
   page_count_mismatch:
     '印出來的 PDF 頁數和 Paged.js 排出的頁數不同，標準答案的頁碼會對不上。常見原因是樣板 CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的版面（例如邊界、內距、高度、定位或分頁），讓內容跑出 Paged.js 排好的頁面。請用 @page 設定頁面大小與邊界，不要改 .pagedjs_* 與 body 的版面。',
+  page_box_moved:
+    '樣板 CSS 移動了 Paged.js 排好的頁面元素（.pagedjs_*）或 html／body 的位置，PDF 印出來的內容會和標準答案的框對不上。沒有寫出 .pagedjs 的選擇器（例如 body > div > div）也算。請用 @page 設定頁邊界，不要改這些元素的邊界、內距、定位或變形。',
   pagination_timeout:
     '分頁花太久，列印逾時。請檢查是否有極長的表格或無法分頁的大區塊。',
   row_fragmented:
