@@ -147,7 +147,7 @@ A field with `blankProbability` that drops a whole section: put the heading and 
 ## Dates, money, numbers
 
 - `date` fields print `YYYY-MM-DD`. For 民國 dates, keep the `date` field and print it with `rocDate` (SPEC §3): `{{rocDate d}}` → `民國113年5月7日`, `format="slash"` → `113/05/07`, `"chinese"` → `中華民國一一三年五月七日`, `"year"`/`"month"`/`"day"` for separate 年 月 日 boxes.
-- Dates that must agree (start ≤ end, rows within a trip): each `date` field is drawn on its own, so give them ranges that can't cross instead of pinning them to one day: start in `2026-03-02`..`2026-03-06`, end in `2026-03-09`..`2026-03-13`, row dates in `2026-03-06`..`2026-03-09`. Rows of an array are not sorted by date.
+- Dates that must agree (start ≤ end, rows within a trip): each `date` field is drawn on its own, so give them ranges that can't cross instead of pinning them to one day: start in `2026-03-02`..`2026-03-06`, end in `2026-03-09`..`2026-03-13`, row dates in `2026-03-06`..`2026-03-09`. Rows of an array come out in draw order, not by date: to sort them, give the array `sortBy` (SPEC §2).
 - Money: `money` with `decimals: 0` and `{{number amount}}`; amounts with cents: `decimals=2`.
 - Derived values (`sum`, `percentage`, `runningBalance`) come from the rules, never from the template: there is no arithmetic in templates. `{{number x}}` of a `null` prints nothing.
 - A closing balance is the last row's `runningBalance`: `{{#each rows}}{{#if @last}}{{number balance}}{{/if}}{{/each}}` in the closing cell.
