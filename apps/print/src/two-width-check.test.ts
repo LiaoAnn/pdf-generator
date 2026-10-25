@@ -194,6 +194,42 @@ test('POST /print refuses a ceil-only page transform even when all page-relative
   expect(details).toContain('.pagedjs_page');
 });
 
+test('POST /print refuses an aspect-ratio image transform missed by both diagonal print samples', async () => {
+  // 793/1122 and 794/1123 are below this threshold, but both the exact
+  // Chromium print size and the mixed 794/1122 corner are above it.
+  const response = await post({
+    name: 'mixed-corner image transform',
+    head: `<style data-pagedjs-ignore>
+      @media print and (min-aspect-ratio: 70705/100000) {
+        .target { transform: translateX(100px) !important; }
+      }
+      </style>`,
+  });
+  await expectBracket(response, 'print media', ['793x1122', '794x1122']);
+});
+
+test('POST /print refuses an aspect-ratio page transform missed by both diagonal print samples', async () => {
+  const response = await post({
+    name: 'mixed-corner page transform',
+    head: `<style data-pagedjs-ignore>
+      @media print and (min-aspect-ratio: 70705/100000) {
+        .pagedjs_page { transform: translateX(-40px) !important; }
+      }
+      </style>`,
+    target: '<p data-gt="paragraph">Mixed corner page frame regression</p>',
+  });
+  // The page-relative boxes stay equal even though the PDF text moves 30pt.
+  expect(response.status, 'unsafe page frame printed successfully').toBe(422);
+  expect(response.headers.has('x-page-count')).toBe(false);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(['page_box_moved', 'viewport_dependent']).toContain(error.code);
+  const details = (error.details ?? [])
+    .map(detail => detail.message)
+    .join('\n');
+  expect(details).toMatch(/page\s+1\b/i);
+  expect(details).toContain('.pagedjs_page');
+});
+
 test('POST /print refuses generated before pseudo-element fixed only at the ceil print viewport', async () => {
   const response = await post({
     name: 'ceil-only fixed pseudo-element',

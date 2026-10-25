@@ -601,35 +601,52 @@ async function print<T>(
   // the read after it.
   rejectAnimations(before.animations);
   rejectViewportDependent(before.viewportDependent);
-  // The same in print media, a CSS px wider and taller, with what that
-  // loads: Chrome prints between the two. What the boxes don't show (fixed
-  // pseudo-elements, animations, the page boxes they are measured from) is
-  // checked there too.
+  // The same in print media at the other corners of the CSS px around the
+  // page size, with what each loads: Chrome prints inside it, and what
+  // depends on the width or height only through thresholds or monotonic
+  // functions (aspect ratio among them, rising with one and falling with
+  // the other) can't differ there from all four corners. What the boxes
+  // don't show (fixed pseudo-elements, animations, the page boxes they are
+  // measured from) is checked there too.
   if (ready.pageSize && pageViewport) {
     const ceil = {
       width: Math.ceil(ready.pageSize.width),
       height: Math.ceil(ready.pageSize.height),
     };
-    if (
-      ceil.width !== pageViewport.width ||
-      ceil.height !== pageViewport.height
-    ) {
+    const corners = [
+      ceil,
+      { width: ceil.width, height: pageViewport.height },
+      { width: pageViewport.width, height: ceil.height },
+    ].filter(
+      (corner, i, all) =>
+        (corner.width !== pageViewport.width ||
+          corner.height !== pageViewport.height) &&
+        all.findIndex(
+          other =>
+            other.width === corner.width && other.height === corner.height,
+        ) === i,
+    );
+    if (corners.length > 0) {
       const atFloor = await readBoxes(ready.pageSize.width);
-      await setViewport(ceil);
-      await loadResources();
-      const atCeil = await readBoxes(ready.pageSize.width);
-      rejectViewportBoxes(
-        'print media',
-        { viewport: pageViewport, ...atFloor },
-        { viewport: ceil, ...atCeil },
-      );
-      rejectAnimations(atCeil.animations);
-      rejectViewportDependent(atCeil.viewportDependent);
-      // Page boxes moved at both sizes are refused after printing, where a
-      // sheet they add counts first (T08-1).
-      rejectMovedBoxes(
-        atCeil.movedBoxes?.filter(box => !atFloor.movedBoxes?.includes(box)),
-      );
+      for (const corner of corners) {
+        await setViewport(corner);
+        await loadResources();
+        const atCorner = await readBoxes(ready.pageSize.width);
+        rejectViewportBoxes(
+          'print media',
+          { viewport: pageViewport, ...atFloor },
+          { viewport: corner, ...atCorner },
+        );
+        rejectAnimations(atCorner.animations);
+        rejectViewportDependent(atCorner.viewportDependent);
+        // Page boxes moved at the floor too are refused after printing,
+        // where a sheet they add counts first (T08-1).
+        rejectMovedBoxes(
+          atCorner.movedBoxes?.filter(
+            box => !atFloor.movedBoxes?.includes(box),
+          ),
+        );
+      }
       await setViewport(pageViewport);
     }
   }
