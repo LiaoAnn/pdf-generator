@@ -111,6 +111,8 @@ const packIssues: Record<string, string> = {
 
 /** What the print Worker reports when it can't print the sample. */
 const printIssues: Record<string, string> = {
+  css_animation:
+    '樣板會隨時間變動：用了 CSS 動畫（animation）或轉場（transition）、SVG 動畫（animate、set 等元素）或 marquee。印 PDF 和量測標準答案時抓到的是不同時刻的畫面，PDF 會和標準答案對不上。請移除這些動畫與轉場，直接寫出最後要印的樣式。',
   font_not_loaded:
     '列印時有字型載入失敗：可能是字型檔損壞或路徑錯誤，或列印服務還不支援樣板包自帶的字型。請先改用平台內建的中文字型試試。',
   page_count_mismatch:

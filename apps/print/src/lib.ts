@@ -49,6 +49,8 @@ export interface PrintReadyState {
    * CSS whose result depends on the viewport's size.
    */
   viewportDependent?: string[];
+  /** `"<where>: <what>"` of everything that moves over time, on screen. */
+  animations?: string[];
 }
 
 /**
@@ -57,6 +59,8 @@ export interface PrintReadyState {
  * only can make differ from the screen's (T07-20).
  */
 export interface PrintedState {
+  /** As `PrintReadyState.animations`, in print media. */
+  animations?: string[];
   /** As `PrintReadyState.movedBoxes`, in print media. */
   movedBoxes?: string[];
   /** `"page <n>: <row text>"` of every table row split or outside its page. */
@@ -94,6 +98,7 @@ export type RenderErrorCode =
   | 'page_count_mismatch'
   | 'page_box_moved'
   | 'viewport_dependent'
+  | 'css_animation'
   | 'request_blocked';
 
 /** A render that must not produce a PDF. */
@@ -317,6 +322,17 @@ export async function renderPdf<T = undefined>(
   }
 }
 
+// The PDF and the ground truth would each catch it at a different moment.
+function rejectAnimations(animations: string[] | undefined) {
+  if (animations && animations.length > 0) {
+    throw new RenderError(
+      'css_animation',
+      'The template animates: CSS animations or transitions, SVG animation or <marquee>',
+      animations,
+    );
+  }
+}
+
 function rejectMovedBoxes(moved: string[] | undefined) {
   if (moved && moved.length > 0) {
     throw new RenderError(
@@ -350,6 +366,7 @@ async function print<T>(
       ready.viewportDependent,
     );
   }
+  rejectAnimations(ready.animations);
   // Ground truth is read relative to each page's box, so a page box a
   // template moved misplaces every block in it (T07-18).
   rejectMovedBoxes(ready.movedBoxes);
@@ -400,6 +417,7 @@ async function print<T>(
       ).__pdfgen.printed({ pageWidth: width }),
     pageWidth,
   );
+  rejectAnimations(printed.animations);
   if (printed.fragmentedRows && printed.fragmentedRows.length > 0) {
     throw new RenderError(
       'row_fragmented',

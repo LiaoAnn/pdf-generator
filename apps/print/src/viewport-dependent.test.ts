@@ -65,6 +65,87 @@ const rule = '.target { width: 50vw; }';
 const svg =
   '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>';
 
+// Long-running changes stay active through pagination and measurement. Only
+// the first case starts on entering print media, catching a screen-only check.
+const animationRefusals: (Omit<Fixture, 'diagnostic'> & {
+  diagnostic: RegExp;
+})[] = [
+  {
+    name: 'transition started only when print media is emulated',
+    head: `<style data-pagedjs-ignore>
+      .target { transition: width 999s linear; }
+      @media print { .target { width: 200px !important; } }
+      </style>`,
+    body: '<div data-gt="image" class="target" style="width:40px;height:40px;background:black"></div>',
+    diagnostic: /width|transition/i,
+  },
+  {
+    name: 'running keyframes on a data-gt element',
+    head: `<style data-pagedjs-ignore>
+      @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
+      .animated { animation: pulse 999s linear infinite; }
+      </style>`,
+    body: '<div data-gt="image" class="animated" style="width:40px;height:40px;background:black"></div>',
+    diagnostic: /pulse|opacity|animation/i,
+  },
+  ...['before', 'after'].map(pseudo => ({
+    name: `running keyframes on ::${pseudo}`,
+    head: `<style data-pagedjs-ignore>
+      @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
+      .animated::${pseudo} { content: ""; display: block; width: 10px; height: 10px;
+        background: black; animation: pulse 999s linear infinite; }
+      </style>`,
+    body: '<div data-gt="image" class="animated" style="width:40px;height:40px"></div>',
+    diagnostic: /pulse|opacity|animation|before|after/i,
+  })),
+  ...[
+    [
+      'animate',
+      'attributeName="width" from="10" to="30" dur="999s" repeatCount="indefinite"',
+    ],
+    [
+      'animateTransform',
+      'attributeName="transform" type="translate" from="0 0" to="20 0" dur="999s" repeatCount="indefinite"',
+    ],
+    [
+      'animateMotion',
+      'path="M 0 0 L 20 0" dur="999s" repeatCount="indefinite"',
+    ],
+    ['set', 'attributeName="fill" to="red" begin="0s" dur="999s"'],
+  ].map(([element, attributes]) => ({
+    name: `printed SVG ${element} element`,
+    body: `<svg data-gt="image" xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="10" height="10"><${element} ${attributes}/></rect></svg>`,
+    diagnostic: new RegExp(element ?? '', 'i'),
+  })),
+  {
+    name: 'marquee element',
+    body: '<marquee data-gt="image" width="100" height="40"><div style="width:40px;height:40px;background:black"></div></marquee>',
+    diagnostic: /marquee/i,
+  },
+];
+
+test.each(animationRefusals)(
+  'POST /print refuses $name with actionable css_animation diagnostics',
+  async fixture => {
+    const response = await post(fixture);
+    expect(
+      response.status,
+      response.status === 200
+        ? 'animated document printed successfully'
+        : await response.clone().text(),
+    ).toBe(422);
+    expect(response.headers.has('x-page-count')).toBe(false);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('css_animation');
+    expect(error.message.length).toBeGreaterThan(0);
+    expect(error.details?.length).toBeGreaterThan(0);
+    expect(
+      error.details?.some(detail => fixture.diagnostic.test(detail.message)),
+      JSON.stringify(error.details),
+    ).toBe(true);
+  },
+);
+
 // Each row isolates a bypass: detecting another unit or another source cannot
 // make this row pass. The declarations deliberately keep the page printable.
 const refusals: Fixture[] = [
@@ -271,20 +352,28 @@ const refusals: Fixture[] = [
     files: { 'a.svg': svg, 'b.svg': svg },
     diagnostic: 'srcset',
   })),
-  ...['img', 'source'].map(tag => ({
-    name: `${tag} sizes viewport length`,
-    body:
-      tag === 'img'
-        ? '<img src="pixel.svg" sizes="50vw" width="10" height="10">'
-        : '<picture><source srcset="pixel.svg" sizes="50vw"><img src="pixel.svg" width="10" height="10"></picture>',
+  ...['img', 'source'].flatMap(tag =>
+    ['invalid', '10px'].map(sizes => ({
+      name: `${tag} width-descriptor srcset with sizes="${sizes}"`,
+      body:
+        tag === 'img'
+          ? `<img data-gt="image" src="a.svg" srcset="a.svg 1000w" sizes="${sizes}">`
+          : `<picture><source srcset="a.svg 1000w" sizes="${sizes}"><img data-gt="image" src="a.svg"></picture>`,
+      files: { 'a.svg': svg },
+      diagnostic: 'srcset',
+    })),
+  ),
+  ...['print', 'screen'].map(media => ({
+    name: `picture source with plain ${media} media`,
+    body: `<picture><source media="${media}" srcset="pixel.svg"><img data-gt="image" src="pixel.svg"></picture>`,
     files: { 'pixel.svg': svg },
-    diagnostic: '50vw',
+    diagnostic: media,
   })),
   {
-    name: 'sizes viewport media query with fixed lengths',
-    body: '<img src="pixel.svg" sizes="(max-width: 800px) 10px, 20px" width="10" height="10">',
+    name: 'source sizes viewport length with srcset',
+    body: '<picture><source srcset="pixel.svg" sizes="50vw"><img src="pixel.svg" width="10" height="10"></picture>',
     files: { 'pixel.svg': svg },
-    diagnostic: 'max-width',
+    diagnostic: '50vw',
   },
 ];
 
@@ -315,6 +404,23 @@ test.each(refusals)(
 // Regression: scanning raw HTML/CSS tokens instead of values refuses innocent
 // strings, asset names, content attr(), and fixed or font-relative dimensions.
 const controls: Omit<Fixture, 'diagnostic'>[] = [
+  {
+    name: 'transition declared without any screen-to-print style change',
+    head: '<style data-pagedjs-ignore>.target { transition: width 999s linear; }</style>',
+    body: '<div data-gt="image" class="target" style="width:40px;height:40px;background:black"></div>',
+  },
+  {
+    name: 'unused keyframes declaration',
+    head: '<style data-pagedjs-ignore>@keyframes unused { from { opacity: 1; } to { opacity: .5; } }</style>',
+  },
+  {
+    name: 'animation explicitly disabled with animation none',
+    head: `<style data-pagedjs-ignore>
+      @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
+      .target { animation: pulse 999s linear infinite; }
+      .target { animation: none; }
+      </style>`,
+  },
   ...['img', 'source'].map(tag => ({
     name: `${tag} density-descriptor srcset without sizes`,
     body:
@@ -323,11 +429,21 @@ const controls: Omit<Fixture, 'diagnostic'>[] = [
         : '<picture><source srcset="a.svg 1x, b.svg 2x"><img data-gt="image" src="a.svg"></picture>',
     files: { 'a.svg': svg, 'b.svg': svg },
   })),
-  ...['print', 'screen'].map(media => ({
-    name: `picture source with plain ${media} media`,
-    body: `<picture><source media="${media}" srcset="pixel.svg"><img data-gt="image" src="pixel.svg"></picture>`,
+  ...['img', 'source'].flatMap(tag =>
+    ['invalid', '10px', '50vw', '(max-width: 800px) 10px, 20px'].map(sizes => ({
+      name: `${tag} sizes="${sizes}" without srcset`,
+      body:
+        tag === 'img'
+          ? `<img data-gt="image" src="pixel.svg" sizes="${sizes}">`
+          : `<picture><source sizes="${sizes}"><img data-gt="image" src="pixel.svg"></picture>`,
+      files: { 'pixel.svg': svg },
+    })),
+  ),
+  {
+    name: 'picture source without media or descriptors',
+    body: '<picture><source srcset="pixel.svg"><img data-gt="image" src="pixel.svg"></picture>',
     files: { 'pixel.svg': svg },
-  })),
+  },
   ...['video', 'audio'].map(tag => ({
     name: `${tag} source media does not select a picture image`,
     body: `<${tag}><source media="(min-width: 793.5px)"></${tag}>`,

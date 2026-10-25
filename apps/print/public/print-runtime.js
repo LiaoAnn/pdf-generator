@@ -802,28 +802,67 @@
           }
         }
       }
+      // Which image a picture or srcset shows: a source chosen by media
+      // (switching media switches the image, which isn't loaded when the
+      // PDF is printed), width descriptors (chosen by `sizes`, 100vw when
+      // missing or invalid) and `sizes` itself.
+      if (element.localName !== 'img' && element.localName !== 'source') {
+        continue;
+      }
+      const media = element.getAttribute('media');
+      if (media !== null && element.parentElement?.localName === 'picture') {
+        report(`${tag} media`, media);
+      }
+      const srcset = element.getAttribute('srcset');
+      if (srcset === null) continue;
+      if (srcset.split(',').some(candidate => /\s\d+w\s*$/i.test(candidate))) {
+        report(tag, `srcset="${srcset}"`);
+      }
       const sizes = element.getAttribute('sizes');
       if (
         sizes &&
-        (element.localName === 'img' || element.localName === 'source') &&
         (units.test(bare(sizes)) || sizeFeatures.test(bare(sizes)))
       ) {
         report(tag, `sizes="${sizes}"`);
       }
-      // A picture's source chosen by a media query, and width descriptors
-      // without `sizes`, which default to 100vw.
-      const media = element.getAttribute('media');
-      if (media && element.parentElement?.localName === 'picture') {
-        checkMedia(`${tag} media`, media);
-      }
-      const srcset = element.getAttribute('srcset');
+    }
+    return [...found].slice(0, 50);
+  }
+
+  // What moves over time: running CSS animations and transitions (entering
+  // print media starts the transitions of what its rules change), SVG
+  // animation elements and <marquee>. The PDF and the ground truth would
+  // each catch them at a different moment (T07-20).
+  function animations() {
+    /** @type {Set<string>} */
+    const found = new Set();
+    for (const animation of document.getAnimations()) {
+      const effect = animation.effect;
+      const target =
+        effect instanceof KeyframeEffect && effect.target
+          ? `<${effect.target.localName}>${effect.pseudoElement ?? ''}`
+          : 'document';
+      const what =
+        animation instanceof CSSAnimation
+          ? `animation ${animation.animationName}`
+          : animation instanceof CSSTransition
+            ? `transition ${animation.transitionProperty}`
+            : 'animation';
+      found.add(`${target}: ${what}`);
+    }
+    const animating = new Set([
+      'animate',
+      'animatetransform',
+      'animatemotion',
+      'set',
+    ]);
+    for (const element of document.querySelectorAll('*')) {
+      const name = element.localName.toLowerCase();
       if (
-        srcset &&
-        !sizes &&
-        (element.localName === 'img' || element.localName === 'source') &&
-        srcset.split(',').some(candidate => /\s\d+w\s*$/i.test(candidate))
+        (element instanceof SVGElement && animating.has(name)) ||
+        name === 'marquee'
       ) {
-        report(tag, `srcset="${srcset}"`);
+        found.add(`<${element.localName}>`);
       }
     }
     return [...found].slice(0, 50);
@@ -838,6 +877,7 @@
   /** @param {{ pageWidth: number }} options */
   function printed({ pageWidth }) {
     return {
+      animations: animations(),
       movedBoxes: movedBoxes({ print: true, pageWidth }),
       fragmentedRows: fragmentedRows(),
       plainInk: plainInk(),
@@ -845,7 +885,7 @@
     };
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[] }) => void} */
   let resolveReady = () => {};
   /** @type {string[]} */
   let sourceViewportDependent = [];
@@ -871,6 +911,7 @@
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),
           movedBoxes: movedBoxes(),
+          animations: animations(),
           viewportDependent: [
             ...new Set([...sourceViewportDependent, ...viewportDependent()]),
           ].slice(0, 50),

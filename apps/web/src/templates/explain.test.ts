@@ -177,6 +177,7 @@ describe('template author error explanations', () => {
     'page_count_mismatch',
     'page_box_moved',
     'viewport_dependent',
+    'css_animation',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -256,6 +257,28 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toContain('PDF');
     expect(issue?.explanation).toContain('標準答案');
     expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
+  });
+
+  test('preview css_animation refusals explain animation drift and how to remove its causes', () => {
+    const raw = 'div.target: transition width';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'css_animation', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('css_animation');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toMatch(cjk);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.explanation).toContain('動畫');
+    expect(issue?.explanation).toContain('轉場');
+    expect(issue?.explanation).toMatch(/SVG/i);
+    expect(issue?.explanation).toContain('PDF');
+    expect(issue?.explanation).toContain('標準答案');
+    expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
+    expect(issue?.explanation).toMatch(/移除|停用|關閉|取消|去除|不要|避免|勿/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -459,6 +482,7 @@ describe('stored fixture print errors', () => {
     'page_count_mismatch',
     'page_box_moved',
     'viewport_dependent',
+    'css_animation',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
