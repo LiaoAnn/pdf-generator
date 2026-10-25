@@ -277,6 +277,31 @@ test.each([
     pages: 1,
   },
   {
+    // The only ink belongs to the transformed pseudo-element, not its parent.
+    name: 'an image-only page with a transformed before pseudo-element',
+    html: document(
+      `.pseudo-image::before { content: ""; display: block;
+        width: 40px; height: 40px; background: black;
+        transform: scale(1.5); transform-origin: top left; }`,
+      '<div data-gt="image" class="pseudo-image"></div>',
+    ),
+    pages: 1,
+  },
+  {
+    // A transparent border adds no plain ink around the scaled SVG drawing.
+    name: 'a scaled inline SVG inside an image wrapper with a transparent border',
+    html: document(
+      '',
+      `<div data-gt="image" style="border: 1px solid transparent">
+        <svg viewBox="0 0 200 100" width="100" height="50">
+          <path d="M0 0H200V100H0Z" fill="black"/>
+          <path d="M20 20H180V80H20Z" fill="white"/>
+        </svg>
+      </div>`,
+    ),
+    pages: 1,
+  },
+  {
     // An absent content drawing is not evidence of an invalid page scale.
     name: 'a page with no drawing beyond its background',
     html: document(

@@ -496,16 +496,19 @@
   // was printed at another scale (T07-18); a page that paints only SVG or
   // transformed content can't be told apart from a scaled one.
   function plainInk() {
+    const visible = (/** @type {string} */ color) =>
+      !/^(?:transparent|rgba\(.*,\s*0\))$/.test(color);
     /** @param {CSSStyleDeclaration} style */
     const paints = style =>
-      !/^(?:transparent|rgba\(.*,\s*0\))$/.test(style.backgroundColor) ||
+      visible(style.backgroundColor) ||
       ['top', 'right', 'bottom', 'left'].some(
         side =>
           Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) >
             0 &&
           !/^(?:none|hidden)$/.test(
             style.getPropertyValue(`border-${side}-style`),
-          ),
+          ) &&
+          visible(style.getPropertyValue(`border-${side}-color`)),
       );
     /** @param {CSSStyleDeclaration} style */
     const plain = style =>
@@ -539,6 +542,7 @@
           if (
             box.content !== 'none' &&
             box.content !== 'normal' &&
+            plain(box) &&
             paints(box)
           ) {
             return true;
