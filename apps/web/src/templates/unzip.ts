@@ -4,9 +4,18 @@
 // a few kilobytes of input at a time, counting what each entry really holds,
 // and stops at the first entry larger than it says or once the pack is larger
 // than `maxBytes`. Entries are counted too, directories included: walking
-// hundreds of thousands of tiny ones takes seconds.
+// hundreds of thousands of tiny ones takes seconds. A name may appear only
+// once: with two, which file a reader gets depends on the reader. And a
+// deflated entry's blocks are counted before it is inflated (deflate-blocks).
 import type { PackIssue } from '@pdf-generator/template-tools';
-import { Unzip, UnzipInflate, unzipSync } from 'fflate';
+import {
+  type FlateError,
+  Inflate,
+  Unzip,
+  type UnzipDecoder,
+  unzipSync,
+} from 'fflate';
+import { scanDeflate } from './deflate-blocks.ts';
 
 /** Input per step: one step inflates to at most ~1000 times this. */
 const slice = 8 * 1024;
@@ -38,10 +47,107 @@ const tooLarge = (size: number, maxBytes: number) =>
     `the pack is more than ${size} bytes uncompressed, more than the limit of ${maxBytes}`,
   );
 
+const duplicate = (name: string): PackIssue => ({
+  code: 'zip-duplicate-name',
+  file: name,
+  message: `${name} is in the zip more than once`,
+});
+
+function concat(chunks: Uint8Array[], size: number): Uint8Array {
+  const bytes = new Uint8Array(size);
+  let at = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return bytes;
+}
+
+const understated = (name: string, limit: number): PackIssue => ({
+  code: 'zip-invalid',
+  file: name,
+  message: `${name} holds more data than its zip header says (${limit} bytes)`,
+});
+
+/** Why a deflated entry was refused before inflating it. */
+class Refusal extends Error implements FlateError {
+  code = 0;
+  readonly issue: PackIssue;
+
+  constructor(issue: PackIssue) {
+    super(issue.message);
+    this.issue = issue;
+  }
+}
+
+/**
+ * fflate's inflater for deflated entries, run only once the entry's whole
+ * stream has been scanned and stays within its block budget. A stream may
+ * have at most the blocks the entry's size in the zip directory pays for.
+ */
+function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
+  return class implements UnzipDecoder {
+    static compression = 8;
+    ondata: UnzipDecoder['ondata'] = () => {};
+    readonly #name: string;
+    #chunks: Uint8Array[] = [];
+    #size = 0;
+    #stopped = false;
+
+    constructor(name: string) {
+      this.#name = name;
+    }
+
+    push(chunk: Uint8Array, final: boolean) {
+      this.#chunks.push(chunk);
+      this.#size += chunk.byteLength;
+      if (!final) return;
+      const stream = concat(this.#chunks, this.#size);
+      this.#chunks = [];
+      const limit = declared.get(this.#name) ?? 0;
+      const scan = scanDeflate(stream, limit);
+      if (!scan.ok) {
+        const error =
+          scan.reason === 'too-many-blocks'
+            ? new Refusal({
+                code: 'zip-too-many-blocks',
+                file: this.#name,
+                message: `${this.#name} is split into more deflate blocks than its data pays for (8, plus one per 4096 bytes)`,
+              })
+            : scan.reason === 'too-much-output'
+              ? new Refusal(understated(this.#name, limit))
+              : Object.assign(new Error('invalid deflate data'), { code: 1 });
+        this.ondata(error, new Uint8Array(), true);
+        return;
+      }
+      // Bytes after the final block are left out: fflate would copy them
+      // again on every push, quadratic in their length.
+      const deflated = stream.subarray(0, scan.length);
+      const inflate = new Inflate((data, last) =>
+        this.ondata(null, data, last),
+      );
+      try {
+        for (let at = 0; at < deflated.byteLength && !this.#stopped; ) {
+          const end = Math.min(at + slice, deflated.byteLength);
+          inflate.push(deflated.subarray(at, end), end === deflated.byteLength);
+          at = end;
+        }
+      } catch (error) {
+        this.ondata(error as FlateError, new Uint8Array(), true);
+      }
+    }
+
+    terminate() {
+      this.#stopped = true;
+    }
+  };
+}
+
 /**
  * The pack's files (directories and macOS metadata left out), or the one
- * issue that stops the upload: an unreadable zip, an entry whose data is
- * larger than its header says, or more than `maxBytes` in all.
+ * issue that stops the upload: an unreadable zip, a name used twice, an
+ * entry whose data is larger than its header says, or more than `maxBytes`
+ * in all.
  */
 export function unzipBounded(
   zip: Uint8Array,
@@ -51,17 +157,24 @@ export function unzipBounded(
   // says it holds. Its errors read as checkPack's own zip-invalid.
   const declared = new Map<string, number>();
   let total = 0;
+  let listed = 0;
   const overflow = new Error('too many entries');
+  let repeated: string | undefined;
   try {
     unzipSync(zip, {
       filter: entry => {
-        if (declared.size >= maxEntries) throw overflow;
+        if (++listed > maxEntries) throw overflow;
+        if (declared.has(entry.name)) {
+          repeated = entry.name;
+          throw overflow;
+        }
         declared.set(entry.name, entry.originalSize);
         total += entry.originalSize;
         return false;
       },
     });
   } catch (error) {
+    if (repeated !== undefined) return { issue: duplicate(repeated) };
     if (error === overflow) return { issue: tooMany() };
     return {
       issue: whole(
@@ -74,14 +187,19 @@ export function unzipBounded(
 
   const files: Record<string, Uint8Array> = {};
   let inflated = 0;
-  let entries = 0;
+  const seen = new Set<string>();
   let stop: PackIssue | undefined;
   const unzip = new Unzip(file => {
     if (stop) return;
-    if (++entries > maxEntries) {
+    if (seen.size >= maxEntries) {
       stop = tooMany();
       return;
     }
+    if (seen.has(file.name)) {
+      stop = duplicate(file.name);
+      return;
+    }
+    seen.add(file.name);
     const limit = declared.get(file.name);
     if (limit === undefined) {
       stop = {
@@ -96,6 +214,10 @@ export function unzipBounded(
     let size = 0;
     file.ondata = (error, data, final) => {
       if (stop) return;
+      if (error instanceof Refusal) {
+        stop = error.issue;
+        return;
+      }
       if (error) {
         stop = whole(
           'zip-invalid',
@@ -106,11 +228,7 @@ export function unzipBounded(
       size += data.byteLength;
       inflated += data.byteLength;
       if (size > limit) {
-        stop = {
-          code: 'zip-invalid',
-          file: file.name,
-          message: `${file.name} holds more data than its zip header says (${limit} bytes)`,
-        };
+        stop = understated(file.name, limit);
       } else if (inflated > maxBytes) {
         stop = tooLarge(maxBytes, maxBytes);
       }
@@ -119,19 +237,11 @@ export function unzipBounded(
         return;
       }
       chunks.push(data);
-      if (final) {
-        const bytes = new Uint8Array(size);
-        let at = 0;
-        for (const chunk of chunks) {
-          bytes.set(chunk, at);
-          at += chunk.byteLength;
-        }
-        files[file.name] = bytes;
-      }
+      if (final) files[file.name] = concat(chunks, size);
     };
     file.start();
   });
-  unzip.register(UnzipInflate);
+  unzip.register(blockCheckedInflate(declared));
   try {
     for (let at = 0; at < zip.byteLength && !stop; at += slice) {
       const end = Math.min(at + slice, zip.byteLength);
