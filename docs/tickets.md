@@ -815,6 +815,15 @@
 - **不做**：改上限數值
 - **來源**：PR #55（T15-1）
 
+### T15-5 樣板上傳：計時測試在 CI 上誤判
+- **目標**：T15-4 的 `apps/web/src/templates/deflate-blocks-speed.workerd.test.ts` 用絕對上限（中位數 < 300 ms）判斷將近 10 MiB 的 10-bit 長碼 zip；本機約 240 ms，GitHub runner 量到 1,154 ms，main 在 13bd200 之後 CI 一直是紅的。改成在同一次執行中和基準比較的相對上限（例如同一串流的 `inflateRawSync` 或 T15-4 的參考掃描），或其他不受機器速度影響的判準，並仍能抓到 T15-1 之後那個慢版本（546–680 ms 等級）
+- **Blocked by**：T15-4
+- **Blocks**：所有 PR 的 CI
+- **撞車風險**：`apps/web/src/templates/` 的測試檔
+- **驗收測試**：CI 在 main 上連續 3 次綠燈（重跑同一個 run）；對 T15-1 之後的慢版本（放在 worktree 外的副本）這個測試仍會失敗
+- **不做**：改 `deflate-blocks.ts` 或上傳流程；刪掉計時測試了事
+- **來源**：PR #57（T15-4）之後 main 的 CI、PR #58（T06-3）
+
 ### T07-20 印 PDF：只在螢幕或只在列印套用的樣式表
 - **目標**：Paged.js 保留 `<style media="screen">`、`[data-pagedjs-ignore]` 與 `@media all and (…)`，所以只在其中一種媒體套用的樣式表能在量測 gt（螢幕）與列印之間移動 `data-gt` 內容。二擇一：在列印媒體下讀 gt，或拒絕只在單一媒體套用、會影響版面的樣式表。選做：拒絕樣板 CSS 裡的視窗單位（vw、vh、vmin、vmax…），關掉 T07-18 留下的視窗大小殘餘風險
 - **Blocked by**：T07-18
