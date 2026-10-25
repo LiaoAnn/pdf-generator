@@ -44,6 +44,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 | `packages/ground-truth` | `@pdf-generator/ground-truth` | Reads `gt.json` blocks from a printed page | T08, T13 |
 | `apps/web` | `@pdf-generator/web` | The website Worker (TanStack Start), `wrangler dev` on port 8787 | T09 |
 | `apps/print` | `@pdf-generator/print` | The PDF print Worker (Browser Rendering, Paged.js), port 8788 | T07 |
+| `packages/dev-tools` | `@pdf-generator/dev-tools` | Dev tools, not part of the product (`pdf-to-png`) | T14-2 |
 
 - Shared tool versions (`typescript`, `vitest`, `wrangler`) live in the `catalog:` of `pnpm-workspace.yaml`; a package lists them as `"catalog:"`. Vitest stays on 4.x so `@cloudflare/vitest-pool-workers` can be added when a Worker needs tests inside workerd.
 - Each Worker app has its own `wrangler.jsonc` and generated `worker-configuration.d.ts` (`pnpm cf-typegen`).
@@ -70,6 +71,7 @@ A fresh worktree's stack has no `node_modules`: run `T3CODE_WORKTREE_PATH=<path>
 | `pnpm --filter @pdf-generator/web build` / `preview` | Production build, served locally (fails closed with 503 until Access vars are set) |
 | `pnpm dev:print --ip 0.0.0.0` | `wrangler dev` for `apps/print` (port 8788, inside the stack only) |
 | `pnpm cf-typegen` | Regenerate every Worker's binding types after changing its `wrangler.jsonc` |
+| `pnpm pdf-to-png <pdf> [--gt <gt.json>] [--out <dir>] [--scale <n>]` | Draw each PDF page as a PNG, optionally with the gt.json boxes over it (`packages/dev-tools/README.md`); keep `--out` outside the worktree, in the container's `/tmp` |
 | Batch locally (two tmux sessions) | print: `CI=1 XDG_CACHE_HOME=<writable dir> pnpm dev:print --ip 0.0.0.0 --var PRINT_TOKEN:<token> --var ASSET_ORIGIN:http://127.0.0.1:8788`; web: `pnpm dev --ip 0.0.0.0` (`wt-up` sets `MINIFLARE_REGISTRY_PATH` and `WRANGLER_REGISTRY_PATH` for you; a stack started before 2026-10-24 16:00 lacks the first: rerun `wt-up <path>`) with the same token as `PRINT_TOKEN` in `apps/web/.env` (gitignored). On a fresh stack run `db:migrate:local` first, or uploads answer `storage_error`. The stop recipe's `pkill workerd` stops both dev servers' workerd: restart both. Don't put print values in `apps/print/.env`: its own tests load it |
 | `pnpm --filter @pdf-generator/contract schemas` | Regenerate the committed JSON Schema after a contract change (a test fails when it is stale) |
 
@@ -122,7 +124,7 @@ These hold for every ticket. A ticket's "不做" (out of scope) list adds to the
 
 The VM's own rules (`~/.config/devvm/AGENTS.md`, loaded for you) win over anything here on how to run things: your stack, `wt-*` tools, worktree URLs, no host ports, no work outside your worktree. In short: `wt-status` first, `wt-up <your path>` when there is no stack, project commands through `T3CODE_WORKTREE_PATH=<path> wt-exec …`, verify on `https://app-<wt>.pdf-generator.liaoann.net`.
 
-To see what a page or a rendered PDF looks like, use T3's preview tools (`preview_open`, `preview_snapshot`, `preview_click`, …) on your worktree URL; they reach it over the tailnet and need no OK. Use them for every visual check: layout, pagination, boxes drawn over a page. The preview browser downloads a PDF instead of showing it: to look at one, open a signed-in app page and draw the pages onto canvases with pdf.js (import `unpdf`'s `dist/pdfjs.mjs` through Vite's `/@fs/` path).
+To see what a page or a rendered PDF looks like, use T3's preview tools (`preview_open`, `preview_snapshot`, `preview_click`, …) on your worktree URL; they reach it over the tailnet and need no OK. Use them for every visual check: layout, pagination, boxes drawn over a page. The preview browser downloads a PDF instead of showing it: to look at one, run `pnpm pdf-to-png` in your stack (with `--gt` to see the ground-truth boxes) and read the PNGs.
 
 ### External services: always ask, through the coordinator
 
