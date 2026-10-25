@@ -683,137 +683,24 @@
     return false;
   }
 
-  // CSS whose result depends on the viewport's size: viewport and container
-  // query units (container units fall back to the small viewport), media
-  // queries on the viewport's size, position: fixed (printed on every page),
-  // and attr() outside `content` (a typed
-  // attr() turns an attribute such as data-w="50vw" into a length). lib.ts
-  // measures in print media at the PDF page size rounded down to whole CSS
-  // px, while Chrome prints at the exact page size, so such CSS can lay out
-  // differently in gt.json than in the PDF (T07-20). Checked where the
-  // browser applies CSS (every stylesheet, whatever its media, @import'ed
-  // ones, every rule with declarations, `style` and SVG presentation
-  // attributes, `sizes`), and in the source text of <style> elements and
-  // `style` attributes, since a Chrome without typed attr() drops it from
-  // the CSSOM. Strings, comments and url()s don't count. Run before
-  // Paged.js reads the pack's stylesheets, once it has paginated and in
-  // print media, once what print media loads (late @imports) has loaded.
+  // What still depends on the viewport where the data-gt boxes don't show
+  // it. lib.ts reads the boxes at floor and ceil of the page size (Chrome
+  // prints between the two) and at the viewport Paged.js paginated at, which
+  // covers CSS that lays out by the viewport's size (T07-22). Not covered:
+  // position: fixed (placed relative to the viewport and printed on every
+  // page) and a <picture> source chosen by media (switching media switches
+  // the image, which isn't loaded when the PDF is printed).
   function viewportDependent() {
     /** @type {Set<string>} */
     const found = new Set();
-    const units =
-      /\d(?:[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))(?![\w-])/i;
-    const sizeFeatures =
-      /(?<![\w-])(?:(?:min|max)-)?(?:device-)?(?:width|height|aspect-ratio|orientation)(?![\w-])/i;
-    /** @param {string} text */
-    const bare = text =>
-      unescapeCss(
-        text
-          .replace(/\/\*[\s\S]*?\*\//g, ' ')
-          .replace(
-            /url\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)]*)\)/gi,
-            ' ',
-          )
-          .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""'),
-      );
     /** @param {string} where @param {string} text */
     const report = (where, text) =>
-      found.add(
-        `${where}: ${unescapeCss(text)
-          .replace(/\s+/g, ' ')
-          .trim()
-          .slice(0, 200)}`,
-      );
-    /** @param {string} where @param {string} media */
-    const checkMedia = (where, media) => {
-      if (sizeFeatures.test(bare(media))) report(where, media);
-    };
-    /** @param {string} where @param {string} name @param {string} value */
-    const checkValue = (where, name, value) => {
-      const plain = bare(value);
-      if (
-        units.test(plain) ||
-        (name !== 'content' && /attr\s*\(/i.test(plain))
-      ) {
-        report(where, `${name}: ${value}`);
-      }
-    };
-    /** @param {string} where @param {CSSStyleDeclaration} style */
-    const checkStyle = (where, style) => {
-      for (let i = 0; i < style.length; i++) {
-        const name = style.item(i);
-        checkValue(where, name, style.getPropertyValue(name));
-      }
-    };
-    // Declarations in source text, for what the CSSOM may have dropped.
-    /** @param {string} where @param {string} text */
-    const checkSource = (where, text) => {
-      for (const match of bare(text).matchAll(
-        /(?:^|[;{\s])(-?[\w-]+)\s*:([^;{}]*)/g,
-      )) {
-        const [, name = '', value = ''] = match;
-        if (name.toLowerCase() !== 'content' && /attr\s*\(/i.test(value)) {
-          report(where, `${name}:${value}`);
-        }
-      }
-    };
-    /** @type {Set<CSSStyleSheet>} */
-    const seen = new Set();
-    /** @param {string} where @param {CSSStyleSheet} sheet */
-    const checkSheet = (where, sheet) => {
-      if (seen.has(sheet)) return;
-      seen.add(sheet);
-      checkMedia(`${where} media`, sheet.media.mediaText);
-      /** @type {CSSRuleList | undefined} */
-      let rules;
-      try {
-        rules = sheet.cssRules;
-      } catch {
-        return;
-      }
-      /** @param {CSSRuleList} list */
-      const checkRules = list => {
-        for (const rule of list) {
-          if (rule instanceof CSSImportRule) {
-            checkMedia(`${where} @import`, rule.media.mediaText);
-            if (rule.styleSheet) {
-              checkSheet(rule.styleSheet.href ?? where, rule.styleSheet);
-            }
-            continue;
-          }
-          if (rule instanceof CSSMediaRule) {
-            checkMedia(`${where} @media`, rule.media.mediaText);
-          }
-          if ('style' in rule && rule.style instanceof CSSStyleDeclaration) {
-            const selector =
-              'selectorText' in rule ? String(rule.selectorText) : '';
-            checkStyle(`${where} ${selector}`.trim(), rule.style);
-          }
-          if ('cssRules' in rule && rule.cssRules instanceof CSSRuleList) {
-            checkRules(rule.cssRules);
-          }
-        }
-      };
-      checkRules(rules);
-    };
-    [...document.styleSheets].forEach((sheet, i) => {
-      checkSheet(sheet.href ?? `stylesheet ${i + 1}`, sheet);
-    });
-    for (const style of document.querySelectorAll('style')) {
-      checkMedia('<style> media', style.media);
-      checkSource('<style>', style.textContent ?? '');
-    }
-    const paginated = pagedPages().length > 0;
+      found.add(`${where}: ${text.replace(/\s+/g, ' ').trim().slice(0, 200)}`);
     for (const element of document.querySelectorAll('*')) {
       const tag = `<${element.localName}>`;
-      if (element instanceof HTMLElement || element instanceof SVGElement) {
-        checkStyle(`${tag} style`, element.style);
-      }
-      const source = element.getAttribute('style');
-      if (source) checkSource(`${tag} style`, source);
-      // Placed relative to the viewport, and printed on every page; a box
-      // only, so not what display: none or a ::before without content hides.
-      // (A display: contents host has no box, its ::before/::after can.)
+      // A box only, so not what display: none or a ::before without content
+      // hides. (A display: contents host has no box, its ::before/::after
+      // can.)
       if (!hiddenByDisplay(element)) {
         for (const pseudo of ['', '::before', '::after']) {
           const style = getComputedStyle(element, pseudo || null);
@@ -827,57 +714,13 @@
           }
         }
       }
-      // A size container outside the pages (html, body) is as large as the
-      // viewport, and so is what its container queries see. Before
-      // pagination there are no pages yet: only html and body are outside.
-      const containerType = getComputedStyle(element).containerType;
-      const outside = paginated
-        ? !element.closest('.pagedjs_page')
-        : element === document.documentElement || element === document.body;
-      if (containerType && containerType !== 'normal' && outside) {
-        report(tag, `container-type: ${containerType}`);
-      }
-      if (element instanceof SVGElement) {
-        for (const { name, value } of element.attributes) {
-          // Not what SVG renders: metadata, ids, links, handlers.
-          const inert =
-            /^(?:aria-|data-|on|xml|xlink:)/.test(name) ||
-            [
-              'style',
-              'id',
-              'class',
-              'role',
-              'lang',
-              'tabindex',
-              'href',
-            ].includes(name);
-          if (!inert && units.test(bare(value))) {
-            report(tag, `${name}="${value}"`);
-          }
-        }
-      }
-      // Which image a picture or srcset shows: a source chosen by media
-      // (switching media switches the image, which isn't loaded when the
-      // PDF is printed), width descriptors (chosen by `sizes`, 100vw when
-      // missing or invalid) and `sizes` itself.
-      if (element.localName !== 'img' && element.localName !== 'source') {
-        continue;
-      }
       const media = element.getAttribute('media');
-      if (media !== null && element.parentElement?.localName === 'picture') {
-        report(`${tag} media`, media);
-      }
-      const srcset = element.getAttribute('srcset');
-      if (srcset === null) continue;
-      if (srcset.split(',').some(candidate => /\s\d+w\s*$/i.test(candidate))) {
-        report(tag, `srcset="${srcset}"`);
-      }
-      const sizes = element.getAttribute('sizes');
       if (
-        sizes &&
-        (units.test(bare(sizes)) || sizeFeatures.test(bare(sizes)))
+        media !== null &&
+        (element.localName === 'img' || element.localName === 'source') &&
+        element.parentElement?.localName === 'picture'
       ) {
-        report(tag, `sizes="${sizes}"`);
+        report(`${tag} media`, media);
       }
     }
     return [...found].slice(0, 50);
@@ -982,6 +825,42 @@
       });
   }
 
+  // The pack's elements in the Paged.js pages (the laid-out content, and
+  // data-gt elements wherever they are, with their descendants), in document
+  // order, as `"<tag> <page> <left>,<top>,<right>,<bottom>"` from the page's
+  // top left (`none` without a box): lib.ts compares the lists entry by
+  // entry at the viewports that bracket the printed one (T07-22). Not just
+  // data-gt elements, whose boxes stay put while table cells, checkboxes or
+  // an unmarked descendant inside them move; by entry, so blocks that trade
+  // places don't compare equal. Not Paged.js's own page boxes, which its
+  // print styles make as tall as the viewport.
+  function layoutBoxes() {
+    const pages = pagedPages();
+    const round = (/** @type {number} */ value) =>
+      Math.round(value * 100) / 100;
+    return pages.flatMap((page, index) => {
+      const origin = page.getBoundingClientRect();
+      const content = page.querySelectorAll(
+        '.pagedjs_page_content *, [data-gt], [data-gt] *',
+      );
+      return [...content].map(element => {
+        const box = element.getBoundingClientRect();
+        const where =
+          element.getClientRects().length > 0
+            ? [
+                box.left - origin.left,
+                box.top - origin.top,
+                box.right - origin.left,
+                box.bottom - origin.top,
+              ]
+                .map(round)
+                .join(',')
+            : 'none';
+        return `${element.localName} ${index + 1} ${where}`;
+      });
+    });
+  }
+
   // The largest Paged.js page, in CSS px: the viewport lib.ts emulates print
   // media at before printing.
   function pageSize() {
@@ -1033,7 +912,7 @@
     };
   }
 
-  /** @type {(state: { pageCount: number, pageSize: { width: number, height: number }, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[] }) => void} */
+  /** @type {(state: { pageCount: number, pageSize: { width: number, height: number }, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[], boxes: string[] }) => void} */
   let resolveReady = () => {};
   /** @type {string[]} */
   let sourceViewportDependent = [];
@@ -1041,15 +920,29 @@
     resolveReady = resolve;
   });
   Object.assign(window, {
-    // lib.ts calls these in print media, before and after printing the PDF.
-    __pdfgen: { ready, loadPrintResources, printed },
+    // lib.ts calls these in print media, before and after printing the PDF,
+    // and reads the boxes at the viewports it compares.
+    __pdfgen: {
+      ready,
+      loadPrintResources,
+      printed,
+      /** @param {number} [pageWidth] in print media: check the page boxes */
+      boxes: pageWidth => ({
+        boxes: layoutBoxes(),
+        viewportDependent: viewportDependent(),
+        animations: animations(),
+        ...(pageWidth === undefined
+          ? {}
+          : { movedBoxes: movedBoxes({ print: true, pageWidth }) }),
+      }),
+    },
     PagedConfig: {
       auto: true,
       before: async () => {
         registerTableHandler();
         await loadUsedFaces();
-        // The pack's own stylesheets, before Paged.js replaces them with
-        // its rewrite, which drops or unwraps some @media rules.
+        // Before Paged.js replaces the pack's stylesheets with its rewrite,
+        // which handles position: fixed itself.
         sourceViewportDependent = viewportDependent();
       },
       /** @param {{ total: number }} flow */
@@ -1064,6 +957,8 @@
           viewportDependent: [
             ...new Set([...sourceViewportDependent, ...viewportDependent()]),
           ].slice(0, 50),
+          // On screen, at the viewport Paged.js paginated at.
+          boxes: layoutBoxes(),
         });
       },
     },

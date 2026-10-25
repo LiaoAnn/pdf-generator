@@ -228,9 +228,9 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toMatch(/頁邊界|頁面邊界|頁面邊距|頁邊距/);
   });
 
-  test('preview viewport-dependent refusals explain the CSS causes and how to keep the PDF aligned with ground truth', () => {
+  test('preview viewport-dependent refusals explain measured box differences, remaining named causes and fixed-page layout advice', () => {
     const raw =
-      'stylesheet 2 .t: width: 50vw\nstylesheet 2 @media: (min-width: 800px)';
+      'print media, 793x1122 vs 794x1123: at 794x1123: 1 75.58,75.58,472.58,115.58';
     const result = explain({
       code: 'preview_failed',
       message: 'Printing failed',
@@ -242,22 +242,36 @@ describe('template author error explanations', () => {
     expect(issue?.raw).toBe(raw);
     expect(issue?.explanation).toMatch(cjk);
     expect(issue?.explanation).not.toBe(fallback());
-    expect(issue?.explanation).toMatch(/CSS/i);
-    expect(issue?.explanation).toMatch(/視窗|視埠/);
-    expect(issue?.explanation).toMatch(/大小|尺寸|寬|高/);
-    expect(issue?.explanation).toMatch(/\bvw\b/i);
-    expect(issue?.explanation).toMatch(/\bvh\b/i);
-    expect(issue?.explanation).toMatch(/容器|\bcq(?:w|h|i|b|min|max)\b/i);
-    expect(issue?.explanation).toMatch(/attr\(\)/i);
-    expect(issue?.explanation).toMatch(/content/i);
-    expect(issue?.explanation).toContain('@media');
-    expect(issue?.explanation).toMatch(/不要|避免|移除|改用|勿/);
-    expect(issue?.explanation).toMatch(/\b(?:mm|px|pt)\b|%/i);
-    expect(issue?.explanation).toContain('@page');
-    expect(issue?.explanation).toMatch(/頁面大小|紙張大小|紙張尺寸|頁面尺寸/);
-    expect(issue?.explanation).toContain('PDF');
-    expect(issue?.explanation).toContain('標準答案');
-    expect(issue?.explanation).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配/);
+    const text = issue?.explanation;
+    // Explain the observed mismatch instead of treating CSS syntax as a denylist.
+    expect.soft(text).toContain('data-gt');
+    expect.soft(text).toMatch(/框|邊界盒|包圍盒/);
+    expect.soft(text).toMatch(/視窗|視埠/);
+    expect.soft(text).toMatch(/(?:1|一)\s*(?:px|像素)/i);
+    expect.soft(text).toMatch(/分頁/);
+    expect.soft(text).toMatch(/不一致|不符|不同|對不上|不吻合|不匹配|差異/);
+    // Keep actionable examples of what can move those boxes.
+    expect.soft(text).toMatch(/CSS/i);
+    expect.soft(text).toMatch(/\bvw\b/i);
+    expect.soft(text).toMatch(/\bvh\b/i);
+    expect.soft(text).toContain('@media');
+    expect.soft(text).toContain('@container');
+    expect.soft(text).toMatch(/寬|高/);
+    expect.soft(text).toMatch(/\bsizes\b/i);
+    // These two causes still have explicit refusals outside the box comparison.
+    expect.soft(text).toMatch(/position\s*:\s*fixed/i);
+    expect.soft(text).toMatch(/<picture>/i);
+    expect.soft(text).toMatch(/\bmedia\b.*選|選.*\bmedia\b/i);
+    // Do not present the removed denylist entries as reasons to rewrite a pack.
+    expect.soft(text).not.toMatch(/attr\s*\(|\bsrcset\b|\bcontainer-type\b/i);
+    expect.soft(text).toMatch(/不要|避免|移除|改用|勿/);
+    expect.soft(text).toMatch(/\bmm\b/i);
+    expect.soft(text).toMatch(/\bpt\b/i);
+    expect.soft(text).toMatch(/\bpx\b/i);
+    expect.soft(text).toContain('@page');
+    expect.soft(text).toMatch(/頁面大小|紙張大小|紙張尺寸|頁面尺寸/);
+    expect.soft(text).toContain('PDF');
+    expect.soft(text).toContain('標準答案');
   });
 
   test('preview css_animation refusals explain animation drift and how to remove its causes', () => {

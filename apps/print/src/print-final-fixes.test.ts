@@ -191,16 +191,9 @@ test.each([
     }),
   ),
 ])(
-  '$name embeds the requested face or refuses viewport-dependent media',
+  '$name embeds the requested face even with a box-neutral size media query',
   async ({ css, fonts }) => {
     const response = await print(documentHtml('<p data-gt="t">月報</p>', css));
-    if (css.includes('min-width')) {
-      expect(response.status).toBe(422);
-      expect(apiErrorSchema.parse(await response.json()).error.code).toBe(
-        'viewport_dependent',
-      );
-      return;
-    }
     expect(response.status).toBe(200);
     const bytes = new Uint8Array(await response.arrayBuffer());
     const raw = Buffer.from(bytes).toString('latin1');
