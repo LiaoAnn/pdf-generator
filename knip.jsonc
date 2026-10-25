@@ -16,10 +16,6 @@
     "packages/*": {
       "project": ["src/**/*.ts"],
     },
-    "packages/dev-tools": {
-      "entry": ["src/cli.ts"],
-      "project": ["src/**/*.ts"],
-    },
     "templates/*": {
       "project": ["src/**/*.ts"],
     },
