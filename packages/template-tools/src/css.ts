@@ -2,6 +2,9 @@
 // which @font-face families it declares and which families it uses. Offsets
 // are into the CSS text as given, so issues point at what the author wrote.
 
+/** CSS whitespace: not the no-break space or other Unicode spaces. */
+const cssSpace = /[ \t\n\r\f]/;
+
 /** A URL as written, and the offset of its first character. */
 export type Reference = {
   url: string;
@@ -79,7 +82,7 @@ export function scanCss(css: string): {
       if (c === '@') importing = name === 'import';
       else if (css[end] === '(' && name === 'url') {
         let start = end + 1;
-        while (/\s/.test(css[start] ?? '')) start++;
+        while (cssSpace.test(css[start] ?? '')) start++;
         if (css[start] === '"' || css[start] === "'") {
           functions.push('url');
           i = start;
@@ -91,7 +94,7 @@ export function scanCss(css: string): {
           if (css[at] === '\\') escapes.push(at);
         }
         references.push({
-          url: css.slice(start, stop).trimEnd(),
+          url: css.slice(start, stop).replace(/[ \t\n\r\f]+$/, ''),
           offset: start,
           ...(importing ? { kind: 'stylesheet' as const } : {}),
         });

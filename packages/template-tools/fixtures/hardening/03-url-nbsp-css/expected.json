@@ -1,0 +1,11 @@
+{
+  "description": "preserves nbsp in a css URL instead of trimming it",
+  "issues": [
+    {
+      "code": "asset-missing",
+      "file": "styles/report.css",
+      "line": 2,
+      "column": 20
+    }
+  ]
+}

@@ -63,6 +63,22 @@ function resolve(
 }
 
 /**
+ * Where a URL starts and ends once the browser's URL parser has stripped the
+ * C0 controls and spaces around it; it keeps the no-break space and other
+ * Unicode spaces, which then name a file that isn't in the pack.
+ */
+const urlStart = (url: string) => {
+  let i = 0;
+  while (i < url.length && url.charCodeAt(i) <= 0x20) i++;
+  return i;
+};
+const urlEnd = (url: string) => {
+  let i = url.length;
+  while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
+  return i;
+};
+
+/**
  * The candidate URLs of a srcset, with their offsets in it, as the HTML spec
  * splits them: a URL runs to the next whitespace (commas included, so data:
  * URLs survive), then a descriptor runs to the next comma.
@@ -71,9 +87,9 @@ function srcsetUrls(value: string): Reference[] {
   const urls: Reference[] = [];
   let i = 0;
   while (i < value.length) {
-    while (i < value.length && /[\s,]/.test(value[i] ?? '')) i++;
+    while (i < value.length && /[\t\n\f\r ,]/.test(value[i] ?? '')) i++;
     const start = i;
-    while (i < value.length && !/\s/.test(value[i] ?? '')) i++;
+    while (i < value.length && !/[\t\n\f\r ]/.test(value[i] ?? '')) i++;
     let url = value.slice(start, i);
     if (url.endsWith(',')) url = url.replace(/,+$/, '');
     else while (i < value.length && value[i] !== ',') i++;
@@ -120,7 +136,7 @@ export function assetIssues(
     { url, offset, kind }: Reference,
     context: 'attribute' | 'css' = 'css',
   ) => {
-    const trimmed = url.trimStart();
+    const trimmed = url.slice(urlStart(url));
     const at = offset + url.length - trimmed.length;
     if (source === template && url.includes('{{')) {
       // In CSS a statement is a template-structure issue already.
@@ -143,7 +159,7 @@ export function assetIssues(
       );
       return;
     }
-    const problem = resolve(source.file, trimmed.trimEnd());
+    const problem = resolve(source.file, trimmed.slice(0, urlEnd(trimmed)));
     if (problem === undefined) return;
     if (!('path' in problem)) {
       issue(problem.code, source, at, problem.message);

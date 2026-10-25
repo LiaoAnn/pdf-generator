@@ -105,10 +105,22 @@ function asHtml(
   return { html: html.join(''), branches, statements };
 }
 
-/** Length of the block tag ({{#…}}, {{else}}, {{/…}}) starting `text`. */
+/**
+ * Length of the block tag ({{#…}}, {{else}}, {{/…}}) starting `text`: up to
+ * the first `}}` outside a string literal (`"…"` or `'…'`, `\` escaping a
+ * quote, as Handlebars' lexer reads them).
+ */
 function blockTagLength(text: string): number {
-  const end = text.indexOf('}}');
-  return end < 0 ? text.length : end + 2;
+  let quote: string | undefined;
+  for (let i = 2; i < text.length; i++) {
+    const c = text[i];
+    if (quote !== undefined) {
+      if (c === '\\' && text[i + 1] === quote) i++;
+      else if (c === quote) quote = undefined;
+    } else if (c === '"' || c === "'") quote = c;
+    else if (c === '}' && text[i + 1] === '}') return i + 2;
+  }
+  return text.length;
 }
 
 /** Parses the template as HTML, with source locations. */

@@ -360,6 +360,15 @@ function render(ast: AST, root: unknown, file: string): string {
       case 'lookup': {
         const [object, key] = params;
         if (object === null || object === undefined) return object;
+        // A key from the data can be an object: no field name, and String()
+        // of one whose toString field isn't a function throws.
+        if (typeof key === 'object' && key !== null) {
+          fail(
+            statement,
+            'template-render',
+            `lookup needs a field name, got ${kind(key)}`,
+          );
+        }
         return property(object, String(key), statement);
       }
       case 'number': {
@@ -418,7 +427,9 @@ function render(ast: AST, root: unknown, file: string): string {
       ? 'an array'
       : value === null
         ? 'null'
-        : `a ${typeof value}`;
+        : typeof value === 'object' || typeof value === 'undefined'
+          ? `an ${typeof value}`
+          : `a ${typeof value}`;
 
   const child = (
     frame: Frame,

@@ -69,6 +69,11 @@ export function parseJson(
   }
 }
 
+// The tree of the JSON text most recently located in, for the same reason.
+let cachedTree:
+  | { text: string; root: ReturnType<typeof parseTree> }
+  | undefined;
+
 /**
  * Where the value at `path` starts in a JSON text; for a path that doesn't
  * exist (a missing key), where its nearest existing ancestor starts.
@@ -77,7 +82,8 @@ export function jsonPosition(
   text: string,
   path: (string | number)[],
 ): { line: number; column: number } {
-  const root = parseTree(text);
+  if (cachedTree?.text !== text) cachedTree = { text, root: parseTree(text) };
+  const { root } = cachedTree;
   if (root === undefined) return { line: 1, column: 1 };
   for (let length = path.length; length >= 0; length--) {
     const node = findNodeAtLocation(root, path.slice(0, length) as JSONPath);
