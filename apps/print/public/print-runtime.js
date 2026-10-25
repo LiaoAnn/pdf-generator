@@ -653,6 +653,36 @@
     });
   }
 
+  // CSS escapes, as Chrome reads them: `100v\77` is 100vw.
+  /** @param {string} text */
+  const unescapeCss = text =>
+    text.replace(
+      /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n])/gi,
+      (
+        _,
+        /** @type {string | undefined} */ hex,
+        /** @type {string} */ char,
+      ) => {
+        if (!hex) return char;
+        const code = Number.parseInt(hex, 16);
+        return code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : '\ufffd';
+      },
+    );
+  /** Whether `display: none` on the element or an ancestor hides it. */
+  /** @param {Element} element */
+  function hiddenByDisplay(element) {
+    for (
+      let at = /** @type {Element | null} */ (element);
+      at;
+      at = at.parentElement
+    ) {
+      if (getComputedStyle(at).display === 'none') return true;
+    }
+    return false;
+  }
+
   // CSS whose result depends on the viewport's size: viewport and container
   // query units (container units fall back to the small viewport), media
   // queries on the viewport's size, position: fixed (printed on every page),
@@ -675,23 +705,6 @@
       /\d(?:[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))(?![\w-])/i;
     const sizeFeatures =
       /(?<![\w-])(?:(?:min|max)-)?(?:device-)?(?:width|height|aspect-ratio|orientation)(?![\w-])/i;
-    // CSS escapes, as Chrome reads them: `100v\77` is 100vw.
-    /** @param {string} text */
-    const unescapeCss = text =>
-      text.replace(
-        /\\([0-9a-f]{1,6})[ \t\n\r\f]?|\\([^\n])/gi,
-        (
-          _,
-          /** @type {string | undefined} */ hex,
-          /** @type {string} */ char,
-        ) => {
-          if (!hex) return char;
-          const code = Number.parseInt(hex, 16);
-          return code > 0 && code <= 0x10ffff
-            ? String.fromCodePoint(code)
-            : '\ufffd';
-        },
-      );
     /** @param {string} text */
     const bare = text =>
       unescapeCss(
@@ -800,14 +813,15 @@
       if (source) checkSource(`${tag} style`, source);
       // Placed relative to the viewport, and printed on every page; a box
       // only, so not what display: none or a ::before without content hides.
-      if (element.getClientRects().length > 0) {
+      // (A display: contents host has no box, its ::before/::after can.)
+      if (!hiddenByDisplay(element)) {
         for (const pseudo of ['', '::before', '::after']) {
           const style = getComputedStyle(element, pseudo || null);
-          const box =
-            !pseudo ||
-            (style.display !== 'none' &&
+          const box = pseudo
+            ? style.display !== 'none' &&
               style.content !== 'none' &&
-              style.content !== 'normal');
+              style.content !== 'normal'
+            : element.getClientRects().length > 0;
           if (box && style.position === 'fixed') {
             report(`${tag}${pseudo}`, 'position: fixed');
           }
@@ -925,9 +939,11 @@
         const { animationName } = getComputedStyle(element, pseudo || null);
         if (
           animationName
-            .split(',')
+            .split(/(?<!\\),/)
             .some(name =>
-              keyframes.has(name.trim().replace(/^["']|["']$/g, '')),
+              keyframes.has(
+                unescapeCss(name.trim().replace(/^(["'])(.*)\1$/, '$2')),
+              ),
             )
         ) {
           found.add(

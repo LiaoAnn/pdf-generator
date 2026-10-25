@@ -74,6 +74,15 @@ const animationRefusals: (Omit<Fixture, 'diagnostic'> & {
   diagnostic: RegExp;
 })[] = [
   {
+    name: 'short print-only animation with an escaped comma in its name',
+    head: String.raw`<style data-pagedjs-ignore>
+      @keyframes a\,b { from { transform:translateX(100px) } to { transform:translateX(200px) } }
+      @media print { .target { animation:a\,b 1ms linear } }
+      </style>`,
+    target: blackTarget,
+    diagnostic: /animation|a.*b/i,
+  },
+  {
     name: 'animation-name list with none followed by active pulse',
     head: `<style data-pagedjs-ignore>
       @keyframes pulse { from { opacity: 1; } to { opacity: .5; } }
@@ -172,6 +181,21 @@ test.each(animationRefusals)(
 // Each row isolates a bypass: detecting another unit or another source cannot
 // make this row pass. The declarations deliberately keep the page printable.
 const refusals: Fixture[] = [
+  ...['before', 'after'].flatMap(pseudo =>
+    [false, true].map(markHost => ({
+      name: `fixed ::${pseudo} on display contents ${markHost ? 'data-gt host' : 'unmarked descendant'}`,
+      head: `<style data-pagedjs-ignore>
+        .image { width:40px; height:40px; }
+        .host { display:contents; }
+        .host::${pseudo} { content:""; position:fixed; left:100px; top:50px;
+          width:40px; height:40px; background:black; }
+        </style>`,
+      target: markHost
+        ? '<div class="image"><div data-gt="image" class="host"></div></div>'
+        : '<div data-gt="image" class="image"><div class="host"></div></div>',
+      diagnostic: 'fixed',
+    })),
+  ),
   ...['html', 'body'].map(selector => ({
     name: `viewport-sized ${selector} container outside Paged.js pages`,
     head: `<style data-pagedjs-ignore>
@@ -484,6 +508,19 @@ test.each(refusals)(
 // Regression: scanning raw HTML/CSS tokens instead of values refuses innocent
 // strings, asset names, content attr(), and fixed or font-relative dimensions.
 const controls: Omit<Fixture, 'diagnostic'>[] = [
+  ...['before', 'after'].flatMap(pseudo =>
+    ['host', 'ancestor'].map(hidden => ({
+      name: `fixed ::${pseudo} on display contents host with display none ${hidden}`,
+      head: `<style data-pagedjs-ignore>
+        .image { width:40px; height:40px; }
+        .host { display:contents; }
+        .${hidden} { display:none; }
+        .host::${pseudo} { content:""; position:fixed; left:100px; top:50px;
+          width:40px; height:40px; background:black; }
+        </style>`,
+      body: '<div data-gt="image" class="image"><div class="ancestor"><div class="host"></div></div></div>',
+    })),
+  ),
   {
     name: 'size container inside page content',
     head: `<style data-pagedjs-ignore>
