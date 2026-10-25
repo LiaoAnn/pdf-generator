@@ -16,6 +16,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@pdf-generator/contract": "workspace:*",
     "playwright-core": "1.63.0",
     "unpdf": "^1.9.1"
   }

@@ -346,6 +346,9 @@ importers:
 
   packages/dev-tools:
     dependencies:
+      '@pdf-generator/contract':
+        specifier: workspace:*
+        version: link:../contract
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
