@@ -133,6 +133,7 @@ Merge a PR only when all of these hold. Check each yourself:
 
 Then `gh pr merge <n> --squash`, with the subject `<type>: <summary> (TNN)`. Don't pass `--delete-branch`: twice (T16-1, T15-2) the worker's next turn after it made T3 prune and recreate the worktree folder, which left the running container on a deleted folder and broke `wt-exec`. The remote branch is deleted in Cleanup instead. Then:
 
+- If the PR added or changed a timing test (a bound in ms, a speed ratio), wait for `main`'s CI run on the merge commit to pass (`gh run list --branch main --limit 1`) before merging another PR. A PR's green CI ran before any later commits to its own branch and on one runner; T15-4's 300 ms bound passed there, then failed on `main` and on every PR after it (2026-10-25, fixed by T15-5).
 - Work out which tickets it made ready.
 - Send the worker `[TNN] DONE`.
 - For every other open PR, send its worker "main moved (TNN merged): rebase", most urgently those that touch the same files or the lockfile/migrations. Skip it when the merge was docs-only: the merge bar tolerates those, and a queued rebase can run after you merge that worker's PR, leaving its worktree mid-rebase (T07-8, 2026-10-25).
