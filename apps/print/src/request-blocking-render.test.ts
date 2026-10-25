@@ -1,7 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { expect, test, vi } from 'vitest';
 import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
-import { type PrintReadyState, RenderError, renderPdf } from './lib.ts';
+import {
+  type PrintedState,
+  type PrintReadyState,
+  RenderError,
+  renderPdf,
+} from './lib.ts';
 
 const origin = 'https://print-assets.example.test';
 const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString(
@@ -17,24 +22,30 @@ const request = {
 } as const;
 const ready = {
   pageCount: 1,
+  pageSize: { width: 793.7, height: 1122.5 },
   unloadedFaces: [] as string[],
-  fragmentedRows: [] as string[],
-};
+} satisfies PrintReadyState;
 
-type Stage = 'goto' | 'ready' | 'inspect' | 'pdf';
+type Stage = 'goto' | 'ready' | 'printed' | 'inspect' | 'pdf';
+
+interface FakeTabOptions {
+  state?: Partial<PrintReadyState>;
+  printed?: PrintedState;
+  hangs?: boolean;
+  fire?: Partial<Record<Stage, string[]>>;
+}
 
 // Requests use the real CDP event shape and are dispatched synchronously.
-function fakeTab(
-  options: {
-    state?: Partial<PrintReadyState>;
-    hangs?: boolean;
-    fire?: Partial<Record<Stage, string[]>>;
-  } = {},
-) {
+function fakeTab(options: FakeTabOptions = {}) {
   const fetch = fakeFetch();
   const requests: Record<string, string> = {};
   let documentUrl = '';
+  // The print reads its layout (`printed`) before and after the PDF: a stage
+  // still makes its requests once.
+  const fired = new Set<Stage>();
   const fire = (stage: Stage) => {
+    if (fired.has(stage)) return;
+    fired.add(stage);
     for (const template of options.fire?.[stage] ?? []) {
       const url = template.replace(
         '{id}',
@@ -56,7 +67,11 @@ function fakeTab(
       documentUrl = url;
       fire('goto');
     }),
-    evaluate: vi.fn(async () => {
+    evaluate: vi.fn(async (_fn: unknown, pageWidth?: number) => {
+      if (pageWidth !== undefined) {
+        fire('printed');
+        return options.printed ?? {};
+      }
       fire('ready');
       if (options.hangs) return new Promise<never>(() => {});
       return { ...ready, ...options.state };
@@ -202,7 +217,7 @@ test('aborts the browser’s own /favicon.ico request without failing the render
 
 // Regression: only checking blocked requests at one point (after goto) lets a
 // request made late (a stylesheet's font, an animation) pass into a PDF/gt.
-test.each(['goto', 'ready', 'inspect', 'pdf'] as const)(
+test.each(['goto', 'ready', 'printed', 'inspect', 'pdf'] as const)(
   'a request blocked while the %s step runs fails the render with request_blocked and no PDF',
   async stage => {
     const url = 'http://127.0.0.1:9/late.png';
@@ -223,18 +238,19 @@ test.each(['goto', 'ready', 'inspect', 'pdf'] as const)(
 // (the font it asked for fails to load); the caller needs the cause, not the
 // symptom, and must hear about the blocked URLs.
 test.each([
-  ['font_not_loaded', { unloadedFaces: ['Report Sans 400: error'] }, false],
-  ['row_fragmented', { fragmentedRows: ['page 1: row'] }, false],
-  ['pagination_timeout', {}, true],
-] satisfies [string, Partial<PrintReadyState>, boolean][])(
+  ['font_not_loaded', { state: { unloadedFaces: ['Report Sans 400: error'] } }],
+  ['row_fragmented', { printed: { fragmentedRows: ['page 1: row'] } }],
+  ['pagination_timeout', { hangs: true }],
+] satisfies [string, FakeTabOptions][])(
   'request_blocked wins over %s and lists the blocked URLs',
-  async (_symptom, state, hangs) => {
+  async (symptom, options) => {
     const first = 'http://127.0.0.1:9/font.woff2';
     const second = `${origin}/pack/{id}/assets/other.png`;
     const tab = fakeTab({
-      state,
-      hangs,
-      fire: { goto: [first, second] },
+      ...options,
+      fire: {
+        [symptom === 'row_fragmented' ? 'printed' : 'ready']: [first, second],
+      },
     });
     const outcome = await run(tab, 50);
     const { error } = outcome as { error: unknown };
@@ -430,8 +446,10 @@ test.each([
         ...(exit === 'font_not_loaded'
           ? { unloadedFaces: ['Missing font'] }
           : {}),
-        ...(exit === 'row_fragmented' ? { fragmentedRows: ['row 1'] } : {}),
         ...(exit === 'page_count_mismatch' ? { pageCount: 2 } : {}),
+      },
+      printed: {
+        ...(exit === 'row_fragmented' ? { fragmentedRows: ['row 1'] } : {}),
         ...(exit === 'text_missing'
           ? {
               expectedText: [

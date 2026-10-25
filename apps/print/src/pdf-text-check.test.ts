@@ -80,6 +80,7 @@ function fakeBrowser(expectedText?: ExpectedBlock[][], bytes = fixturePdf()) {
     setContent: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
       pageCount: 2,
+      pageSize: { width: 793.7, height: 1122.5 },
       unloadedFaces: [],
       fragmentedRows: [],
       ...(expectedText === undefined ? {} : { expectedText }),
@@ -125,33 +126,31 @@ test.each([
     expected: [[block(['C'], formulaBox)], []],
     detail: 'page 1: C',
   },
-])(
-  'rejects $name after inspection and still closes the tab',
-  async ({ expected, detail }) => {
-    // Regression: DOM checks, global-page searches and Set membership all miss
-    // different forms of lost text; failed renders must still release their tab.
-    const fake = fakeBrowser(expected);
-    const inspect = vi.fn(async () => {
-      fake.calls.push('inspect');
-      return 'boxes';
-    });
-    const outcome = await renderPdf(fake.browser, request, {
-      store: { put: async () => {}, delete: async () => {} },
-      assetOrigin: 'https://print-assets.example.test',
-      inspect,
-    }).then(
-      () => 'render unexpectedly succeeded',
-      (error: unknown) => error,
-    );
-    expect.soft(outcome).toBeInstanceOf(RenderError);
-    expect
-      .soft(outcome)
-      .toMatchObject({ code: 'text_missing', details: [detail] });
-    expect(fake.calls).toEqual(['inspect', 'pdf', 'close']);
-    expect(fake.page.evaluate).toHaveBeenCalled();
-    expect(fake.page.close).toHaveBeenCalledTimes(1);
-  },
-);
+])('rejects $name and still closes the tab', async ({ expected, detail }) => {
+  // Regression: DOM checks, global-page searches and Set membership all miss
+  // different forms of lost text; failed renders must still release their tab.
+  const fake = fakeBrowser(expected);
+  const inspect = vi.fn(async () => {
+    fake.calls.push('inspect');
+    return 'boxes';
+  });
+  const outcome = await renderPdf(fake.browser, request, {
+    store: { put: async () => {}, delete: async () => {} },
+    assetOrigin: 'https://print-assets.example.test',
+    inspect,
+  }).then(
+    () => 'render unexpectedly succeeded',
+    (error: unknown) => error,
+  );
+  expect.soft(outcome).toBeInstanceOf(RenderError);
+  expect
+    .soft(outcome)
+    .toMatchObject({ code: 'text_missing', details: [detail] });
+  expect(fake.calls).toContain('pdf');
+  expect(fake.calls.at(-1)).toBe('close');
+  expect(fake.page.evaluate).toHaveBeenCalled();
+  expect(fake.page.close).toHaveBeenCalledTimes(1);
+});
 
 test('PDF normalization tolerates compatibility glyphs and whitespace while consuming repeated text once per occurrence', async () => {
   const fake = fakeBrowser([

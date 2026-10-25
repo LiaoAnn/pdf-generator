@@ -88,6 +88,7 @@ test('renderPdf throws RenderError when the PDF has two pages but Paged.js repor
     goto: vi.fn(async () => {}),
     evaluate: vi.fn(async () => ({
       pageCount: 1,
+      pageSize: { width: 793.7, height: 1122.5 },
       unloadedFaces: [],
       fragmentedRows: [],
     })),

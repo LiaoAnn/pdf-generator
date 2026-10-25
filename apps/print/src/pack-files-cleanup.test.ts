@@ -64,6 +64,7 @@ test.each([
         if (stage === 'pagination_timeout') return new Promise<never>(() => {});
         return {
           pageCount: 1,
+          pageSize: { width: 793.7, height: 1122.5 },
           unloadedFaces:
             stage === 'font_not_loaded' ? ['Report Sans 400: error'] : [],
           fragmentedRows: stage === 'row_fragmented' ? ['page 1: row'] : [],

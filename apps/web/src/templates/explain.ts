@@ -111,10 +111,14 @@ const packIssues: Record<string, string> = {
 
 /** What the print Worker reports when it can't print the sample. */
 const printIssues: Record<string, string> = {
+  css_animation:
+    '樣板會隨時間變動：用了 CSS 動畫（animation）或轉場（transition）、SVG 動畫（animate、set 等元素）或 marquee。印 PDF 和量測標準答案時抓到的是不同時刻的畫面，PDF 會和標準答案對不上。請移除這些動畫與轉場，直接寫出最後要印的樣式。',
   font_not_loaded:
     '列印時有字型載入失敗：可能是字型檔損壞或路徑錯誤，或列印服務還不支援樣板包自帶的字型。請先改用平台內建的中文字型試試。',
   page_count_mismatch:
     '印出來的 PDF 頁數和 Paged.js 排出的頁數不同，標準答案的頁碼會對不上。常見原因是樣板 CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的版面（例如邊界、內距、高度、定位或分頁），讓內容跑出 Paged.js 排好的頁面。請用 @page 設定頁面大小與邊界，不要改 .pagedjs_* 與 body 的版面。',
+  layout_unsettled:
+    '印 PDF 的過程中版面還在變：通常是只在列印時才用到的圖片或字型（例如 data-pagedjs-ignore 或 @media print 裡引用的檔案）還在載入。PDF 和量測標準答案時的版面不同，PDF 會和標準答案對不上。請讓圖片與字型在螢幕和列印時用同樣的方式載入，不要用只在列印時才載入的資源。',
   page_box_moved:
     '樣板 CSS 移動了 Paged.js 排好的頁面元素（.pagedjs_*）或 html／body 的位置，PDF 印出來的內容會和標準答案的框對不上。沒有寫出 .pagedjs 的選擇器（例如 body > div > div）也算。請用 @page 設定頁邊界，不要改這些元素的邊界、內距、定位或變形。',
   pagination_timeout:
@@ -123,6 +127,8 @@ const printIssues: Record<string, string> = {
     '有表格列被切在兩頁之間。請讓每一列的高度小於一頁，或允許表格在列與列之間換頁。',
   text_missing:
     '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。',
+  viewport_dependent:
+    '樣板 CSS 用到了跟視窗大小有關的寫法：vw、vh、vmin、vmax 等視窗單位、cqw 等容器單位、依視窗寬高或方向判斷的 @media、html／body 上的容器查詢（container-type）、position: fixed、<picture> 依 media 選圖或 srcset 的寬度描述，或在 content 以外的屬性用 attr()。量測標準答案時的視窗和實際列印的頁面大小不完全相同，PDF 會和標準答案對不上。請改用 mm、pt、px 或 % 等固定單位，頁面大小用 @page 設定，不要用依視窗大小的 @media。',
 };
 
 const fallback =
