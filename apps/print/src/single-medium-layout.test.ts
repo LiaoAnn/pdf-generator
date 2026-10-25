@@ -84,11 +84,19 @@ test.each([
   {
     name: 'all with viewport width feature',
     head: `<style>@media all and (min-width: 800px) { ${shift} }</style>`,
+    viewportDependent: true,
   },
 ])(
   'POST /print keeps GT at the PDF text position or refuses $name',
   async fixture => {
     const response = await post(document(fixture.head), true, fixture.css);
+    if ('viewportDependent' in fixture) {
+      expect(response.status).toBe(422);
+      expect(apiErrorSchema.parse(await response.json()).error.code).toBe(
+        'viewport_dependent',
+      );
+      return;
+    }
     if (response.status === 422) {
       apiErrorSchema.parse(await response.json());
       return;

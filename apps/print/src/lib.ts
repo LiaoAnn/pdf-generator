@@ -44,6 +44,11 @@ export interface PrintReadyState {
    * html/body) a template moved from where Paged.js put it, on screen.
    */
   movedBoxes?: string[];
+  /**
+   * `"<where>: <declaration, media query or attribute>"` of the document's
+   * CSS whose result depends on the viewport's size.
+   */
+  viewportDependent?: string[];
 }
 
 /**
@@ -88,6 +93,7 @@ export type RenderErrorCode =
   | 'text_missing'
   | 'page_count_mismatch'
   | 'page_box_moved'
+  | 'viewport_dependent'
   | 'request_blocked';
 
 /** A render that must not produce a PDF. */
@@ -333,6 +339,15 @@ async function print<T>(
       'font_not_loaded',
       'Some font faces did not load',
       ready.unloadedFaces,
+    );
+  }
+  // Measured at the PDF page size rounded down to whole CSS px, such CSS
+  // can lay out differently than Chrome prints it (T07-20).
+  if (ready.viewportDependent && ready.viewportDependent.length > 0) {
+    throw new RenderError(
+      'viewport_dependent',
+      "The template's CSS depends on the viewport size",
+      ready.viewportDependent,
     );
   }
   // Ground truth is read relative to each page's box, so a page box a

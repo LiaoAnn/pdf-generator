@@ -653,6 +653,143 @@
     });
   }
 
+  // CSS whose result depends on the viewport's size: viewport and container
+  // query units (container units fall back to the small viewport), media
+  // queries on the viewport's size, and attr() outside `content` (a typed
+  // attr() turns an attribute such as data-w="50vw" into a length). lib.ts
+  // measures in print media at the PDF page size rounded down to whole CSS
+  // px, while Chrome prints at the exact page size, so such CSS can lay out
+  // differently in gt.json than in the PDF (T07-20). Checked where the
+  // browser applies CSS (every stylesheet, whatever its media, @import'ed
+  // ones, every rule with declarations, `style` and SVG presentation
+  // attributes, `sizes`), and in the source text of <style> elements and
+  // `style` attributes, since a Chrome without typed attr() drops it from
+  // the CSSOM. Strings, comments and url()s don't count. Run before
+  // Paged.js reads the pack's stylesheets and again once it has paginated.
+  function viewportDependent() {
+    /** @type {Set<string>} */
+    const found = new Set();
+    const units =
+      /\d(?:[sld]?v(?:w|h|i|b|min|max)|cq(?:w|h|i|b|min|max))(?![\w-])/i;
+    const sizeFeatures =
+      /(?<![\w-])(?:(?:min|max)-)?(?:device-)?(?:width|height|aspect-ratio|orientation)(?![\w-])/i;
+    /** @param {string} text */
+    const bare = text =>
+      text
+        .replace(/\/\*[\s\S]*?\*\//g, ' ')
+        .replace(
+          /url\(\s*(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^)]*)\)/gi,
+          ' ',
+        )
+        .replace(/"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/g, '""');
+    /** @param {string} where @param {string} text */
+    const report = (where, text) =>
+      found.add(`${where}: ${text.replace(/\s+/g, ' ').trim().slice(0, 200)}`);
+    /** @param {string} where @param {string} media */
+    const checkMedia = (where, media) => {
+      if (sizeFeatures.test(bare(media))) report(where, media);
+    };
+    /** @param {string} where @param {string} name @param {string} value */
+    const checkValue = (where, name, value) => {
+      const plain = bare(value);
+      if (
+        units.test(plain) ||
+        (name !== 'content' && /attr\s*\(/i.test(plain))
+      ) {
+        report(where, `${name}: ${value}`);
+      }
+    };
+    /** @param {string} where @param {CSSStyleDeclaration} style */
+    const checkStyle = (where, style) => {
+      for (let i = 0; i < style.length; i++) {
+        const name = style.item(i);
+        checkValue(where, name, style.getPropertyValue(name));
+      }
+    };
+    // Declarations in source text, for what the CSSOM may have dropped.
+    /** @param {string} where @param {string} text */
+    const checkSource = (where, text) => {
+      for (const match of bare(text).matchAll(
+        /(?:^|[;{\s])(-?[\w-]+)\s*:([^;{}]*)/g,
+      )) {
+        const [, name = '', value = ''] = match;
+        if (name.toLowerCase() !== 'content' && /attr\s*\(/i.test(value)) {
+          report(where, `${name}:${value}`);
+        }
+      }
+    };
+    /** @type {Set<CSSStyleSheet>} */
+    const seen = new Set();
+    /** @param {string} where @param {CSSStyleSheet} sheet */
+    const checkSheet = (where, sheet) => {
+      if (seen.has(sheet)) return;
+      seen.add(sheet);
+      checkMedia(`${where} media`, sheet.media.mediaText);
+      /** @type {CSSRuleList | undefined} */
+      let rules;
+      try {
+        rules = sheet.cssRules;
+      } catch {
+        return;
+      }
+      /** @param {CSSRuleList} list */
+      const checkRules = list => {
+        for (const rule of list) {
+          if (rule instanceof CSSImportRule) {
+            checkMedia(`${where} @import`, rule.media.mediaText);
+            if (rule.styleSheet) {
+              checkSheet(rule.styleSheet.href ?? where, rule.styleSheet);
+            }
+            continue;
+          }
+          if (rule instanceof CSSMediaRule) {
+            checkMedia(`${where} @media`, rule.media.mediaText);
+          }
+          if ('style' in rule && rule.style instanceof CSSStyleDeclaration) {
+            const selector =
+              'selectorText' in rule ? String(rule.selectorText) : '';
+            checkStyle(`${where} ${selector}`.trim(), rule.style);
+          }
+          if ('cssRules' in rule && rule.cssRules instanceof CSSRuleList) {
+            checkRules(rule.cssRules);
+          }
+        }
+      };
+      checkRules(rules);
+    };
+    [...document.styleSheets].forEach((sheet, i) => {
+      checkSheet(sheet.href ?? `stylesheet ${i + 1}`, sheet);
+    });
+    for (const style of document.querySelectorAll('style')) {
+      checkMedia('<style> media', style.media);
+      checkSource('<style>', style.textContent ?? '');
+    }
+    for (const element of document.querySelectorAll('*')) {
+      const tag = `<${element.localName}>`;
+      if (element instanceof HTMLElement || element instanceof SVGElement) {
+        checkStyle(`${tag} style`, element.style);
+      }
+      const source = element.getAttribute('style');
+      if (source) checkSource(`${tag} style`, source);
+      if (element instanceof SVGElement) {
+        for (const { name, value } of element.attributes) {
+          if (name !== 'style' && units.test(bare(value))) {
+            report(tag, `${name}="${value}"`);
+          }
+        }
+      }
+      const sizes = element.getAttribute('sizes');
+      if (
+        sizes &&
+        (element.localName === 'img' || element.localName === 'source') &&
+        (units.test(bare(sizes)) || sizeFeatures.test(bare(sizes)))
+      ) {
+        report(tag, `sizes="${sizes}"`);
+      }
+    }
+    return [...found].slice(0, 50);
+  }
+
   // What the PDF shows, measured in print media (lib.ts emulates it at the
   // PDF's page width): the checks of the page boxes, the table rows and the
   // data-gt text, and the scale guard's ink. Paged.js leaves stylesheets that
@@ -669,8 +806,10 @@
     };
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[] }) => void} */
   let resolveReady = () => {};
+  /** @type {string[]} */
+  let sourceViewportDependent = [];
   const ready = new Promise(resolve => {
     resolveReady = resolve;
   });
@@ -682,6 +821,9 @@
       before: async () => {
         registerTableHandler();
         await loadUsedFaces();
+        // The pack's own stylesheets, before Paged.js replaces them with
+        // its rewrite, which drops or unwraps some @media rules.
+        sourceViewportDependent = viewportDependent();
       },
       /** @param {{ total: number }} flow */
       after: flow => {
@@ -690,6 +832,9 @@
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),
           movedBoxes: movedBoxes(),
+          viewportDependent: [
+            ...new Set([...sourceViewportDependent, ...viewportDependent()]),
+          ].slice(0, 50),
         });
       },
     },
