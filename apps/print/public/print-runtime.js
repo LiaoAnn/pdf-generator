@@ -281,7 +281,8 @@
   // base stylesheet and @media print block), and where the boxes are: each
   // sheet on its page, the pages stacked without gaps and, in print media,
   // html, body and the pages from the document's origin, each page breaking
-  // onto its own sheet. The geometry catches what moves a page without these
+  // onto its own sheet, and the boxes inside each page where the screen pass
+  // found them. The geometry catches what moves a page without these
   // properties (flex, floats, pseudo-elements, grid placement). Run once on
   // screen, which ground truth measures, and once in print media (lib.ts
   // emulates it), which is what prints: Paged.js leaves screen-only
@@ -411,9 +412,61 @@
       checkBox(content, `${name} .pagedjs_page_content`, {
         position: 'relative',
       });
+      // The boxes inside the page, relative to it: in print media where the
+      // screen measurement (ground truth) put them. A template can move them
+      // on screen only (a screen stylesheet's grid tracks, area border or
+      // grid placement) without changing what the checks above compare.
+      // The sheet's height follows the viewport in print media, so only its
+      // corner counts.
+      const inner = [
+        { box: sheet, name: '.pagedjs_sheet', sized: false },
+        { box: pagebox, name: '.pagedjs_pagebox', sized: true },
+        { box: area, name: '.pagedjs_area', sized: true },
+        { box: content, name: '.pagedjs_page_content', sized: true },
+      ].map(({ box: element, name: boxName, sized }) => {
+        const rect = element.getBoundingClientRect();
+        const origin = page.getBoundingClientRect();
+        return {
+          name: `${name} ${boxName}`,
+          x: rect.left - origin.left,
+          y: rect.top - origin.top,
+          width: sized ? rect.width : 0,
+          height: sized ? rect.height : 0,
+        };
+      });
+      if (!print) {
+        screenBoxes[i] = inner;
+        return;
+      }
+      inner.forEach((printed, j) => {
+        const screen = screenBoxes[i]?.[j];
+        const same =
+          screen !== undefined &&
+          ['x', 'y', 'width', 'height'].every(
+            key =>
+              Math.abs(
+                printed[/** @type {'x'} */ (key)] -
+                  screen[/** @type {'x'} */ (key)],
+              ) <= tolerance,
+          );
+        if (!same) {
+          const show = (/** @type {typeof printed | undefined} */ b) =>
+            b
+              ? `(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) ${b.width.toFixed(1)}x${b.height.toFixed(1)}`
+              : 'missing';
+          moved.push(
+            `${printed.name} in print ${show(printed)} px, on screen ${show(screen)}`,
+          );
+        }
+      });
     });
     return moved;
   }
+  /**
+   * Each page's inner boxes relative to it, as the screen pass measured them.
+   * @type {{ name: string, x: number, y: number, width: number, height: number }[][]}
+   */
+  const screenBoxes = [];
 
   // An absolute CSS length (Paged.js's padding variables) in px, or undefined.
   /** @param {string} value */

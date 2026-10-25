@@ -11,6 +11,8 @@ const page = { size: 'A4', orientation: 'portrait' } as const;
 const image = '<div data-gt="image" class="target"></div>';
 const targetCss =
   '.target { position: relative; width: 40px; height: 40px; background: black; }';
+const decoyCss = `.target::after { content: ""; position: absolute; top: 20mm;
+  left: 0; width: 40px; height: 40px; background: black; }`;
 let worker: PrintWorker;
 
 beforeAll(async () => {
@@ -102,9 +104,43 @@ test.each([
     name: 'html horizontal negative margin without an extra sheet',
     css: 'html { margin-left: -10mm; }',
   },
+  // Regression: unchanged box properties can hide inner content displacement
+  // caused by grid tracks, borders, or grid placement in screen media only.
+  {
+    name: 'screen-only pagebox grid tracks moving the area origin',
+    css: decoyCss,
+    head: `<style media="screen">body > div > div > div > div {
+      grid-template-rows: [header] 40mm [page] 217mm [footer] 20mm !important;
+    }</style>`,
+  },
+  {
+    name: 'screen-only area border moving the content origin',
+    css: decoyCss,
+    head: `<style media="screen">body > div > div > div > div > div {
+      border-top: 20mm solid transparent !important;
+    }</style>`,
+  },
+  {
+    name: 'screen-only area grid placement moving the content origin',
+    css: `${decoyCss}
+      body > div > div > div > div > div { grid-row: header !important; }`,
+    head: `<style media="screen">html body > div > div > div > div > div {
+      grid-row: page !important;
+    }</style>`,
+  },
+  // Regression: container layout moves later pages without changing any box's
+  // margin, padding, border, position, or transform; geometry must catch this.
+  {
+    name: 'screen-only flex gap displacing later pages without box property changes',
+    css: `${decoyCss} section + section { break-before: page; }`,
+    body: `<section>${image}</section><section>${image}</section><section>${image}</section>`,
+    head: `<style media="screen">body > div {
+      display: flex !important; flex-direction: column; gap: 10mm;
+    }</style>`,
+  },
 ])('POST /print rejects $name with 422 page_box_moved', async fixture => {
   const response = await post(
-    document(fixture.css, image, fixture.head),
+    document(fixture.css, fixture.body ?? image, fixture.head),
     fixture.source,
   );
   expect(response.status).toBe(422);
