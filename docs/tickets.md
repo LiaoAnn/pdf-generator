@@ -816,7 +816,7 @@
 - **來源**：PR #55（T15-1）
 
 ### T15-5 樣板上傳：計時測試在 CI 上誤判
-- **目標**：T15-4 的 `apps/web/src/templates/deflate-blocks-speed.workerd.test.ts` 用絕對上限（中位數 < 300 ms）判斷將近 10 MiB 的 10-bit 長碼 zip；本機約 240 ms，GitHub runner 量到 1,154 ms，main 在 13bd200 之後 CI 一直是紅的。改成在同一次執行中和基準比較的相對上限（例如同一串流的 `inflateRawSync` 或 T15-4 的參考掃描），或其他不受機器速度影響的判準，並仍能抓到 T15-1 之後那個慢版本（546–680 ms 等級）
+- **目標**：T15-4 的 `apps/web/src/templates/deflate-blocks-speed.workerd.test.ts` 用絕對上限（中位數 < 300 ms）判斷將近 10 MiB 的 10-bit 長碼 zip；本機約 240 ms，GitHub runner 量到 308–310 ms，main 在 13bd200 之後 CI 一直是紅的。改成在同一次執行中和基準比較的相對上限（例如同一串流的 `inflateRawSync` 或 T15-4 的參考掃描），或其他不受機器速度影響的判準，並仍能抓到 T15-1 之後那個慢版本（546–680 ms 等級）
 - **Blocked by**：T15-4
 - **Blocks**：所有 PR 的 CI
 - **撞車風險**：`apps/web/src/templates/` 的測試檔
