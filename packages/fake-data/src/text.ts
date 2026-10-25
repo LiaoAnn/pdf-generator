@@ -2,7 +2,8 @@
 // (Taiwan usage), English, or Chinese mixed with English terms, numbers and
 // units. Text is whole clauses (subject + predicate, or a metric and its
 // value) picked to hit an exact length in characters. Every string here is
-// BMP, so `.length` counts characters.
+// BMP, so `.length` counts characters. A pack's own `phrases` replace these
+// lists (phraseText); they may hold any character, so they count code points.
 import type { Rng } from './random.ts';
 
 const zhSubjects = [
@@ -268,4 +269,67 @@ export function fillerText(
       style.gap;
     left -= n + 1 + style.gap.length;
   }
+}
+
+/**
+ * Filler text of exactly `length` (≥ 1) code points from a pack's own
+ * phrases, joined with `lang`'s punctuation: whole phrases, each followed by
+ * a mark, then a whole phrase or the head of a longer one and the end mark.
+ * Length 1 is the first character of a phrase. When nothing fits the end
+ * exactly (all phrases nearly one length), the text ends with a phrase head
+ * and no end mark.
+ */
+export function phraseText(
+  rng: Rng,
+  lang: 'zh' | 'en' | 'mixed',
+  phrases: string[],
+  length: number,
+): string {
+  const { marks, end, gap } = styles[lang];
+  const pool = phrases.map(phrase => Array.from(phrase));
+  const head = (n: number) => rng.pick(pool).slice(0, n).join('');
+  const lengths = new Set(pool.map(p => p.length));
+  const longest = Math.max(...lengths);
+  if (length === 1) return head(1);
+  let out = '';
+  let left = length;
+  for (;;) {
+    const exact = pool.filter(p => p.length === left - 1);
+    // A phrase, its mark and the gap, leaving room for a character and the end.
+    const next = pool.filter(p => p.length + 1 + gap.length <= left - 2);
+    if (
+      exact.length > 0 &&
+      (next.length === 0 || left <= 30 || rng.chance(0.3))
+    ) {
+      return `${out + rng.pick(exact).join('')}${end}`;
+    }
+    if (next.length === 0) break;
+    // Prefer a phrase after which a whole phrase can end the text, else one
+    // leaving room for a few characters, so the text rarely ends on a stub.
+    const tail = (p: string[]) => left - p.length - 2 - gap.length;
+    const closing = next.filter(p => lengths.has(tail(p)));
+    const roomy = next.filter(p => tail(p) >= Math.min(4, longest));
+    const phrase = rng.pick(
+      closing.length > 0 ? closing : roomy.length > 0 ? roomy : next,
+    );
+    out += phrase.join('') + rng.pick(marks) + gap;
+    left -= phrase.length + 1 + gap.length;
+  }
+  const longer = pool.filter(p => p.length > left - 1);
+  if (longer.length > 0) {
+    return `${
+      out +
+      rng
+        .pick(longer)
+        .slice(0, left - 1)
+        .join('')
+    }${end}`;
+  }
+  // Dead end: every phrase is a little too short to end the text and too long
+  // to leave room for another. Close one with a mark and start the next.
+  const phrase = rng.pick(pool);
+  const rest = left - phrase.length - 1 - gap.length;
+  return rest > 0
+    ? `${out + phrase.join('') + rng.pick(marks) + gap}${head(rest)}`
+    : `${out + phrase.join('') + rng.pick(marks)}${head(rest + gap.length)}`;
 }

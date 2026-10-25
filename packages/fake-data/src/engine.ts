@@ -19,7 +19,7 @@ import { companyName } from './taiwan/company.ts';
 import { businessId, nationalId } from './taiwan/ids.ts';
 import { personName } from './taiwan/names.ts';
 import { phone } from './taiwan/phone.ts';
-import { fillerText } from './text.ts';
+import { fillerText, phraseText } from './text.ts';
 import { date, decimal, decimalRange, isCalendarDate } from './values.ts';
 
 // Not Extract: the contract types name and nationalId as one variant.
@@ -61,8 +61,12 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
     return field.sortBy === undefined ? items : byDate(items, field.sortBy);
   },
   checkbox: (field, rng) => rng.chance(field.probability ?? 0.5),
-  text: (field, rng) =>
-    fillerText(rng, field.lang, rng.int(field.minLength, field.maxLength)),
+  text: (field, rng) => {
+    const length = rng.int(field.minLength, field.maxLength);
+    return field.phrases === undefined
+      ? fillerText(rng, field.lang, length)
+      : phraseText(rng, field.lang, field.phrases, length);
+  },
   // Placeholders: fillDerived computes them once every drawn value exists.
   sum: () => 0,
   runningBalance: () => 0,
