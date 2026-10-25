@@ -70,7 +70,7 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `money` | `min`, `max`, `decimals?` (0-2) | Number (TWD) |
 | `integer` | `min`, `max` | Integer |
 | `number` | `min`, `max`, `decimals` (0-6) | Number |
-| `choice` | `options` (strings, numbers, booleans), `weights?` | One option |
+| `choice` | `options` (at least one; strings, numbers, booleans), `weights?` (≥ 0) | One option |
 | `text` | `lang`: `zh` \| `en` \| `mixed`, `minLength`, `maxLength`, `phrases?` (1-1000 strings of 1-200 characters) | Filler text, length in characters |
 | `checkbox` | `probability?` (chance it is checked) | Boolean |
 | `constant` | `value` | Always `value` |
@@ -80,11 +80,12 @@ No path may be listed twice. Unknown keys are errors everywhere (the schemas are
 | `runningBalance` | `opening`, `add`, `subtract`: field paths | Inside an array item: opening + Σ add − Σ subtract over rows 0..i |
 | `percentage` | `part`, `whole`: field paths, `decimals` (0-6) | part / whole × 100 |
 
-Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after every array field on the way and nowhere else, and must name a numeric field (`money`, `integer`, `number`, `sum`, `runningBalance`, `percentage`, or a `constant` whose `value` is a number): `transactions[].amount`. Through an array the field isn't inside, `[]` means every item (a `sum` adds them all); through the array the field itself is inside, it means the current row (`rows[].price` from `rows[].subtotal`). Every `min` is ≤ its `max`, `minLength` (at least 1) ≤ `maxLength`, `minItems` ≤ `maxItems`; `weights` has one entry per option and a positive sum.
+Field paths (`sum`, `runningBalance`, `percentage`) go from the record root, `.`-separated, with `[]` after every array field on the way and nowhere else, and must name a numeric field (`money`, `integer`, `number`, `sum`, `runningBalance`, `percentage`, or a `constant` whose `value` is a number): `transactions[].amount`. Through an array the field isn't inside, `[]` means every item (a `sum` adds them all); through the array the field itself is inside, it means the current row (`rows[].price` from `rows[].subtotal`). Every `min` is ≤ its `max`, `minLength` (at least 1) ≤ `maxLength`, `minItems` (at least 0) ≤ `maxItems`; `weights` has one entry per option and a positive sum.
 
 Each `date` field is drawn on its own, so array rows come out in no particular date order. To print them in date order (a bank statement, a ledger), give the array `sortBy` with the key of a `date` field directly in its `object` items. The engine then reorders the whole rows by that date, earliest first; rows with the same date keep the order they were drawn in, and rows whose date is blank, or that are blank themselves, go last. It sorts before it computes `sum`, `runningBalance` and `percentage`, so a running balance adds up row by row in the printed order. `sortBy` naming anything else (a missing key, a field of another type, items that aren't an `object`) is `rules-invalid`. Sorting by other fields, or newest first, isn't supported. Without `sortBy` the rows stay in draw order.
 
 ```json
+"opening": { "type": "money", "min": 1000, "max": 90000 },
 "transactions": {
   "type": "array", "minItems": 8, "maxItems": 32, "sortBy": "date",
   "items": { "type": "object", "fields": {
