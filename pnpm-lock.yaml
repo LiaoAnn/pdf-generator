@@ -579,9 +579,15 @@ importers:
       '@pdf-generator/pack-spec':
         specifier: workspace:*
         version: link:../../packages/pack-spec
+      '@pdf-generator/self-check':
+        specifier: workspace:*
+        version: link:../../packages/self-check
       '@types/node':
         specifier: ^24.13.6
         version: 24.13.6
+      playwright-core:
+        specifier: 1.63.0
+        version: 1.63.0
       typescript:
         specifier: 'catalog:'
         version: 7.0.2

@@ -16,11 +16,14 @@ col.role {
 }
 
 /* A field that can be blank keeps a box: an empty inline element has no
-   width, an empty inline-block no height, and the print would fail. */
+   width, an empty inline-block no height, and the print would fail. The
+   underline is the form's fill-in line, and it gives a blank field ink in
+   its box, or the self-check reports ink. */
 .pair [data-gt="field"] {
   display: inline-block;
   min-width: 6em;
   min-height: 1lh;
+  border-bottom: 0.5pt solid #000;
   vertical-align: top;
 }
 

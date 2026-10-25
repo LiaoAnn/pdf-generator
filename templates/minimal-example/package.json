@@ -14,7 +14,9 @@
   "devDependencies": {
     "@pdf-generator/contract": "workspace:*",
     "@pdf-generator/pack-spec": "workspace:*",
+    "@pdf-generator/self-check": "workspace:*",
     "@types/node": "^24.13.6",
+    "playwright-core": "1.63.0",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "xmlbuilder2": "4.0.3"
