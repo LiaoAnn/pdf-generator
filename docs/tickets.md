@@ -779,6 +779,24 @@
 - **不做**：改平台程式
 - **來源**：PR #63（T12-2）
 
+### T10-4 規格書：規則表與契約對齊的測試
+- **目標**：SPEC §2 的規則表靠人工維護，T02-6 的 `sortBy` 因此漏寫（T10-3）。比照 Block types 的測試，拿 `rules.schema.json` 裡每個 `RuleField` 型別的欄位與規則表的那一列比對，契約新增欄位而規格書沒寫時測試失敗
+- **Blocked by**：T10-3
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`
+- **驗收測試**：故意從規則表刪掉一個欄位（例如 `phrases`）時測試失敗；目前的規格書通過
+- **不做**：改契約
+- **來源**：PR #67（T10-3）
+
+### T07-21 印 PDF：測試偶發 `SQLITE_BUSY`
+- **目標**：`apps/print` 的測試偶爾在 workerd 啟動時失敗，錯誤是 `SQLITE_BUSY`（T10-3 跑 3 次 `pnpm verify` 有 1 次）。找出是哪些測試共用了同一個 SQLite 檔（Miniflare 的持久化路徑或 Durable Object 儲存）並讓它們各用各的
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的測試設定；與其他 T07 票不要同時派
+- **驗收測試**：說明重現方式與原因；修正後連跑 10 次 `apps/print` 測試都通過
+- **不做**：改印 PDF 的正式程式
+- **來源**：PR #67（T10-3）
+
 ### T27 樣板：通報單與論文用自己的詞庫
 - **目標**：T12-2 讓 `text` 規則可以帶 `phrases`；incident-form 的 3 個與 paper 的 8 個 `text` 欄位目前印出營運報告式的填充文字（「本月營收持續成長…」）。在兩個樣板的 rules.json 給各欄位符合領域的 `phrases`
 - **Blocked by**：T12-2、T23、T25
