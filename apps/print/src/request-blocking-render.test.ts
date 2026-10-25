@@ -51,6 +51,7 @@ function fakeTab(
     createCDPSession: fetch.createCDPSession,
     setCacheEnabled: fetch.setCacheEnabled,
     emulateMediaType: fetch.emulateMediaType,
+    setViewport: fetch.setViewport,
     goto: vi.fn(async (url: string) => {
       documentUrl = url;
       fire('goto');

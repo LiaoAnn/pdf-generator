@@ -32,7 +32,11 @@ function document(css: string, body = image, head = '') {
     </style>${head}</head><body>${body}</body></html>`;
 }
 
-async function post(html: string, source = false) {
+async function post(
+  html: string,
+  source = false,
+  requestPage: { size: 'A4'; orientation: 'portrait' | 'landscape' } = page,
+) {
   return fetch(new URL('/print', (await worker.url).href), {
     method: 'POST',
     headers: {
@@ -41,7 +45,7 @@ async function post(html: string, source = false) {
     },
     body: JSON.stringify({
       html,
-      page,
+      page: requestPage,
       ...(source
         ? {
             source: {
@@ -150,6 +154,36 @@ test.each([
   expect(error.code).toBe('page_box_moved');
 });
 
+// Regression: excess document width shrinks the PDF without moving the DOM
+// boxes compared by the guard. The pseudo-element leaves ink at the GT box
+// even after scaling, so the ink self-check alone accepts the wrong geometry.
+test.each([
+  {
+    name: 'a generated page widened to 1300px triggers Chromium shrink-to-fit',
+    css: 'body > div > div { width: 1300px !important; }',
+  },
+  {
+    name: 'html min-width of 1300px triggers Chromium shrink-to-fit',
+    css: 'html { min-width: 1300px; }',
+  },
+])('POST /print rejects $name with 422 page_box_moved', async fixture => {
+  const response = await post(
+    document(
+      `html, body { margin: 0; padding: 0; }
+      #target { position: relative; width: 20px; height: 20px; background: black; }
+      #target::after { content: ""; position: absolute; left: 37.5px; top: 37.5px;
+        width: 30px; height: 30px; background: black; }
+      ${fixture.css}`,
+      '<div id="target" data-gt="image"></div>',
+    ),
+  );
+  expect(response.status).toBe(422);
+  expect(response.headers.get('content-type')).toMatch(/application\/json/i);
+  expect(response.headers.has('x-page-count')).toBe(false);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(error.code).toBe('page_box_moved');
+});
+
 // Regression: validating raw screen offsets or demanding identical page
 // margins rejects Paged.js's legitimate defaults and page-specific geometry.
 test.each([
@@ -179,8 +213,15 @@ test.each([
     pages: 3,
   },
   { name: 'page padding', html: document('@page { padding: 5mm; }'), pages: 1 },
+  {
+    // Regression: a fixed portrait-width limit rejects legitimate landscape pages.
+    name: 'landscape A4 uses its own page width instead of portrait A4 width',
+    html: document('@page { size: A4 landscape; }'),
+    pages: 1,
+    page: { size: 'A4', orientation: 'landscape' } as const,
+  },
 ])('POST /print accepts ordinary layout: $name', async fixture => {
-  const response = await post(fixture.html);
+  const response = await post(fixture.html, false, fixture.page ?? page);
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toMatch(/application\/pdf/i);
   expect(response.headers.get('x-page-count')).toBe(String(fixture.pages));

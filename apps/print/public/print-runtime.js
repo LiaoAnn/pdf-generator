@@ -281,15 +281,15 @@
   // base stylesheet and @media print block), and where the boxes are: each
   // sheet on its page, the pages stacked without gaps and, in print media,
   // html, body and the pages from the document's origin, each page breaking
-  // onto its own sheet, and the boxes inside each page where the screen pass
-  // found them. The geometry catches what moves a page without these
+  // onto its own sheet, the boxes inside each page where the screen pass
+  // found them, and the document no wider than its PDF page. The geometry catches what moves a page without these
   // properties (flex, floats, pseudo-elements, grid placement). Run once on
   // screen, which ground truth measures, and once in print media (lib.ts
   // emulates it), which is what prints: Paged.js leaves screen-only
   // stylesheets live, and the browser's 8px body margin applies on screen
   // only.
-  /** @param {{ print?: boolean }} [options] */
-  function movedBoxes({ print = false } = {}) {
+  /** @param {{ print?: boolean, pageWidth?: number }} [options] */
+  function movedBoxes({ print = false, pageWidth } = {}) {
     /** @type {string[]} */
     const moved = [];
     const tolerance = 0.5;
@@ -363,6 +363,15 @@
       }
     };
     const pages = pagedPages();
+    // Wider than the PDF page, the document is shrunk to fit it when printed,
+    // boxes and all (lib.ts sets the viewport to the page's width, rounded
+    // down; scrollWidth is rounded).
+    const width = document.documentElement.scrollWidth;
+    if (pageWidth !== undefined && width > Math.ceil(pageWidth)) {
+      moved.push(
+        `document ${width}px wide, wider than its ${pageWidth.toFixed(1)}px PDF page`,
+      );
+    }
     if (print) {
       const container = pages[0]?.parentElement;
       for (const [

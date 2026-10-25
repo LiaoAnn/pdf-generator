@@ -333,7 +333,8 @@ async function print<T>(
   // Content Paged.js didn't lay out (a pack's own pagedjs-content template
   // leaves the rest of <body> live) or CSS on its page boxes can add sheets
   // that no gt.json page describes (T08-1).
-  const { numPages } = await getDocumentProxy(new Uint8Array(pdf));
+  const printedPdf = await getDocumentProxy(new Uint8Array(pdf));
+  const { numPages } = printedPdf;
   if (numPages !== ready.pageCount) {
     throw new RenderError(
       'page_count_mismatch',
@@ -341,19 +342,6 @@ async function print<T>(
       [`PDF pages: ${numPages}; Paged.js pages: ${ready.pageCount}`],
     );
   }
-  // Again as printed: Paged.js leaves screen-only stylesheets live, and its
-  // own @media print rules apply only here.
-  await page.emulateMediaType('print');
-  const printed = await page.evaluate(() =>
-    (
-      globalThis as unknown as {
-        __pdfgen: {
-          movedBoxes(options: { print: boolean }): string[];
-        };
-      }
-    ).__pdfgen.movedBoxes({ print: true }),
-  );
-  rejectMovedBoxes(printed);
   if (
     ready.expectedText?.some(blocks =>
       blocks.some(block => block.texts.length > 0),
@@ -368,5 +356,37 @@ async function print<T>(
       );
     }
   }
+  // Again as printed: Paged.js leaves screen-only stylesheets live, and its
+  // own @media print rules apply only here. The viewport as wide as the
+  // widest PDF page (in CSS px), as when printing: a document wider than its
+  // page is shrunk to fit, which moves every box.
+  let pageWidth = 0;
+  let pageHeight = 0;
+  for (let number = 1; number <= numPages; number++) {
+    const [x0 = 0, y0 = 0, x1 = 0, y1 = 0] = (await printedPdf.getPage(number))
+      .view;
+    pageWidth = Math.max(pageWidth, (x1 - x0) / 0.75);
+    pageHeight = Math.max(pageHeight, (y1 - y0) / 0.75);
+  }
+  await page.setViewport({
+    width: Math.floor(pageWidth),
+    height: Math.floor(pageHeight),
+  });
+  await page.emulateMediaType('print');
+  const printed = await page.evaluate(
+    width =>
+      (
+        globalThis as unknown as {
+          __pdfgen: {
+            movedBoxes(options: {
+              print: boolean;
+              pageWidth: number;
+            }): string[];
+          };
+        }
+      ).__pdfgen.movedBoxes({ print: true, pageWidth: width }),
+    pageWidth,
+  );
+  rejectMovedBoxes(printed);
   return { pdf, pageCount: ready.pageCount, inspected };
 }
