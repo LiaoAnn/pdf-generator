@@ -175,6 +175,7 @@ describe('template author error explanations', () => {
   ];
   const printCodes = [
     'page_count_mismatch',
+    'page_box_moved',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -196,6 +197,32 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toMatch(/\.pagedjs/);
     expect(issue?.explanation).toMatch(/body/i);
     expect(issue?.explanation).toMatch(/頁/);
+  });
+
+  test('preview page-box refusals explain CSS moving page elements or html/body and direct authors to @page', () => {
+    const raw =
+      'page 1 .pagedjs_page margin-top: -75.5906px\nbody at (0.0, -75.6) px, expected (0.0, 0.0)';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'page_box_moved', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('page_box_moved');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.explanation).toMatch(cjk);
+    expect(issue?.explanation).not.toBe(fallback());
+    expect(issue?.explanation).toMatch(/CSS/i);
+    expect(issue?.explanation).toMatch(/Paged\.js|\.pagedjs/);
+    expect(issue?.explanation).toMatch(/html/i);
+    expect(issue?.explanation).toMatch(/body/i);
+    expect(issue?.explanation).toMatch(/選擇器|body\s*>\s*div/);
+    expect(issue?.explanation).toMatch(/移|位置|動到/);
+    expect(issue?.explanation).toContain('PDF');
+    expect(issue?.explanation).toContain('標準答案');
+    expect(issue?.explanation).toContain('@page');
+    expect(issue?.explanation).toMatch(/頁邊界|頁面邊界|頁面邊距|頁邊距/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -397,6 +424,7 @@ describe('template author error explanations', () => {
 describe('stored fixture print errors', () => {
   test.each([
     'page_count_mismatch',
+    'page_box_moved',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -414,11 +442,12 @@ describe('stored fixture print errors', () => {
         message: 'Printing failed',
         details: [{ code, message: 'Worker diagnostic' }],
       }).issues[0]?.explanation;
-      expect(
-        explainFixtureError(
-          `print 422 ${code}: Worker diagnostic mentions page_count_mismatch`,
-        ),
-      ).toBe(expected);
+      const actual = explainFixtureError(
+        `print 422 ${code}: Worker diagnostic mentions page_count_mismatch`,
+      );
+      expect(actual).toBe(expected);
+      expect(actual).toMatch(cjk);
+      expect(actual).not.toBe(fallback());
     },
   );
 

@@ -271,6 +271,288 @@
     );
   }
 
+  // Page boxes a template moved (T07-18). gt.json is measured from each
+  // generated page's box, so a page that doesn't print at its PDF sheet's
+  // origin, or a page box Paged.js didn't place, misplaces every block, and a
+  // decoy drawn into a gt box can then pass the self-check's ink comparison.
+  // Selectors that never name pagedjs (`body > div > div`) can move them, so
+  // this checks the result, not the CSS: each box's own margin, padding,
+  // border, position and transforms against what Paged.js 0.4.3 sets (its
+  // base stylesheet and @media print block), and where the boxes are: each
+  // sheet on its page, the pages stacked without gaps and, in print media,
+  // html, body and the pages from the document's origin, each page breaking
+  // onto its own sheet, the boxes inside each page where the screen pass
+  // found them, and the document no wider than its PDF page. The geometry catches what moves a page without these
+  // properties (flex, floats, pseudo-elements, grid placement). Run once on
+  // screen, which ground truth measures, and once in print media (lib.ts
+  // emulates it), which is what prints: Paged.js leaves screen-only
+  // stylesheets live, and the browser's 8px body margin applies on screen
+  // only.
+  /** @param {{ print?: boolean, pageWidth?: number }} [options] */
+  function movedBoxes({ print = false, pageWidth } = {}) {
+    /** @type {string[]} */
+    const moved = [];
+    const tolerance = 0.5;
+    const sides = ['top', 'right', 'bottom', 'left'];
+    /**
+     * @param {Element} element
+     * @param {string} name
+     * @param {{ position: string, padding?: (side: string) => number | undefined }} expected
+     */
+    const checkBox = (element, name, expected) => {
+      const style = getComputedStyle(element);
+      /** @param {string} property @param {string} value */
+      const report = (property, value) =>
+        moved.push(`${name} ${property}: ${value}`);
+      const px = (/** @type {string} */ value) => Number.parseFloat(value);
+      for (const side of sides) {
+        const margin = style.getPropertyValue(`margin-${side}`);
+        if (Math.abs(px(margin)) > tolerance) report(`margin-${side}`, margin);
+        const border = style.getPropertyValue(`border-${side}-width`);
+        if (name.endsWith('.pagedjs_area')) continue;
+        if (px(border) > tolerance) report(`border-${side}-width`, border);
+      }
+      for (const side of sides) {
+        const padding = style.getPropertyValue(`padding-${side}`);
+        const want = expected.padding ? expected.padding(side) : 0;
+        if (want === undefined || Math.abs(px(padding) - want) > tolerance) {
+          report(`padding-${side}`, padding);
+        }
+      }
+      if (style.position !== expected.position) {
+        report('position', style.position);
+      } else if (style.position === 'relative') {
+        for (const side of sides) {
+          const inset = style.getPropertyValue(side);
+          if (inset !== 'auto' && Math.abs(px(inset)) > tolerance) {
+            report(side, inset);
+          }
+        }
+      }
+      for (const property of [
+        'transform',
+        'translate',
+        'rotate',
+        'scale',
+        'offset-path',
+      ]) {
+        const value = style.getPropertyValue(property);
+        if (value !== 'none') report(property, value);
+      }
+      const zoom = style.getPropertyValue('zoom');
+      if (zoom !== '1' && zoom !== 'normal') report('zoom', zoom);
+    };
+    /** @param {Element} element */
+    const at = element => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + scrollX,
+        y: rect.top + scrollY,
+        height: rect.height,
+      };
+    };
+    /** @param {string} name @param {{ x: number, y: number }} box @param {{ x: number, y: number }} want */
+    const place = (name, box, want) => {
+      if (
+        Math.abs(box.x - want.x) > tolerance ||
+        Math.abs(box.y - want.y) > tolerance
+      ) {
+        moved.push(
+          `${name} at (${box.x.toFixed(1)}, ${box.y.toFixed(1)}) px, expected (${want.x.toFixed(1)}, ${want.y.toFixed(1)})`,
+        );
+      }
+    };
+    const pages = pagedPages();
+    // Wider than the PDF page, the document is shrunk to fit it when printed,
+    // boxes and all (lib.ts sets the viewport to the page's width, rounded
+    // down; scrollWidth is rounded).
+    const width = document.documentElement.scrollWidth;
+    if (pageWidth !== undefined && width > Math.ceil(pageWidth)) {
+      moved.push(
+        `document ${width}px wide, wider than its ${pageWidth.toFixed(1)}px PDF page`,
+      );
+    }
+    if (print) {
+      const container = pages[0]?.parentElement;
+      for (const [
+        element,
+        name,
+      ] of /** @type {[Element | null | undefined, string][]} */ ([
+        [document.documentElement, 'html'],
+        [document.body, 'body'],
+        [container, '.pagedjs_pages'],
+      ])) {
+        if (!element) continue;
+        checkBox(element, name, { position: 'static' });
+        place(name, at(element), { x: 0, y: 0 });
+      }
+    }
+    const first = pages[0] ? at(pages[0]) : { x: 0, y: 0 };
+    let top = print ? 0 : first.y;
+    const left = print ? 0 : first.x;
+    pages.forEach((page, i) => {
+      const name = `page ${i + 1}`;
+      const box = at(page);
+      checkBox(page, `${name} .pagedjs_page`, { position: 'static' });
+      place(`${name} .pagedjs_page`, box, { x: left, y: top });
+      top += box.height;
+      if (print && getComputedStyle(page).breakAfter !== 'page') {
+        moved.push(
+          `${name} .pagedjs_page break-after: ${getComputedStyle(page).breakAfter}`,
+        );
+      }
+      const sheet = page.querySelector(':scope > .pagedjs_sheet');
+      const pagebox = sheet?.querySelector(':scope > .pagedjs_pagebox');
+      const area = pagebox?.querySelector(':scope > .pagedjs_area');
+      const content = area?.querySelector(':scope > .pagedjs_page_content');
+      if (!sheet || !pagebox || !area || !content) {
+        moved.push(`${name}: Paged.js page boxes missing`);
+        return;
+      }
+      checkBox(sheet, `${name} .pagedjs_sheet`, { position: 'relative' });
+      place(`${name} .pagedjs_sheet`, at(sheet), box);
+      checkBox(pagebox, `${name} .pagedjs_pagebox`, { position: 'relative' });
+      const areaStyle = getComputedStyle(area);
+      checkBox(area, `${name} .pagedjs_area`, {
+        position: 'static',
+        padding: side =>
+          lengthPx(areaStyle.getPropertyValue(`--pagedjs-padding-${side}`)),
+      });
+      checkBox(content, `${name} .pagedjs_page_content`, {
+        position: 'relative',
+      });
+      // The boxes inside the page, relative to it: in print media where the
+      // screen measurement (ground truth) put them. A template can move them
+      // on screen only (a screen stylesheet's grid tracks, area border or
+      // grid placement) without changing what the checks above compare.
+      // The sheet's height follows the viewport in print media, so only its
+      // corner counts.
+      const inner = [
+        { box: sheet, name: '.pagedjs_sheet', sized: false },
+        { box: pagebox, name: '.pagedjs_pagebox', sized: true },
+        { box: area, name: '.pagedjs_area', sized: true },
+        { box: content, name: '.pagedjs_page_content', sized: true },
+      ].map(({ box: element, name: boxName, sized }) => {
+        const rect = element.getBoundingClientRect();
+        const origin = page.getBoundingClientRect();
+        return {
+          name: `${name} ${boxName}`,
+          x: rect.left - origin.left,
+          y: rect.top - origin.top,
+          width: sized ? rect.width : 0,
+          height: sized ? rect.height : 0,
+        };
+      });
+      if (!print) {
+        screenBoxes[i] = inner;
+        return;
+      }
+      inner.forEach((printed, j) => {
+        const screen = screenBoxes[i]?.[j];
+        const same =
+          screen !== undefined &&
+          ['x', 'y', 'width', 'height'].every(
+            key =>
+              Math.abs(
+                printed[/** @type {'x'} */ (key)] -
+                  screen[/** @type {'x'} */ (key)],
+              ) <= tolerance,
+          );
+        if (!same) {
+          const show = (/** @type {typeof printed | undefined} */ b) =>
+            b
+              ? `(${b.x.toFixed(1)}, ${b.y.toFixed(1)}) ${b.width.toFixed(1)}x${b.height.toFixed(1)}`
+              : 'missing';
+          moved.push(
+            `${printed.name} in print ${show(printed)} px, on screen ${show(screen)}`,
+          );
+        }
+      });
+    });
+    return moved;
+  }
+  /**
+   * Each page's inner boxes relative to it, as the screen pass measured them.
+   * @type {{ name: string, x: number, y: number, width: number, height: number }[][]}
+   */
+  const screenBoxes = [];
+
+  // An absolute CSS length (Paged.js's padding variables) in px, or undefined.
+  /** @param {string} value */
+  function lengthPx(value) {
+    const text = value.trim();
+    if (text === '' || text === '0') return 0;
+    try {
+      return CSSNumericValue.parse(text).to('px').value;
+    } catch {
+      return undefined;
+    }
+  }
+
+  // Per page, whether it paints anything at the page's own scale: text, or a
+  // background or border, of an element (or its ::before/::after) outside
+  // SVG drawings and outside CSS transforms and filters. Chrome draws those at
+  // 0.75 pt per CSS px, so lib.ts can tell from the PDF whether such a page
+  // was printed at another scale (T07-18); a page that paints only SVG or
+  // transformed content can't be told apart from a scaled one.
+  function plainInk() {
+    const visible = (/** @type {string} */ color) =>
+      !/^(?:transparent|rgba\(.*,\s*0\))$/.test(color);
+    /** @param {CSSStyleDeclaration} style */
+    const paints = style =>
+      visible(style.backgroundColor) ||
+      ['top', 'right', 'bottom', 'left'].some(
+        side =>
+          Number.parseFloat(style.getPropertyValue(`border-${side}-width`)) >
+            0 &&
+          !/^(?:none|hidden)$/.test(
+            style.getPropertyValue(`border-${side}-style`),
+          ) &&
+          visible(style.getPropertyValue(`border-${side}-color`)),
+      );
+    /** @param {CSSStyleDeclaration} style */
+    const plain = style =>
+      ['transform', 'translate', 'rotate', 'scale', 'filter'].every(
+        property => style.getPropertyValue(property) === 'none',
+      );
+    return pagedPages().map(page => {
+      const outside = new Set();
+      for (const element of page.querySelectorAll('*')) {
+        if (element instanceof SVGElement) continue;
+        const style = getComputedStyle(element);
+        const parent = element.parentElement;
+        if (
+          !plain(style) ||
+          (parent && parent !== page && outside.has(parent))
+        ) {
+          outside.add(element);
+          continue;
+        }
+        if (style.visibility !== 'visible') continue;
+        const text = [...element.childNodes].some(
+          node =>
+            node.nodeType === Node.TEXT_NODE &&
+            (node.textContent ?? '').trim() !== '',
+        );
+        if ((text || paints(style)) && element.getClientRects().length > 0) {
+          return true;
+        }
+        for (const pseudo of ['::before', '::after']) {
+          const box = getComputedStyle(element, pseudo);
+          if (
+            box.content !== 'none' &&
+            box.content !== 'normal' &&
+            plain(box) &&
+            paints(box)
+          ) {
+            return true;
+          }
+        }
+      }
+      return false;
+    });
+  }
+
   // Faces that did not load: Paged.js only warns about them (T03 Must 5).
   function unloadedFaces() {
     /** @type {string[]} */
@@ -371,13 +653,14 @@
     });
   }
 
-  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
+  /** @type {(state: { pageCount: number, unloadedFaces: string[], fragmentedRows: string[], movedBoxes: string[], plainInk: boolean[], expectedText: { texts: { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[] }[][] }) => void} */
   let resolveReady = () => {};
   const ready = new Promise(resolve => {
     resolveReady = resolve;
   });
   Object.assign(window, {
-    __pdfgen: { ready },
+    // lib.ts calls movedBoxes again in print media.
+    __pdfgen: { ready, movedBoxes },
     PagedConfig: {
       auto: true,
       before: async () => {
@@ -391,6 +674,8 @@
           pageCount: flow.total,
           unloadedFaces: unloadedFaces(),
           fragmentedRows: fragmentedRows(),
+          movedBoxes: movedBoxes(),
+          plainInk: plainInk(),
           expectedText: expectedText(),
         });
       },

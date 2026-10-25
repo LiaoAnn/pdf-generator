@@ -39,6 +39,10 @@ export function fakeFetch() {
     on,
     detach,
     createCDPSession: vi.fn(async () => session as unknown as CDPSession),
+    emulateMediaType: vi.fn(async (_type?: string) => {}),
+    setViewport: vi.fn(
+      async (_viewport: { width: number; height: number }) => {},
+    ),
     setCacheEnabled: vi.fn(async (_enabled: boolean) => {}),
     pause(url: string, urlFragment?: string) {
       const requestId = `paused-${++nextId}`;
