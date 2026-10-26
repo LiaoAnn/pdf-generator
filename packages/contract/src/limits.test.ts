@@ -3,7 +3,12 @@ import { readdirSync, readFileSync } from 'node:fs';
 import Ajv2020 from 'ajv/dist/2020.js';
 import { expect, test } from 'vitest';
 import * as contract from './index.ts';
-import { jsonSchemas, type RuleField, rulesSchema } from './index.ts';
+import {
+  jsonSchemas,
+  type RuleField,
+  type Rules,
+  rulesSchema,
+} from './index.ts';
 
 function document(field: unknown) {
   return { schemaVersion: 1, fields: { a: field } };
@@ -55,7 +60,7 @@ function keyedRules(location: string, key: string) {
   return document(
     location === 'object'
       ? object
-      : { type: 'array', minItems: 0, maxItems: 100_000, items: object },
+      : { type: 'array', minItems: 0, maxItems: 1, items: object },
   );
 }
 
@@ -193,7 +198,7 @@ test('nested array multiplication and sibling addition enforce the record value 
   const input = (maxItems: number) => ({
     schemaVersion: 1,
     fields: {
-      header: { type: 'name' },
+      header: { type: 'object', fields: { title: { type: 'name' } } },
       rows: array(
         array(
           {
@@ -204,7 +209,7 @@ test('nested array multiplication and sibling addition enforce the record value 
               label: { type: 'company' },
             },
           },
-          33333,
+          24999,
         ),
         maxItems,
       ),
@@ -214,13 +219,120 @@ test('nested array multiplication and sibling addition enforce the record value 
   expectIssue(
     input(2),
     ['fields'],
-    'a record would hold up to 199999 values; the limit is 100000',
+    'a record would hold up to 199997 values; the limit is 100000',
   );
 });
 
-test('nested arrays enforce text characters inclusively without counting numeric leaves', () => {
+test('leaf arrays accept 99999 leaves and reject 100000 because the array itself counts', () => {
+  const leaf: RuleField = { type: 'constant', value: 0 };
+  expect(rulesSchema.safeParse(document(array(leaf, 99_999))).success).toBe(
+    true,
+  );
+  expectIssue(
+    document(array(leaf, 100_000)),
+    ['fields'],
+    'a record would hold up to 100001 values; the limit is 100000',
+  );
+});
+
+test('hand-calculated engine value counts agree at the contract boundary for containers and a real pack', () => {
+  const leaf: RuleField = { type: 'constant', value: 0 };
+  const pack = JSON.parse(
+    readFileSync(
+      new URL(
+        '../../../templates/minimal-example/pack/data/rules.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  ) as Rules;
+  // fake-data depends on contract; importing it here would create a cycle.
+  // Count by hand using engine worstCase(record, () => 1, 1) - 1:
+  // nested arrays: 1 + 2 × (1 + 3) = 9;
+  // objects in an array: 1 + 3 × (1 + 2) = 10;
+  // empty arrays: 1, even with a large unreachable item subtree;
+  // minimal pack: 7 scalars + (1 + 6 × 4) attendees + (1 + 4) items = 37.
+  const cases: [string, Rules['fields'], number][] = [
+    ['nested arrays', { a: array(array(leaf, 3), 2) }, 9],
+    [
+      'objects in arrays',
+      { a: array({ type: 'object', fields: { x: leaf, y: leaf } }, 3) },
+      10,
+    ],
+    ['empty array', { a: array(leaf, 0) }, 1],
+    [
+      'empty array above nested arrays',
+      { a: array(array(leaf, 1_000_000), 0) },
+      1,
+    ],
+    ['minimal-example pack', pack.fields, 37],
+  ];
+  for (const [label, fields, count] of cases) {
+    // Padding contributes one array plus its leaves; root is excluded.
+    const input = (extra: number): Rules => ({
+      schemaVersion: 1,
+      fields: { ...fields, padding: array(leaf, 100_000 - count - 1 + extra) },
+    });
+    expect(rulesSchema.safeParse(input(0)).success, label).toBe(true);
+    expectIssue(
+      input(1),
+      ['fields'],
+      'a record would hold up to 100001 values; the limit is 100000',
+    );
+  }
+});
+
+test('object keys multiply through 100000 rows even when every leaf is numeric', () => {
+  expectIssue(
+    {
+      schemaVersion: 1,
+      fields: {
+        rows: array(
+          {
+            type: 'object',
+            fields: { ['k'.repeat(64)]: { type: 'constant', value: 0 } },
+          },
+          100_000,
+        ),
+      },
+    },
+    ['fields'],
+    'a record would hold up to 6400004 characters of text; the limit is 1000000',
+  );
+});
+
+test('zero-item arrays do not count item object keys or string contents', () => {
+  expect(
+    rulesSchema.safeParse(
+      document(
+        array(
+          {
+            type: 'object',
+            fields: {
+              ['k'.repeat(64)]: {
+                type: 'constant',
+                value: 'x'.repeat(1_000_001),
+              },
+            },
+          },
+          0,
+        ),
+      ),
+    ).success,
+  ).toBe(true);
+});
+
+// Root keys add 8 characters, padding adds 992: 1,000 outside the arrays.
+function paddedDocument(field: RuleField) {
+  return {
+    schemaVersion: 1,
+    fields: { a: field, padding: { type: 'constant', value: 'x'.repeat(992) } },
+  };
+}
+
+test('nested arrays enforce text characters and keys inclusively without counting numeric leaves', () => {
   const input = (maxLength: number) =>
-    document(
+    paddedDocument(
       array(
         array(
           {
@@ -241,9 +353,10 @@ test('nested arrays enforce text characters inclusively without counting numeric
         10,
       ),
     );
-  expect(rulesSchema.safeParse(input(600)).success).toBe(true);
+  // 1,000 objects × (581 + 400 text + 18 key characters) + 1,000.
+  expect(rulesSchema.safeParse(input(581)).success).toBe(true);
   expectIssue(
-    input(601),
+    input(582),
     ['fields'],
     'a record would hold up to 1001000 characters of text; the limit is 1000000',
   );
@@ -256,37 +369,48 @@ test.each([
     { type: 'choice', options: ['short', 123, false, 'x'.repeat(60_000)] },
   ],
 ] satisfies [string, RuleField][])(
-  'rejects 6000000000 characters from an array of %s leaves',
+  'rejects 6000000001 characters including the root key from an array of %s leaves',
   (_label, items) => {
     expectIssue(
       document(array(items, 100_000)),
       ['fields'],
-      'a record would hold up to 6000000000 characters of text; the limit is 1000000',
+      'a record would hold up to 6000000001 characters of text; the limit is 1000000',
     );
   },
 );
 
 test.each([
-  ['string constant', { type: 'constant', value: 'x'.repeat(10_000) }],
+  ['string constant', { type: 'constant', value: 'x'.repeat(9_999) }],
   [
     'longest string choice option',
     {
       type: 'choice',
-      options: ['x'.repeat(10_000), 'y'.repeat(9_999), 123, true],
+      options: ['x'.repeat(9_999), 'y'.repeat(9_998), 123, true],
     },
   ],
 ] satisfies [string, RuleField][])(
-  'accepts exactly 1000000 characters from an array of %s leaves',
+  'accepts exactly 1000000 characters including keys from an array of %s leaves',
   (_label, items) => {
-    expect(rulesSchema.safeParse(document(array(items, 100))).success).toBe(
-      true,
+    // 100 × 9,999 + root keys (1 + 7) + padding (92) = 1,000,000.
+    const input = (padding: number) => ({
+      schemaVersion: 1,
+      fields: {
+        a: array(items, 100),
+        padding: { type: 'constant', value: 'x'.repeat(padding) },
+      },
+    });
+    expect(rulesSchema.safeParse(input(92)).success).toBe(true);
+    expectIssue(
+      input(93),
+      ['fields'],
+      'a record would hold up to 1000001 characters of text; the limit is 1000000',
     );
   },
 );
 
-test('adds text maxLength, string constants and the longest string choice across nested arrays inclusively', () => {
+test('adds text maxLength, string constants, longest string choice and keys across nested arrays inclusively', () => {
   const input = (maxLength: number) =>
-    document(
+    paddedDocument(
       array(
         array(
           {
@@ -305,9 +429,10 @@ test('adds text maxLength, string constants and the longest string choice across
         10,
       ),
     );
-  expect(rulesSchema.safeParse(input(200)).success).toBe(true);
+  // 1,000 objects × (181 + 300 + 500 text + 18 key characters) + 1,000.
+  expect(rulesSchema.safeParse(input(181)).success).toBe(true);
   expectIssue(
-    input(201),
+    input(182),
     ['fields'],
     'a record would hold up to 1001000 characters of text; the limit is 1000000',
   );
@@ -317,7 +442,7 @@ test('number and boolean choice options contribute zero text characters', () => 
   expect(
     rulesSchema.safeParse(
       document(
-        array({ type: 'choice', options: [1234567890, true, false] }, 100_000),
+        array({ type: 'choice', options: [1234567890, true, false] }, 99_999),
       ),
     ).success,
   ).toBe(true);
@@ -327,7 +452,7 @@ test('string constants use JS string length rather than Unicode code point count
   expectIssue(
     document(array({ type: 'constant', value: '😀'.repeat(5_001) }, 100)),
     ['fields'],
-    'a record would hold up to 1000200 characters of text; the limit is 1000000',
+    'a record would hold up to 1000201 characters of text; the limit is 1000000',
   );
 });
 
@@ -345,9 +470,9 @@ test.each([
         rows: array(array(items, 0), maxItems),
       },
     });
-    expect(rulesSchema.safeParse(input(99_999)).success).toBe(true);
+    expect(rulesSchema.safeParse(input(99_998)).success).toBe(true);
     expectIssue(
-      input(100_000),
+      input(99_999),
       ['fields'],
       'a record would hold up to 100001 values; the limit is 100000',
     );
@@ -364,30 +489,53 @@ test('sibling empty arrays in object items multiply into the record value budget
       ]),
     ),
   };
-  expect(rulesSchema.safeParse(document(array(items, 500))).success).toBe(true);
+  // 1 outer array + 497 × (1 object + 200 empty arrays) + 102 leaves.
+  const boundary = {
+    schemaVersion: 1,
+    fields: {
+      a: array(items, 497),
+      ...Object.fromEntries(
+        Array.from({ length: 102 }, (_, i) => [
+          `n${i}`,
+          { type: 'constant', value: 0 },
+        ]),
+      ),
+    },
+  };
+  expect(rulesSchema.safeParse(boundary).success).toBe(true);
+  expectIssue(
+    {
+      ...boundary,
+      fields: { ...boundary.fields, extra: { type: 'constant', value: 0 } },
+    },
+    ['fields'],
+    'a record would hold up to 100001 values; the limit is 100000',
+  );
   expectIssue(
     document(array(items, 100_000)),
     ['fields'],
-    'a record would hold up to 20000000 values; the limit is 100000',
+    'a record would hold up to 20100001 values; the limit is 100000',
   );
 });
 
 test.each([
-  ['empty arrays', array({ type: 'name' }, 0)],
+  ['empty arrays', array({ type: 'name' }, 0), 99_999, 100_001],
   [
     'objects containing only an empty array',
     { type: 'object', fields: { empty: array({ type: 'name' }, 0) } },
+    49_999,
+    200_001,
   ],
-] satisfies [string, RuleField][])(
-  'counts %s as at least one value per outer array item',
-  (_label, items) => {
-    expect(rulesSchema.safeParse(document(array(items, 100_000))).success).toBe(
-      true,
-    );
+] satisfies [string, RuleField, number, number][])(
+  'counts every container in %s including the outer array',
+  (_label, items, acceptedItems, rejectedCount) => {
+    expect(
+      rulesSchema.safeParse(document(array(items, acceptedItems))).success,
+    ).toBe(true);
     expectIssue(
-      document(array(items, 100_000_000)),
+      document(array(items, 100_000)),
       ['fields'],
-      'a record would hold up to 100000000 values; the limit is 100000',
+      `a record would hold up to ${rejectedCount} values; the limit is 100000`,
     );
   },
 );
@@ -441,4 +589,5 @@ test('Python consumers can discover runtime budgets in the rules schema descript
   expect.soft(description).toMatch(/text maxLength/);
   expect.soft(description).toMatch(/string constants/);
   expect.soft(description).toMatch(/longest string choice option/);
+  expect.soft(description).toMatch(/\bkeys\b/i);
 });

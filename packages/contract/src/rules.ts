@@ -449,30 +449,36 @@ function tooDeep(
 
 /**
  * How many of something `field` generates at most: arrays multiply, objects
- * add. An array counts at least `perArray`: counting values, an empty array
- * is one.
+ * add. An object or array itself counts `container` of it.
  */
 function worstCase(
   field: RuleField,
   leaf: (field: RuleField) => number,
-  perArray = 0,
+  container: (field: RuleField) => number,
 ): number {
   switch (field.type) {
     case 'object':
       return Object.values(field.fields).reduce(
-        (sum, child) => sum + worstCase(child, leaf, perArray),
-        0,
+        (sum, child) => sum + worstCase(child, leaf, container),
+        container(field),
       );
     case 'array':
-      return Math.max(
-        perArray,
-        field.maxItems === 0
+      return (
+        container(field) +
+        (field.maxItems === 0
           ? 0
-          : field.maxItems * worstCase(field.items, leaf, perArray),
+          : field.maxItems * worstCase(field.items, leaf, container))
       );
     default:
       return leaf(field);
   }
+}
+
+/** The length of an object's keys, which every copy of it repeats. */
+function keyLength(field: RuleField): number {
+  return field.type === 'object'
+    ? Object.keys(field.fields).reduce((sum, key) => sum + key.length, 0)
+    : 0;
 }
 
 /** The most characters of text `field` holds; names, ids and the like are short and counted as values. */
@@ -531,7 +537,13 @@ export const rulesSchema = z
       visit(field, ['fields', key]);
     }
     const record: RuleField = { type: 'object', fields: rules.fields };
-    const values = worstCase(record, () => 1, 1);
+    // Every value counts, objects and arrays too; the record itself doesn't.
+    const values =
+      worstCase(
+        record,
+        () => 1,
+        () => 1,
+      ) - 1;
     if (values > ruleLimits.maxValues) {
       ctx.addIssue({
         code: 'custom',
@@ -539,7 +551,7 @@ export const rulesSchema = z
         path: ['fields'],
       });
     }
-    const characters = worstCase(record, longestText);
+    const characters = worstCase(record, longestText, keyLength);
     if (characters > ruleLimits.maxTextCharacters) {
       ctx.addIssue({
         code: 'custom',
@@ -550,7 +562,7 @@ export const rulesSchema = z
   })
   .meta({
     title: 'Fake-data rule file',
-    description: `rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with \`[]\` exactly on array fields; \`[]\` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items; fields nest at most ${ruleLimits.maxLevels} levels (a root field is level 1, an object's fields and an array's items one level deeper); counting the most each array can hold (maxItems × its items; an empty array is one value), a record holds at most ${ruleLimits.maxValues} values and ${ruleLimits.maxTextCharacters} characters of text (counting text maxLength, string constants and the longest string choice option).`,
+    description: `rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with \`[]\` exactly on array fields; \`[]\` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items; fields nest at most ${ruleLimits.maxLevels} levels (a root field is level 1, an object's fields and an array's items one level deeper); counting the most each array can hold (maxItems × its items), a record holds at most ${ruleLimits.maxValues} values (every leaf, object and array, empty or not; the record itself not) and ${ruleLimits.maxTextCharacters} characters of text (text maxLength, string constants, the longest string choice option, and the keys of every object).`,
   });
 
 export type Rules = z.infer<typeof rulesSchema>;
