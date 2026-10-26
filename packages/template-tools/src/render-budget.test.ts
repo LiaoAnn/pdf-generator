@@ -6,7 +6,9 @@ const opening = '{{#each @root.rows}}';
 const statementsTemplate = `${opening.repeat(7)}{{this}}${'{{/each}}'.repeat(7)}`;
 // In pre-order the 1,000,001st evaluated statement is a leaf mustache.
 const leafColumn = opening.length * 7 + 1;
-const outputTemplate = '{{#each rows}}\n  {{@root.text}}{{/each}}';
+// Reusing a contract-valid constant 25 times exceeds the 16 MiB output limit.
+const outputTemplate =
+  '{{#each rows}}\n{{#each @root.rows}}\n  {{@root.text}}{{/each}}{{/each}}';
 const fixtures = [
   {
     name: 'statement explosion',
@@ -18,8 +20,8 @@ const fixtures = [
   {
     name: 'output explosion',
     template: outputTemplate,
-    data: { rows: [1, 2], text: 'x'.repeat(9 * 1024 * 1024) },
-    line: 2,
+    data: { rows: Array(5).fill(1), text: 'x'.repeat(900_000) },
+    line: 3,
     column: 3,
   },
 ];
