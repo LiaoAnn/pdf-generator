@@ -70,6 +70,7 @@ Before you report, run the package typecheck (`pnpm --filter <package> typecheck
 A `.ts` file that `node` runs directly (scripts, `node --test`) must use erasable TypeScript only: no parameter properties, enums or namespaces, which Node's type stripping rejects.
 Don't `toEqual` multi-MB buffers (fonts, PDFs): Vitest's diff of a failing comparison ran out of heap (T07-13). Compare a hash, the length or the bytes you care about.
 A timing test compares against a baseline timed in the same run (for example a frozen reference implementation on the same input, interleaved), never a fixed bound in ms: GitHub runners and the shared VM swing about 2× between runs, and T15-4's 300 ms bound turned `main`'s CI red (T15-5).
+In a print fixture, a style override in a `data-pagedjs-ignore` sheet loses to the pack's own rule of equal specificity: Paged.js re-inserts the pack's processed `<style>` sheets after the ignored ones. Raise the override's specificity (a class, or `!important`) and check that it took effect, or the test passes for the wrong reason (T07-22).
 Do a mutation check (a temporary break of production code) in a copy outside the worktree, not in place: two test authors working in one package at once broke the same file for each other (T14-1).
 Don't commit. Don't edit files outside the test directories and fixtures you create.
 Report: the files you wrote, each test's name and the regression it catches, the exact RED command and its relevant output.
