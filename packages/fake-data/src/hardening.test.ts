@@ -113,6 +113,53 @@ test.each([
   ],
   ['100001 leaves', oneField(fixedArray(100001, constant))],
   [
+    '100000 leaves plus their outer array',
+    oneField(fixedArray(100000, constant)),
+  ],
+  [
+    '100000 empty arrays plus their outer array',
+    oneField(fixedArray(100000, fixedArray(0, constant))),
+  ],
+  [
+    '50000 populated objects plus their outer array',
+    oneField(fixedArray(50000, { type: 'object', fields: { a: constant } })),
+  ],
+  [
+    '50000 single-item arrays plus their outer array',
+    oneField(fixedArray(50000, fixedArray(1, constant))),
+  ],
+  ...(
+    [
+      [
+        '1000 × 1000 empty arrays even when the outer array is always blank',
+        fixedArray(1000, fixedArray(1000, fixedArray(0, constant))),
+      ],
+      [
+        '100000 objects with two empty arrays each',
+        fixedArray(100000, {
+          type: 'object',
+          fields: { a: fixedArray(0, constant), b: fixedArray(0, constant) },
+        }),
+      ],
+      ['100001 empty arrays', fixedArray(100001, fixedArray(0, constant))],
+    ] satisfies [string, RuleField][]
+  ).map(([label, field]): [string, Rules] => [
+    label,
+    // Rejection must use maxItems, before drawing a length or blank value.
+    // The broken implementation returns null without allocating huge records.
+    oneField({ ...field, minItems: 0, blankProbability: 1 } as RuleField),
+  ]),
+  [
+    '100000 leaves plus one empty sibling array',
+    {
+      schemaVersion: 1,
+      fields: {
+        value: { ...fixedArray(100000, constant), blankProbability: 1 },
+        empty: fixedArray(0, constant),
+      },
+    },
+  ],
+  [
     'object fields summed across the record',
     {
       schemaVersion: 1,
@@ -142,19 +189,150 @@ test.each([
   10_000,
 );
 
-test('budget allows exactly 100000 leaves without charging for containers', () => {
+test('budget allows 99999 leaves plus their array, excluding the root record', () => {
+  const record = generate(
+    oneField(fixedArray(99999, constant)),
+    'leaf-boundary',
+  );
+  expect(record.value).toHaveLength(99999);
+});
+
+test('budget allows 99999 empty arrays plus their outer array', () => {
+  const record = generate(
+    oneField(fixedArray(99999, fixedArray(0, constant))),
+    'empty-boundary',
+  );
+  expect(record.value).toHaveLength(99999);
+  expect(
+    Array.isArray(record.value) &&
+      record.value.every(value => Array.isArray(value) && value.length === 0),
+  ).toBe(true);
+});
+
+test('budget allows 99998 leaves plus their array and one empty sibling array', () => {
   const record = generate(
     {
       schemaVersion: 1,
       fields: {
-        value: fixedArray(100000, constant),
+        value: fixedArray(99998, constant),
         empty: fixedArray(0, constant),
       },
     },
     'budget-boundary',
   );
-  expect(record.value).toHaveLength(100000);
+  expect(record.value).toHaveLength(99998);
   expect(record.empty).toEqual([]);
+});
+
+test.each(['array', 'object'] as const)(
+  'budget charges every populated %s wrapper at the exact boundary',
+  kind => {
+    const item: RuleField =
+      kind === 'array'
+        ? fixedArray(1, constant)
+        : { type: 'object', fields: { a: constant } };
+    // 1 outer array + 49,999 × (1 wrapper + 1 leaf) + 1 sibling = 100,000.
+    const record = generate(
+      {
+        schemaVersion: 1,
+        fields: { value: fixedArray(49999, item), sibling: constant },
+      },
+      'populated-container-boundary',
+    );
+    expect(record.value).toHaveLength(49999);
+    expect(record.sibling).toBe(0);
+    expect(
+      Array.isArray(record.value) &&
+        record.value.every(
+          value =>
+            JSON.stringify(value) === (kind === 'array' ? '[0]' : '{"a":0}'),
+        ),
+    ).toBe(true);
+    const error = guardedError(
+      `generate(${JSON.stringify({
+        schemaVersion: 1,
+        fields: {
+          value: fixedArray(49999, item),
+          sibling: constant,
+          extra: constant,
+        },
+      })}, 'populated-container-over-limit')`,
+    );
+    expect(error).toMatchObject({
+      invalidRules: true,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          path: ['fields'],
+          message: expect.stringContaining('100000'),
+        }),
+      ]),
+    });
+  },
+);
+
+test.each([0, 1])(
+  'budget rejects 100000 rows with 30 single-item wrappers using maxItems (blank probability %s)',
+  blankProbability => {
+    let item: RuleField = constant;
+    for (let i = 0; i < 30; i++) item = fixedArray(1, item);
+    // Level 32 is legal. Both populated and always-blank arrays must
+    // budget the full worst case before drawing their length or blank value.
+    const rules = oneField({
+      ...fixedArray(100000, item),
+      minItems: 0,
+      blankProbability,
+    } as RuleField);
+    const error = guardedError(
+      `generate(${JSON.stringify(rules)}, 'wrapper-amplification')`,
+    );
+    expect(error).toMatchObject({
+      invalidRules: true,
+      issues: expect.arrayContaining([
+        expect.objectContaining({
+          path: ['fields'],
+          message: expect.stringContaining('100000'),
+        }),
+      ]),
+    });
+  },
+);
+
+test('budget counts all 30 nested wrappers at exactly 100000 values and rejects one more', () => {
+  let item: RuleField = constant;
+  for (let i = 0; i < 30; i++) item = fixedArray(1, item);
+  // 1 + 3,225 × 31 + (1 + 23) = 100,000, without charging the root.
+  const fields = {
+    rows: fixedArray(3225, item),
+    padding: fixedArray(23, constant),
+  };
+  const record = generate(
+    { schemaVersion: 1, fields },
+    'nested-value-boundary',
+  );
+  expect(record.padding).toHaveLength(23);
+  expect(record.rows).toHaveLength(3225);
+  if (!Array.isArray(record.rows)) throw new Error('Expected array rows');
+  for (const row of record.rows) {
+    let value: typeof row | undefined = row;
+    for (let i = 0; i < 30; i++) {
+      expect(Array.isArray(value) && value.length === 1).toBe(true);
+      if (!Array.isArray(value)) throw new Error('Expected wrapper');
+      value = value[0];
+    }
+    expect(value).toBe(0);
+  }
+  const error = guardedError(
+    `generate(${JSON.stringify({ schemaVersion: 1, fields: { ...fields, extra: constant } })}, 'nested-value-over-limit')`,
+  );
+  expect(error).toMatchObject({
+    invalidRules: true,
+    issues: expect.arrayContaining([
+      expect.objectContaining({
+        path: ['fields'],
+        message: expect.stringContaining('100000'),
+      }),
+    ]),
+  });
 });
 
 test.each(['object', 'scalar'] as const)(

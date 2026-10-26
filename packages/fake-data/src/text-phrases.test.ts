@@ -199,9 +199,9 @@ describe('pack-supplied text phrases through the public engine', () => {
     },
   );
 
-  it('preserves pre-phrases JSON bytes for built-in zh, en and mixed text, including array items', () => {
-    // Captured from HEAD 82040259100b7dc20a6a5a9ce52d13c7604e6c8a.
-    // Reconfirmed before T12-4 at HEAD 88476ed6879c5b9c8336fe4becd80b9ebf29534c.
+  it('preserves pinned JSON bytes for built-in zh, en and mixed text, including array items', () => {
+    // Re-pinned for the intentional T05-2 random-stream change.
+    // Pack-supplied phrase changes must leave these no-phrases cases unchanged.
     const hash = createHash('sha256');
     for (const lang of languages) {
       const rules = {
@@ -223,7 +223,7 @@ describe('pack-supplied text phrases through the public engine', () => {
       }
     }
     expect(hash.digest('hex')).toBe(
-      '8dee36a15f0dce27b781c44a3d7010f0339752e64b33762b2f11b7768c19a4e9',
+      'd8faa13c8c1d5918061326eda47e5ead8b3091d01879d1507114c7bce924ae61',
     );
   });
 
