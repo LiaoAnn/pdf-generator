@@ -5,7 +5,7 @@
 // the previous one plus the row's deposit minus its withdrawal (recomputed
 // here from data.json, not read from it), the summary totals, the logo and
 // the barcode with its number.
-//   pnpm --filter @pdf-generator/bank-statement acceptance -- \
+//   pnpm --filter @pdf-generator/bank-statement acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t23]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { readdirSync, readFileSync } from 'node:fs';

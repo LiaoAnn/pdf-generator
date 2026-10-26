@@ -2,7 +2,7 @@
 // and checks it. Passes when every fixture's self-check passes and every
 // gt.json records the merged cells, ROC dates, checkboxes and blanks its
 // ISO-date data.json asks for.
-//   pnpm --filter @pdf-generator/incident-form acceptance -- \
+//   pnpm --filter @pdf-generator/incident-form acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t23]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { readdirSync, readFileSync } from 'node:fs';
