@@ -180,6 +180,7 @@ describe('template author error explanations', () => {
     'css_animation',
     'layout_unsettled',
     'print_overflow',
+    'content_clipped',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
@@ -374,6 +375,24 @@ describe('template author error explanations', () => {
     expect
       .soft(text)
       .toMatch(/分頁.{0,30}(?:套用|處理)|(?:套用|處理).{0,30}分頁/);
+  });
+
+  test('preview content_clipped explains ancestor clipping and gives a fix while preserving the diagnostic', () => {
+    const raw = 'page 2 div clipped 50.0px at the bottom';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'content_clipped', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('content_clipped');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toMatch(cjk);
+    expect.soft(issue?.explanation).not.toBe(fallback());
+    expect.soft(issue?.explanation).toContain('裁');
+    expect.soft(issue?.explanation).toMatch(/overflow|祖先|外層/i);
+    expect.soft(issue?.explanation).toMatch(/請|移除|調整|增加|改用|避免|不要/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -580,6 +599,7 @@ describe('stored fixture print errors', () => {
     'css_animation',
     'layout_unsettled',
     'print_overflow',
+    'content_clipped',
     'font_not_loaded',
     'pagination_timeout',
     'row_fragmented',
