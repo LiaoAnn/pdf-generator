@@ -36,7 +36,7 @@ The user needs only two states: running and merged. Report those, plus what is w
 
 Whether the user wrote, a worker sent a message, or the heartbeat fired:
 
-1. **Read the world**: `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`).
+1. **Read the world**: `t3_thread_list` for this project, `t3_thread_read` on each running thread since the last position you saw, and `gh pr list --state all --json number,headRefName,state,mergeable,statusCheckRollup`. Look for threads that stopped without a message (failed, interrupted, or idle with no `PR`/`ASK`). A running thread with no new message for 30 minutes or more: read its `activity` view (last few items) for an `approval_request` that is still open. A permission prompt never reaches you as a message or a pending request, and T07-23 sat on one for 11 hours ("This shell -c script runs rm and could not be checked"). Tell the user which thread is waiting and what the command does, then have the worker rewrite the command once the prompt is answered or cancelled.
 2. **Handle messages** (below).
 3. **Dispatch** ready tickets up to the cap.
 4. **Report to the user**, in Traditional Chinese: questions waiting for them first, then what is running and what merged since the last report.
