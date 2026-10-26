@@ -57,6 +57,68 @@ const exportedPatterns = [...new Set(patterns(jsonSchemas()))];
 // These check for content anywhere in the string, not its ending.
 const containmentPatterns = new Set([String.raw`\S`]);
 
+test.each([
+  ['rule date', '2026-01-01', '２０２６-01-01'],
+  ['API timestamp', '2026-01-01T00:00:00Z', '２０２６-01-01T00:00:00Z'],
+])(
+  '%s rejects full-width digits in both zod and exported Python patterns',
+  (label, valid, invalid) => {
+    const schema = label === 'rule date' ? rulesSchema : templateSummarySchema;
+    const input =
+      label === 'rule date'
+        ? {
+            schemaVersion: 1,
+            fields: { date: { type: 'date', min: invalid, max: '2026-12-31' } },
+          }
+        : { ...example('template-summary'), createdAt: invalid };
+    expect.soft(schema.safeParse(input).success).toBe(false);
+    const candidates = patterns(
+      label === 'rule date'
+        ? jsonSchemas().rules
+        : jsonSchemas()['template-summary'],
+    ).filter(
+      pattern =>
+        new RegExp(pattern, 'u').test(valid) &&
+        !new RegExp(pattern, 'u').test('styles/base.css'),
+    );
+    expect(candidates.length).toBeGreaterThan(0);
+    for (const pattern of candidates) {
+      expect.soft(new RegExp(pattern, 'u').test(invalid), pattern).toBe(false);
+      expect
+        .soft(pythonMatches(pattern, invalid), pattern)
+        .toEqual([false, false]);
+    }
+  },
+);
+
+test.each(['x\u2028/..', 'x\u2029/../y'])(
+  'rejects traversal after a Unicode line separator in manifest path %j in JS and Python',
+  value => {
+    expect.soft(relativePathSchema.safeParse(value).success).toBe(false);
+    const manifest = example('manifest');
+    expect
+      .soft(
+        manifestSchema.safeParse({
+          ...manifest,
+          files: { ...(manifest.files as object), styles: [value] },
+        }).success,
+      )
+      .toBe(false);
+    const pathPatterns = [...new Set(patterns(jsonSchemas().manifest))].filter(
+      pattern =>
+        !containmentPatterns.has(pattern) &&
+        new RegExp(pattern, 'u').test('styles/base.css'),
+    );
+    expect(pathPatterns.length).toBeGreaterThan(0);
+    for (const pattern of pathPatterns) {
+      expect.soft(new RegExp(pattern, 'u').test(value), pattern).toBe(false);
+      expect
+        .soft(pythonMatches(pattern, value), pattern)
+        .toEqual([false, false]);
+    }
+  },
+);
+
 function pythonMatches(pattern: string, value: string): boolean[] {
   return JSON.parse(
     execFileSync(

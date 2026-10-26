@@ -603,3 +603,29 @@ test('accepts a table cell ending exactly at its referenced page edge', () => {
   const value = tableDocument({}, { bbox: [0, 0, 595.28, 841.89] }, 2);
   expect(gtSchema.parse(value)).toEqual(value);
 });
+
+test('checks later table cell bboxes even when the first cell fits the page', () => {
+  const cell = {
+    row: 0,
+    col: 0,
+    rowSpan: 1,
+    colSpan: 1,
+    header: false,
+    text: '',
+  };
+  const value = tableDocument({
+    cells: [
+      { ...cell, bbox: [0, 0, 50, 20] },
+      { ...cell, col: 1, bbox: [50, 0, 595.29, 20] },
+    ],
+  });
+  const result = gtSchema.safeParse(value);
+  expect(result.success).toBe(false);
+  if (!result.success)
+    expect(result.error.issues).toEqual([
+      expect.objectContaining({
+        message: 'cell bbox lies outside its page',
+        path: ['blocks', 0, 'table', 'cells', 1, 'bbox'],
+      }),
+    ]);
+});

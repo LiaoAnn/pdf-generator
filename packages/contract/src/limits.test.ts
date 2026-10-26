@@ -154,6 +154,51 @@ test('zero-item arrays contribute neither values nor filler characters', () => {
   expect(rulesSchema.safeParse(input).success).toBe(true);
 });
 
+test.each([
+  ['empty arrays', array({ type: 'name' }, 0)],
+  [
+    'objects containing only an empty array',
+    { type: 'object', fields: { empty: array({ type: 'name' }, 0) } },
+  ],
+] satisfies [string, RuleField][])(
+  'counts %s as at least one value per outer array item',
+  (_label, items) => {
+    expect(rulesSchema.safeParse(document(array(items, 100_000))).success).toBe(
+      true,
+    );
+    expectIssue(
+      document(array(items, 100_000_000)),
+      ['fields'],
+      'a record would hold up to 100000000 values; the limit is 100000',
+    );
+  },
+);
+
+test.each(['root', 'object', 'zero-item array object'] as const)(
+  '150000 sibling fields in a %s return a result without argument-spread overflow',
+  location => {
+    const fields: Record<string, RuleField> = Object.fromEntries(
+      Array.from({ length: 150_000 }, (_, i) => [`f${i}`, { type: 'name' }]),
+    );
+    const input =
+      location === 'root'
+        ? { schemaVersion: 1, fields }
+        : document(
+            location === 'object'
+              ? { type: 'object', fields }
+              : array({ type: 'object', fields }, 0),
+          );
+    let result: ReturnType<typeof rulesSchema.safeParse> | undefined;
+    expect(() => {
+      result = rulesSchema.safeParse(input);
+    }).not.toThrow();
+    expect(result).toHaveProperty(
+      'success',
+      location === 'zero-item array object',
+    );
+  },
+);
+
 test('all six shipped packs remain usable under the budgets', () => {
   const root = new URL('../../../templates/', import.meta.url);
   const files = readdirSync(root).map(

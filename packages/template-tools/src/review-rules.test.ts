@@ -671,7 +671,7 @@ describe('review regressions: untrusted resource limits and prototype names', ()
       }),
     ).toEqual([{ code: 'pack-too-large', file: '.' }]);
   });
-  it('turns stack-overflowing rules into one located rules-invalid issue', () => {
+  it('reports the level-33 field in deeply nested rules without a stack-overflow crash', () => {
     const files = pack();
     files['rules.json'] =
       '{"schemaVersion":1,"fields":{"deep":' +
@@ -686,7 +686,9 @@ describe('review regressions: untrusted resource limits and prototype names', ()
     expect(result).toMatchObject({ ok: false });
     expect(
       result?.issues.map(({ message, ...issue }) => {
-        expect(message).not.toBe('');
+        expect(message).toContain(
+          'fields nest 33 levels deep; the limit is 32',
+        );
         return issue;
       }),
     ).toEqual([
@@ -694,8 +696,12 @@ describe('review regressions: untrusted resource limits and prototype names', ()
         code: 'rules-invalid',
         file: 'rules.json',
         line: 1,
-        column: 1,
-        path: [],
+        column: 1157,
+        path: [
+          'fields',
+          'deep',
+          ...Array.from({ length: 32 }, () => ['fields', 'child']).flat(),
+        ],
       },
     ]);
   });

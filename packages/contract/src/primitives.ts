@@ -2,7 +2,9 @@ import { z } from 'zod';
 
 // Patterns across the contract end in `(?![\s\S])`, not `$`: Python's `$`
 // also matches before a trailing newline, so Python consumers of the JSON
-// Schema would accept `"asset.css\n"`.
+// Schema would accept `"asset.css\n"`. For the same reason they use `[0-9]`,
+// not `\d` (Python's also matches full-width digits), and `[\s\S]`, not `.`
+// (JS's skips line separators such as U+2028).
 
 /** Lower-case kebab-case identifier, e.g. `company-monthly-report`. */
 export const slugSchema = z
@@ -22,7 +24,7 @@ export const relativePathSchema = z
   .max(255)
   .regex(
     new RegExp(
-      String.raw`^(?!(?:.*/)?\.{1,2}(?:/|(?![\s\S])))(?:${segment}/)*${segment}(?![\s\S])`,
+      String.raw`^(?!(?:[\s\S]*/)?\.{1,2}(?:/|(?![\s\S])))(?:${segment}/)*${segment}(?![\s\S])`,
     ),
   )
   .describe(
