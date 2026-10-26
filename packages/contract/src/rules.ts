@@ -384,9 +384,97 @@ function pathsOf(field: RuleField): [string, (string | number)[]][] {
   }
 }
 
+/** How large a rule file and the records it generates may be, so a small rule file cannot exhaust a Worker. */
+export const ruleLimits = {
+  /** How deep fields may nest; a root field is level 1. */
+  maxLevels: 32,
+  /** The most values one record may hold. */
+  maxValues: 100_000,
+  /** The most filler-text characters one record may hold. */
+  maxTextCharacters: 1_000_000,
+} as const;
+
+/**
+ * The first field nested deeper than `ruleLimits.maxLevels` in an unparsed
+ * rule file, found without recursion: zod's own descent through such a file
+ * overflows the stack.
+ */
+function tooDeep(
+  input: unknown,
+): { path: (string | number)[]; level: number } | undefined {
+  type Node = { value: unknown; path: (string | number)[]; level: number };
+  const children = (
+    fields: unknown,
+    path: (string | number)[],
+    level: number,
+  ): Node[] =>
+    typeof fields === 'object' && fields !== null
+      ? Object.entries(fields).map(([key, value]) => ({
+          value,
+          path: [...path, 'fields', key],
+          level,
+        }))
+      : [];
+  const stack = children(
+    typeof input === 'object' && input !== null
+      ? (input as { fields?: unknown }).fields
+      : undefined,
+    [],
+    1,
+  ).reverse();
+  for (let node = stack.pop(); node !== undefined; node = stack.pop()) {
+    if (typeof node.value !== 'object' || node.value === null) continue;
+    if (node.level > ruleLimits.maxLevels) return node;
+    const { fields, items } = node.value as {
+      fields?: unknown;
+      items?: unknown;
+    };
+    if (items !== undefined) {
+      stack.push({
+        value: items,
+        path: [...node.path, 'items'],
+        level: node.level + 1,
+      });
+    }
+    stack.push(...children(fields, node.path, node.level + 1).reverse());
+  }
+  return undefined;
+}
+
+/** How many of something `field` generates at most: arrays multiply, objects add. */
+function worstCase(
+  field: RuleField,
+  leaf: (field: RuleField) => number,
+): number {
+  switch (field.type) {
+    case 'object':
+      return Object.values(field.fields).reduce(
+        (sum, child) => sum + worstCase(child, leaf),
+        0,
+      );
+    case 'array':
+      return field.maxItems === 0
+        ? 0
+        : field.maxItems * worstCase(field.items, leaf);
+    default:
+      return leaf(field);
+  }
+}
+
 /** `rules.json` in a template pack: how the fake-data engine builds a record. */
 export const rulesSchema = z
-  .strictObject({ schemaVersion: z.literal(1), fields: fieldMap() })
+  .unknown()
+  .superRefine((input, ctx) => {
+    const deep = tooDeep(input);
+    if (deep !== undefined) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `fields nest ${deep.level} levels deep; the limit is ${ruleLimits.maxLevels}`,
+        path: deep.path,
+      });
+    }
+  })
+  .pipe(z.strictObject({ schemaVersion: z.literal(1), fields: fieldMap() }))
   .superRefine((rules, ctx) => {
     const visit = (field: RuleField, at: (string | number)[]) => {
       for (const [path, key] of pathsOf(field)) {
@@ -408,11 +496,29 @@ export const rulesSchema = z
     for (const [key, field] of Object.entries(rules.fields)) {
       visit(field, ['fields', key]);
     }
+    const record: RuleField = { type: 'object', fields: rules.fields };
+    const values = worstCase(record, () => 1);
+    if (values > ruleLimits.maxValues) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `a record would hold up to ${values} values; the limit is ${ruleLimits.maxValues}`,
+        path: ['fields'],
+      });
+    }
+    const characters = worstCase(record, field =>
+      field.type === 'text' ? field.maxLength : 0,
+    );
+    if (characters > ruleLimits.maxTextCharacters) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `a record would hold up to ${characters} characters of filler text; the limit is ${ruleLimits.maxTextCharacters}`,
+        path: ['fields'],
+      });
+    }
   })
   .meta({
     title: 'Fake-data rule file',
-    description:
-      'rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.',
+    description: `rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with \`[]\` exactly on array fields; \`[]\` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items; fields nest at most ${ruleLimits.maxLevels} levels (a root field is level 1, an object's fields and an array's items one level deeper); counting the most each array can hold (maxItems × its items), a record holds at most ${ruleLimits.maxValues} values and ${ruleLimits.maxTextCharacters} characters of filler text (the sum of text maxLength).`,
   });
 
 export type Rules = z.infer<typeof rulesSchema>;

@@ -29,6 +29,7 @@ export { relativePathSchema, seedSchema, slugSchema } from './primitives.ts';
 export {
   type RuleField,
   type Rules,
+  ruleLimits,
   rulesSchema,
   taiwanCities,
 } from './rules.ts';
