@@ -12,7 +12,16 @@ import {
   type Issue,
   issuesOf,
 } from './errors.ts';
-import { createRng, type Rng } from './random.ts';
+import {
+  blankStream,
+  indexStream,
+  keyHash,
+  keyStream,
+  type Rng,
+  type StreamId,
+  seedStream,
+  streamRng,
+} from './random.ts';
 import { type FakeRecord, type FakeValue, recordSchema } from './schema.ts';
 import { address } from './taiwan/address.ts';
 import { companyName } from './taiwan/company.ts';
@@ -231,9 +240,9 @@ function generateFields(fields: Rules['fields'], child: Child): FakeRecord {
 
 /**
  * Generates one record from a rule file and a seed. Same rules and seed →
- * the same record, key for key; each field draws from its own stream, keyed
- * by its path in the record (e.g. `rows.0.amount`), so adding a field leaves
- * the others unchanged.
+ * the same record, key for key; each field draws from its own stream, derived
+ * from its parent's stream and its key or index (e.g. `rows`, 0, `amount`),
+ * so adding a field leaves the others unchanged.
  */
 export function generate(rules: unknown, seed: string): FakeRecord {
   const parsedRules = rulesSchema.safeParse(rules);
@@ -249,21 +258,37 @@ export function generate(rules: unknown, seed: string): FakeRecord {
   const issues = [...check(parsedRules.data), ...derivedIssues];
   if (issues.length > 0) throw new InvalidRulesError(issues);
 
+  // A key's hash is computed once per call, not once per value under it.
+  const keyHashes = new Map<string, StreamId>();
+  const hashOf = (key: string): StreamId => {
+    let hash = keyHashes.get(key);
+    if (hash === undefined) {
+      hash = keyHash(key);
+      keyHashes.set(key, hash);
+    }
+    return hash;
+  };
   const childAt =
-    (path: string): Child =>
+    (parent: StreamId): Child =>
     (field, key) => {
-      const at = path === '' ? String(key) : `${path}.${key}`;
-      // The blank draw has its own stream (`?` never occurs in a key), so
-      // adding blankProbability leaves the value stream unchanged. A blank
-      // object or array generates nothing inside it.
+      const at =
+        typeof key === 'number'
+          ? indexStream(parent, key)
+          : keyStream(parent, hashOf(key));
+      // The blank draw has its own stream, so adding blankProbability leaves
+      // the value stream unchanged. A blank object or array generates
+      // nothing inside it.
       const blank = field.blankProbability ?? 0;
-      if (blank > 0 && createRng(seed, `${at}?blank`).chance(blank)) {
+      if (blank > 0 && streamRng(blankStream(at)).chance(blank)) {
         return null;
       }
       const generator = generators[field.type] as Generator<typeof field.type>;
-      return generator(field, createRng(seed, at), childAt(at));
+      return generator(field, streamRng(at), childAt(at));
     };
-  const record = generateFields(parsedRules.data.fields, childAt(''));
+  const record = generateFields(
+    parsedRules.data.fields,
+    childAt(seedStream(seed)),
+  );
   const unprintable = fillDerived(record, parsedRules.data, order);
   if (unprintable.length > 0) throw new InvalidRulesError(unprintable);
 

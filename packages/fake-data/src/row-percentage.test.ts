@@ -214,7 +214,9 @@ describe('financial-detail row percentages through the public engine', () => {
     }
   });
 
-  it('preserves pre-slice bytes when percentages read only unrelated arrays or root fields', () => {
+  it('preserves pinned bytes when percentages read only unrelated arrays or root fields', () => {
+    // Re-pinned for the intentional T05-2 random-stream change.
+    // Row-scoped percentage changes must leave these unbound cases unchanged.
     const value: RuleField = { type: 'money', min: 1, max: 100, decimals: 2 };
     const rules = rulesFor({
       base: constant(7),
@@ -241,7 +243,7 @@ describe('financial-detail row percentages through the public engine', () => {
       ),
     );
     expect(createHash('sha256').update(bytes).digest('hex')).toBe(
-      'f89bcd74d1a876ed82c6b0872d1b6bd426bafb67b8fabd5576046a7368710c38',
+      'a9d93deb37458c833520a7db24437b1a7083c1d8ac4c05e2e86340f16adc46a0',
     );
   });
 

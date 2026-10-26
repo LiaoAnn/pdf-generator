@@ -28,14 +28,14 @@ test('fresh CLI runs reproduce the pinned stream and distinguish seeds', () => {
   expect(run('seed-2')).not.toBe(first);
   expect(JSON.parse(first)).toMatchInlineSnapshot(`
     [
-      764957,
-      977497,
-      954508,
-      978643,
-      665132,
-      105863,
-      708737,
-      442148,
+      35906,
+      53000,
+      673487,
+      936386,
+      279072,
+      22045,
+      478546,
+      495813,
     ]
   `);
 });

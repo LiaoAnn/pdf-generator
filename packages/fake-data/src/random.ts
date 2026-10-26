@@ -17,14 +17,17 @@ export interface Rng {
 const twoTo32 = 2 ** 32;
 const twoTo53 = 2 ** 53;
 
-// cyrb128: four 32-bit hashes of the UTF-16 code units of `text`.
-function hash128(text: string): [number, number, number, number] {
+/** A stream's 128-bit identity: four uint32 words. */
+export type StreamId = readonly [number, number, number, number];
+
+// cyrb128 over `length` 32-bit inputs (UTF-16 code units or uint32 words).
+function hash128(length: number, at: (i: number) => number): StreamId {
   let h1 = 1779033703;
   let h2 = 3144134277;
   let h3 = 1013904242;
   let h4 = 2773480762;
-  for (let i = 0; i < text.length; i++) {
-    const k = text.charCodeAt(i);
+  for (let i = 0; i < length; i++) {
+    const k = at(i);
     h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
     h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
     h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
@@ -41,8 +44,45 @@ function hash128(text: string): [number, number, number, number] {
   return [h1 >>> 0, h2 >>> 0, h3 >>> 0, h4 >>> 0];
 }
 
+const hashText = (text: string): StreamId =>
+  hash128(text.length, i => text.charCodeAt(i));
+
+const hashWords = (words: readonly number[]): StreamId =>
+  hash128(words.length, i => words[i] as number);
+
+// Tags keep a key, an index and a blank draw under one parent apart.
+const keyTag = 1;
+const indexTag = 2;
+const blankTag = 3;
+
+/** The root stream of a seed. */
+export const seedStream = (seed: string): StreamId => hashText(seed);
+
+/**
+ * A key's hash, to pass to `keyStream`. Hash each key once and reuse it, so
+ * deriving a value's stream costs the same however long its keys are.
+ */
+export const keyHash = (key: string): StreamId => hashText(key);
+
+/** The stream of the field whose key hashes to `key`, under `parent`. */
+export const keyStream = (parent: StreamId, key: StreamId): StreamId =>
+  hashWords([keyTag, ...parent, ...key]);
+
+/** The stream of array item `index` (a safe integer >= 0) under `parent`. */
+export const indexStream = (parent: StreamId, index: number): StreamId =>
+  hashWords([
+    indexTag,
+    ...parent,
+    index % twoTo32,
+    Math.floor(index / twoTo32),
+  ]);
+
+/** The stream of a value's blank draw, apart from its value stream. */
+export const blankStream = (parent: StreamId): StreamId =>
+  hashWords([blankTag, ...parent]);
+
 // sfc32: returns uint32 values.
-function sfc32([seedA, seedB, seedC, seedD]: [number, number, number, number]) {
+function sfc32([seedA, seedB, seedC, seedD]: StreamId) {
   let a = seedA;
   let b = seedB;
   let c = seedC;
@@ -61,10 +101,14 @@ function sfc32([seedA, seedB, seedC, seedD]: [number, number, number, number]) {
   return next;
 }
 
-/** An independent stream for each (seed, path) pair. */
-export function createRng(seed: string, path: string): Rng {
-  // The length prefix keeps ("ab", "c") and ("a", "bc") apart.
-  const next = sfc32(hash128(`${seed.length}:${seed}|${path}`));
+/** An independent stream for each (seed, key) pair. */
+export function createRng(seed: string, key: string): Rng {
+  return streamRng(keyStream(seedStream(seed), keyHash(key)));
+}
+
+/** The random values of stream `id`. */
+export function streamRng(id: StreamId): Rng {
+  const next = sfc32(id);
 
   // Uniform integer in [0, n), n <= 2^53, by rejection sampling.
   const below = (n: number): number => {
