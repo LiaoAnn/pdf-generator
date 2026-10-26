@@ -82,6 +82,12 @@ export interface PrintedState {
   /** `"page <n>: <row text>"` of every table row split or outside its page. */
   fragmentedRows?: string[];
   /**
+   * `"page <n> <tag> <how far> its content area"` of every element outside
+   * its page's content area in print but not on screen, where Paged.js broke
+   * the pages (T07-23).
+   */
+  outsidePages?: string[];
+  /**
    * Per page, whether it paints text, a background or a border at its own
    * scale (outside SVG and CSS transforms): what the PDF must draw at 0.75 pt
    * per CSS px unless Chrome shrank the page.
@@ -116,7 +122,8 @@ export type RenderErrorCode =
   | 'viewport_dependent'
   | 'css_animation'
   | 'layout_unsettled'
-  | 'request_blocked';
+  | 'request_blocked'
+  | 'print_overflow';
 
 /** A render that must not produce a PDF. */
 export class RenderError extends Error {
@@ -702,6 +709,20 @@ async function print<T>(
       'row_fragmented',
       'Some table rows are split or outside their page',
       printed.fragmentedRows,
+    );
+  }
+  // Paged.js broke the pages on screen: what grows only in print reaches past
+  // the page it was given, and the PDF clips it or leaves it out (T07-23).
+  // Moved page boxes move the content area too, and are refused below.
+  if (
+    printed.outsidePages &&
+    printed.outsidePages.length > 0 &&
+    !printed.movedBoxes?.length
+  ) {
+    throw new RenderError(
+      'print_overflow',
+      'Content reaches outside its page only in print, where Paged.js did not paginate',
+      printed.outsidePages,
     );
   }
   if (
