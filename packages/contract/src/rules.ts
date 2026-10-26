@@ -108,7 +108,10 @@ export type RuleField = Common &
   );
 type FieldMap = Record<string, RuleField>;
 
-const fieldKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(?![\s\S])/);
+const fieldKey = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}(?![\s\S])/)
+  .describe('Field key: up to 64 characters.');
 
 const fieldMap = (): z.ZodType<FieldMap> =>
   z

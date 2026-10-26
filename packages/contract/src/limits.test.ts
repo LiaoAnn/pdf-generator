@@ -1,4 +1,6 @@
+import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { expect, test } from 'vitest';
 import * as contract from './index.ts';
 import { jsonSchemas, type RuleField, rulesSchema } from './index.ts';
@@ -36,6 +38,112 @@ function expectIssue(
       expect.objectContaining({ path, message }),
     );
 }
+
+const keyLocations = [
+  { name: 'root', path: ['fields'] },
+  { name: 'object', path: ['fields', 'a', 'fields'] },
+  {
+    name: 'array item object',
+    path: ['fields', 'a', 'items', 'fields'],
+  },
+] as const;
+
+function keyedRules(location: string, key: string) {
+  const fields = { [key]: { type: 'constant', value: 0 } };
+  if (location === 'root') return { schemaVersion: 1, fields };
+  const object = { type: 'object', fields };
+  return document(
+    location === 'object'
+      ? object
+      : { type: 'array', minItems: 0, maxItems: 100_000, items: object },
+  );
+}
+
+test.each(keyLocations)(
+  '$name accepts a 64-character field key',
+  ({ name }) => {
+    expect(
+      rulesSchema.safeParse(keyedRules(name, 'k'.repeat(64))).success,
+    ).toBe(true);
+  },
+);
+
+test.each(keyLocations)(
+  '$name rejects a 65-character field key at the key path',
+  ({ name, path }) => {
+    const key = 'k'.repeat(65);
+    const result = rulesSchema.safeParse(keyedRules(name, key));
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({ code: 'invalid_key', path: [...path, key] }),
+      );
+  },
+);
+
+function exportedRuleSchemas() {
+  return {
+    generated: jsonSchemas().rules,
+    committed: JSON.parse(
+      readFileSync(
+        new URL('../schemas/rules.schema.json', import.meta.url),
+        'utf8',
+      ),
+    ) as object,
+  };
+}
+
+test.each(keyLocations)(
+  'Ajv 2020 enforces the 64-character field key boundary in $name',
+  ({ name }) => {
+    for (const [source, schema] of Object.entries(exportedRuleSchemas())) {
+      const validate = new Ajv2020({ strict: true }).compile(schema as object);
+      for (const [length, accepted] of [
+        [64, true],
+        [65, false],
+      ] as const) {
+        expect
+          .soft(
+            validate(keyedRules(name, 'k'.repeat(length))),
+            `${source}: ${length}-character key; ${JSON.stringify(validate.errors)}`,
+          )
+          .toBe(accepted);
+      }
+    }
+  },
+);
+
+function propertyNamePatterns(node: unknown): string[] {
+  if (node === null || typeof node !== 'object') return [];
+  const { propertyNames } = node as { propertyNames?: { pattern?: unknown } };
+  return [
+    ...(typeof propertyNames?.pattern === 'string'
+      ? [propertyNames.pattern]
+      : []),
+    ...Object.values(node).flatMap(propertyNamePatterns),
+  ];
+}
+
+test('Python re.search enforces the 64-character field key boundary in exported propertyNames patterns', () => {
+  for (const [source, schema] of Object.entries(exportedRuleSchemas())) {
+    const patterns = propertyNamePatterns(schema);
+    // Both root fields and the recursive object's fields publish key rules.
+    expect(patterns.length, source).toBeGreaterThanOrEqual(2);
+    for (const pattern of new Set(patterns)) {
+      const matches = JSON.parse(
+        execFileSync(
+          'python3',
+          [
+            '-c',
+            'import json,re,sys\np=json.load(sys.stdin)\nprint(json.dumps([bool(re.search(p,"k"*n)) for n in [64,65]]))',
+          ],
+          { input: JSON.stringify(pattern), encoding: 'utf8' },
+        ),
+      );
+      expect.soft(matches, `${source}: ${pattern}`).toEqual([true, false]);
+    }
+  }
+});
 
 test('publishes rule budgets so callers can explain rejected uploads', () => {
   expect(contract).toHaveProperty('ruleLimits', {

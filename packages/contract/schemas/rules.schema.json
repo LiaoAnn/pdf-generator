@@ -12,7 +12,8 @@
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])"
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(?![\\s\\S])",
+        "description": "Field key: up to 64 characters."
       },
       "additionalProperties": {
         "$ref": "#/$defs/RuleField"
@@ -555,7 +556,8 @@
               "type": "object",
               "propertyNames": {
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])"
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}(?![\\s\\S])",
+                "description": "Field key: up to 64 characters."
               },
               "additionalProperties": {
                 "$ref": "#/$defs/RuleField"
