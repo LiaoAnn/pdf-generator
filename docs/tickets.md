@@ -824,6 +824,15 @@
 - **不做**：T07-22、T07-23 的範圍
 - **來源**：PR #70（T07-21）
 
+### T07-25 印 PDF：拒絕被祖先裁掉的 `data-gt` 內容
+- **目標**：`data-gt` 元素的框超出某個 `overflow: hidden`／`clip` 祖先時（螢幕或列印都一樣），gt.json 記下完整的框與文字，PDF 卻只印出一部分。在 print runtime 加類似 `outsidePages()` 的檢查，對照會裁切的祖先；被裁到就拒絕並附中文說明
+- **Blocked by**：T07-23
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與其他 T07 票不要同時派
+- **驗收測試**：一份 `data-gt` 框大於 `overflow: hidden` 祖先的樣板包被拒絕並附中文說明；只在列印時長高而被裁的情況也被拒絕；6 個樣板各 10 份 gt.json 與 main 相同
+- **不做**：改成在列印模式分頁（T07-23 已比較並放棄）
+- **來源**：PR #73（T07-23，Security lens 的 Hardening）
+
 ### T27 樣板：通報單與論文用自己的詞庫
 - **目標**：T12-2 讓 `text` 規則可以帶 `phrases`；incident-form 的 3 個與 paper 的 8 個 `text` 欄位目前印出營運報告式的填充文字（「本月營收持續成長…」）。在兩個樣板的 rules.json 給各欄位符合領域的 `phrases`
 - **Blocked by**：T12-2、T23、T25
