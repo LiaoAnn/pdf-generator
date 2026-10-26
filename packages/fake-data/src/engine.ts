@@ -21,6 +21,8 @@ import {
   type StreamId,
   seedStream,
   streamRng,
+  type WeightTable,
+  weightTable,
 } from './random.ts';
 import { type FakeRecord, type FakeValue, recordSchema } from './schema.ts';
 import { address } from './taiwan/address.ts';
@@ -41,6 +43,18 @@ type Generator<T extends RuleField['type']> = (
   child: (field: RuleField, key: string | number) => FakeValue,
 ) => FakeValue;
 
+// One table per parsed choice field, so its weights are summed once, not
+// once per drawn value.
+const weightTables = new WeakMap<FieldOf<'choice'>, WeightTable>();
+const weightsOf = (field: FieldOf<'choice'>, weights: number[]) => {
+  let table = weightTables.get(field);
+  if (table === undefined) {
+    table = weightTable(weights);
+    weightTables.set(field, table);
+  }
+  return table;
+};
+
 const generators: { [T in RuleField['type']]: Generator<T> } = {
   name: (field, rng) => personName(rng, field.gender),
   nationalId: (field, rng) => nationalId(rng, field.gender),
@@ -55,7 +69,7 @@ const generators: { [T in RuleField['type']]: Generator<T> } = {
   number: (field, rng) => decimal(rng, field.min, field.max, field.decimals),
   choice: (field, rng) =>
     field.weights
-      ? rng.weighted(field.options, field.weights)
+      ? rng.weighted(field.options, weightsOf(field, field.weights))
       : rng.pick(field.options),
   constant: field => field.value,
   object: (field, _rng, child) => generateFields(field.fields, child),
