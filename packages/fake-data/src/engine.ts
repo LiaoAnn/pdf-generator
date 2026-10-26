@@ -133,89 +133,25 @@ function impossible(field: RuleField): Issue[] {
   }
 }
 
-/** The most values one record may hold, so a small rule file cannot exhaust a Worker. */
-const maxValues = 100_000;
-
-/** How deep fields may nest (a root field is level 1), so a path stays short to walk. */
-const maxLevels = 32;
-
-/** The most filler-text characters one record may hold. */
-const maxTextCharacters = 1_000_000;
-
 /**
- * How many of something `field` generates at most: arrays multiply, objects
- * add. An object or array itself counts `container`.
+ * Every impossible range in the rule file. Its depth, value count and text
+ * length were already bounded by the contract's `ruleLimits` when it parsed.
  */
-function worstCase(
-  field: RuleField,
-  leaf: (field: RuleField) => number,
-  container = 0,
-): number {
-  switch (field.type) {
-    case 'object':
-      return Object.values(field.fields).reduce(
-        (sum, child) => sum + worstCase(child, leaf, container),
-        container,
-      );
-    case 'array':
-      return (
-        container +
-        (field.maxItems === 0
-          ? 0
-          : field.maxItems * worstCase(field.items, leaf, container))
-      );
-    default:
-      return leaf(field);
-  }
-}
-
-/** Every impossible range in the rule file, and a record too deep, large or long. */
 function check(rules: Rules): Issue[] {
   const issues: Issue[] = [];
-  const visit = (
-    field: RuleField,
-    rulePath: (string | number)[],
-    level: number,
-  ) => {
-    if (level > maxLevels) {
-      issues.push({
-        path: rulePath,
-        message: `fields nest ${level} levels deep; the limit is ${maxLevels}`,
-      });
-      return;
-    }
+  const visit = (field: RuleField, rulePath: (string | number)[]) => {
     for (const issue of impossible(field)) {
       issues.push({ ...issue, path: [...rulePath, ...issue.path] });
     }
     if (field.type === 'object') {
       for (const [key, child] of Object.entries(field.fields)) {
-        visit(child, [...rulePath, 'fields', key], level + 1);
+        visit(child, [...rulePath, 'fields', key]);
       }
     }
-    if (field.type === 'array') {
-      visit(field.items, [...rulePath, 'items'], level + 1);
-    }
+    if (field.type === 'array') visit(field.items, [...rulePath, 'items']);
   };
   for (const [key, field] of Object.entries(rules.fields)) {
-    visit(field, ['fields', key], 1);
-  }
-  const record: RuleField = { type: 'object', fields: rules.fields };
-  // Every value counts, objects and arrays too; the record itself does not.
-  const count = worstCase(record, () => 1, 1) - 1;
-  if (count > maxValues) {
-    issues.push({
-      path: ['fields'],
-      message: `a record would hold up to ${count} values; the limit is ${maxValues}`,
-    });
-  }
-  const characters = worstCase(record, field =>
-    field.type === 'text' ? field.maxLength : 0,
-  );
-  if (characters > maxTextCharacters) {
-    issues.push({
-      path: ['fields'],
-      message: `a record would hold up to ${characters} characters of filler text; the limit is ${maxTextCharacters}`,
-    });
+    visit(field, ['fields', key]);
   }
   return issues;
 }
@@ -286,7 +222,11 @@ export function generate(rules: unknown, seed: string): FakeRecord {
   const unprintable = fillDerived(record, parsedRules.data, order);
   if (unprintable.length > 0) throw new InvalidRulesError(unprintable);
 
-  const checked = recordSchema(parsedRules.data).safeParse(record);
+  // jitless, as in workerd (no eval): zod's compiled check of an object with
+  // tens of thousands of keys overflows the stack.
+  const checked = recordSchema(parsedRules.data).safeParse(record, {
+    jitless: true,
+  });
   if (!checked.success) throw new InvalidRecordError(issuesOf(checked.error));
   return record;
 }
