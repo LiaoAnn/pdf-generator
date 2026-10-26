@@ -609,6 +609,101 @@
   /** Keys of `outsidePages()` on screen, once Paged.js has finished. */
   let outsideOnScreen = new Set();
 
+  // The data-gt elements (and what is inside them) that an ancestor clips:
+  // gt.json describes their whole box and text, the PDF shows only what the
+  // clip leaves (T07-25). The browser says what it shows: an
+  // IntersectionObserver rooted at <html> clips each box by every ancestor
+  // that clips it (overflow, contain: paint, clip-path, ...), and not by one
+  // an absolutely positioned box escapes. Only the part inside the page's
+  // content area counts; reaching outside it is outsidePages()'s to report.
+  // Skipped: KaTeX's MathML copy, clipped to 1px on purpose, and an SVG's
+  // drawing, which its <svg> clips by design (text in it counts).
+  async function clippedContent() {
+    const tolerance = 1;
+    const round = (/** @type {number} */ value) => value.toFixed(1);
+    /** @type {{ element: Element, page: number, area: DOMRect }[]} */
+    const targets = [];
+    pagedPages().forEach((page, index) => {
+      const content = page.querySelector(
+        ':scope > .pagedjs_sheet > .pagedjs_pagebox > .pagedjs_area > .pagedjs_page_content',
+      );
+      if (!content) return;
+      const area = content.getBoundingClientRect();
+      for (const element of content.querySelectorAll(
+        '[data-gt], [data-gt] *',
+      )) {
+        if (element.closest('.katex-mathml')) continue;
+        if (
+          element instanceof SVGElement &&
+          !element.hasAttribute('data-gt') &&
+          !(element instanceof SVGTextContentElement)
+        ) {
+          continue;
+        }
+        if (element.getClientRects().length === 0) continue;
+        targets.push({ element, page: index + 1, area });
+      }
+    });
+    if (targets.length === 0) return [];
+    /** @type {Map<Element, IntersectionObserverEntry>} */
+    const seen = new Map();
+    // Every target is reported at the next rendering update; one that isn't
+    // within the time limit is reported as not measured.
+    await new Promise(resolve => {
+      const observer = new IntersectionObserver(
+        entries => {
+          for (const entry of entries) seen.set(entry.target, entry);
+          if (seen.size >= targets.length) {
+            observer.disconnect();
+            resolve(undefined);
+          }
+        },
+        // Without the margin, boxes on later pages read as clipped
+        // entirely (<html>'s box doesn't reach them in print media).
+        { root: document.documentElement, rootMargin: '1000000px' },
+      );
+      for (const { element } of targets) observer.observe(element);
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(undefined);
+      }, 2000);
+    });
+    /** @type {string[]} */
+    const clipped = [];
+    for (const { element, page, area } of targets) {
+      const entry = seen.get(element);
+      if (!entry) {
+        clipped.push(`page ${page} ${element.localName} not measured`);
+        continue;
+      }
+      const box = entry.boundingClientRect;
+      const top = Math.max(box.top, area.top);
+      const right = Math.min(box.right, area.right);
+      const bottom = Math.min(box.bottom, area.bottom);
+      const left = Math.max(box.left, area.left);
+      if (right - left <= 0 || bottom - top <= 0) continue;
+      const shown = entry.intersectionRect;
+      /** @type {[string, number][]} */
+      const sides = [
+        ['top', shown.top - top],
+        ['right', right - shown.right],
+        ['bottom', bottom - shown.bottom],
+        ['left', shown.left - left],
+      ];
+      const cut = sides.filter(([, by]) => by > tolerance);
+      if (!entry.isIntersecting) {
+        clipped.push(`page ${page} ${element.localName} clipped entirely`);
+      } else if (cut.length > 0) {
+        clipped.push(
+          `page ${page} ${element.localName} clipped ${cut
+            .map(([side, by]) => `${round(by)}px at the ${side}`)
+            .join(', ')}`,
+        );
+      }
+    }
+    return clipped.slice(0, 50);
+  }
+
   // Rows with text that are split or reach outside their page's content
   // area: their text may be missing from the PDF (T03 Must 4).
   function fragmentedRows() {
@@ -942,7 +1037,7 @@
   // `@media all and (…)`), so these and the ground truth, which lib.ts reads
   // right after, must not be read on screen (T07-20).
   /** @param {{ pageWidth: number }} options */
-  function printed({ pageWidth }) {
+  async function printed({ pageWidth }) {
     return {
       animations: animations(),
       viewportDependent: viewportDependent(),
@@ -954,6 +1049,7 @@
         .filter(([key]) => !outsideOnScreen.has(key))
         .map(([, where]) => where)
         .slice(0, 50),
+      clippedContent: await clippedContent(),
       plainInk: plainInk(),
       expectedText: expectedText(),
     };
