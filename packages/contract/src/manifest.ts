@@ -3,7 +3,7 @@ import { relativePathSchema, slugSchema } from './primitives.ts';
 
 const pathWithExtension = (extension: string) =>
   relativePathSchema.regex(
-    new RegExp(`\\.${extension}$`),
+    new RegExp(String.raw`\.${extension}(?![\s\S])`),
     `must end in .${extension}`,
   );
 

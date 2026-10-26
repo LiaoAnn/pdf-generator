@@ -10,7 +10,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])",
       "description": "Stable identifier of the template."
     },
     "name": {
@@ -54,10 +54,10 @@
           "maxLength": 255,
           "allOf": [
             {
-              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|(?![\\s\\S])))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+(?![\\s\\S])"
             },
             {
-              "pattern": "\\.hbs$"
+              "pattern": "\\.hbs(?![\\s\\S])"
             }
           ],
           "description": "Handlebars template that renders the whole document."
@@ -70,10 +70,10 @@
             "maxLength": 255,
             "allOf": [
               {
-                "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+                "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|(?![\\s\\S])))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+(?![\\s\\S])"
               },
               {
-                "pattern": "\\.css$"
+                "pattern": "\\.css(?![\\s\\S])"
               }
             ],
             "description": "Path relative to the template pack root, '/'-separated, with no leading '/', empty, '.' or '..' segment, backslash or control character."
@@ -86,10 +86,10 @@
           "maxLength": 255,
           "allOf": [
             {
-              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|(?![\\s\\S])))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+(?![\\s\\S])"
             },
             {
-              "pattern": "\\.json$"
+              "pattern": "\\.json(?![\\s\\S])"
             }
           ],
           "description": "Fake-data rule file (the `rules` contract)."
@@ -100,10 +100,10 @@
           "maxLength": 255,
           "allOf": [
             {
-              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$"
+              "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|(?![\\s\\S])))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+(?![\\s\\S])"
             },
             {
-              "pattern": "\\.json$"
+              "pattern": "\\.json(?![\\s\\S])"
             }
           ],
           "description": "Sample record the template renders without the fake-data engine."
@@ -115,7 +115,7 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 255,
-            "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|$))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+$",
+            "pattern": "^(?!(?:.*\\/)?\\.{1,2}(?:\\/|(?![\\s\\S])))(?:[^/\\\\\\u0000-\\u001f\\u007f]+\\/)*[^/\\\\\\u0000-\\u001f\\u007f]+(?![\\s\\S])",
             "description": "Path relative to the template pack root, '/'-separated, with no leading '/', empty, '.' or '..' segment, backslash or control character."
           }
         }

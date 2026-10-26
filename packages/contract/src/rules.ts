@@ -30,14 +30,14 @@ const probability = z.number().min(0).max(1);
 const gender = z.enum(['male', 'female', 'any']);
 const isoDate = z
   .string()
-  .regex(/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])$/)
+  .regex(/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?![\s\S])/)
   .describe('YYYY-MM-DD');
 const decimals = (max: number) => z.int().min(0).max(max);
 
 const fieldPath = z
   .string()
   .regex(
-    /^[A-Za-z_][A-Za-z0-9_]*(?:\[\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\])?)*$/,
+    /^[A-Za-z_][A-Za-z0-9_]*(?:\[\])?(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\])?)*(?![\s\S])/,
   )
   .describe(
     "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`.",
@@ -99,7 +99,7 @@ export type RuleField = Common &
   );
 type FieldMap = Record<string, RuleField>;
 
-const fieldKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+const fieldKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*(?![\s\S])/);
 
 const fieldMap = (): z.ZodType<FieldMap> =>
   z

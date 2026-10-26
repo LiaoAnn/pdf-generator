@@ -45,7 +45,7 @@ export const pageSchema = z
 export const blockFields = {
   id: z
     .string()
-    .regex(/^[A-Za-z0-9_-]{1,64}$/)
+    .regex(/^[A-Za-z0-9_-]{1,64}(?![\s\S])/)
     .describe('Unique within the document.'),
   page: z.int().min(1).describe('Page number, from 1.'),
   bbox: bboxSchema,

@@ -10,7 +10,7 @@
       "type": "object",
       "propertyNames": {
         "type": "string",
-        "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])"
       },
       "additionalProperties": {
         "$ref": "#/$defs/RuleField"
@@ -240,12 +240,12 @@
             },
             "min": {
               "type": "string",
-              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])(?![\\s\\S])",
               "description": "YYYY-MM-DD"
             },
             "max": {
               "type": "string",
-              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])$",
+              "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\\d|3[01])(?![\\s\\S])",
               "description": "YYYY-MM-DD"
             }
           },
@@ -555,7 +555,7 @@
               "type": "object",
               "propertyNames": {
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?![\\s\\S])"
               },
               "additionalProperties": {
                 "$ref": "#/$defs/RuleField"
@@ -635,7 +635,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
                 "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
               }
             }
@@ -665,14 +665,14 @@
             },
             "opening": {
               "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
               "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
             },
             "add": {
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
                 "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
               }
             },
@@ -680,7 +680,7 @@
               "type": "array",
               "items": {
                 "type": "string",
-                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
                 "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
               }
             }
@@ -712,12 +712,12 @@
             },
             "part": {
               "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
               "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
             },
             "whole": {
               "type": "string",
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*$",
+              "pattern": "^[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?(?:\\.[A-Za-z_][A-Za-z0-9_]*(?:\\[\\])?)*(?![\\s\\S])",
               "description": "Path from the record root to a numeric field, '.'-separated; `[]` after an array field means each of its items, e.g. `transactions[].amount`, except on an array the field itself is inside: there it means the item the field is in (the current row), e.g. `rows[].price` from `rows[].subtotal`."
             },
             "decimals": {
