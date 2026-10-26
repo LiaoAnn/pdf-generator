@@ -76,13 +76,22 @@ let cachedTree:
 
 /**
  * Where the value at `path` starts in a JSON text; for a path that doesn't
- * exist (a missing key), where its nearest existing ancestor starts.
+ * exist (a missing key), where its nearest existing ancestor starts. No
+ * position for a text nested too deeply to parse.
  */
 export function jsonPosition(
   text: string,
   path: (string | number)[],
-): { line: number; column: number } {
-  if (cachedTree?.text !== text) cachedTree = { text, root: parseTree(text) };
+): { line?: number; column?: number } {
+  if (cachedTree?.text !== text) {
+    try {
+      cachedTree = { text, root: parseTree(text) };
+    } catch (error) {
+      // parseTree recurses: deep nesting overflows the stack.
+      if (!(error instanceof RangeError)) throw error;
+      return {};
+    }
+  }
   const { root } = cachedTree;
   if (root === undefined) return { line: 1, column: 1 };
   for (let length = path.length; length >= 0; length--) {

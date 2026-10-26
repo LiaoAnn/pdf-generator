@@ -119,6 +119,16 @@ export const gtSchema = z
         const { rows, cols, cells } = block.table;
         const page = gt.pages[block.page - 1];
         cells.forEach((cell, j) => {
+          if (
+            page !== undefined &&
+            (cell.bbox[2] > page.width || cell.bbox[3] > page.height)
+          ) {
+            ctx.addIssue({
+              code: 'custom',
+              message: 'cell bbox lies outside its page',
+              path: ['blocks', i, 'table', 'cells', j, 'bbox'],
+            });
+          }
           // Checked against the page, not the cell: rounding can push a box
           // a fraction past its cell's edge.
           cell.checkboxes?.forEach((checkbox, k) => {
@@ -158,7 +168,7 @@ export const gtSchema = z
   })
   .meta({
     title: 'Ground truth (gt.json)',
-    description: `Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ${blockRules}; continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols; a cell checkbox's bbox lies inside its block's page. A page_number block's text is as printed on its page, with the page's number and the page count the print runtime wrote into its data-gt-page-number and data-gt-page-count slots after pagination.`,
+    description: `Every data-gt block of one printed PDF fixture. Not expressible in JSON Schema: ${blockRules}; continues names a block of the same type on an earlier page; a table cell's row + rowSpan ≤ rows and col + colSpan ≤ cols; a table cell's bbox and a cell checkbox's bbox lie inside its block's page. A page_number block's text is as printed on its page, with the page's number and the page count the print runtime wrote into its data-gt-page-number and data-gt-page-count slots after pagination.`,
   });
 
 export type GroundTruth = z.infer<typeof gtSchema>;

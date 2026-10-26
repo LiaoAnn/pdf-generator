@@ -8,9 +8,11 @@ export const maxBatchCount = 1000;
 
 const timestamp = z
   .string()
-  .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/)
+  .regex(
+    /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,3})?Z(?![\s\S])/,
+  )
   .describe('UTC time, e.g. 2026-10-23T15:46:22.998Z.');
-const batchId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/);
+const batchId = z.string().regex(/^[A-Za-z0-9_-]{1,64}(?![\s\S])/);
 const count = z.int().min(1).max(maxBatchCount);
 
 /** The body of every error response. */
@@ -19,7 +21,7 @@ export const apiErrorSchema = z
     error: z.strictObject({
       code: z
         .string()
-        .regex(/^[a-z][a-z0-9_]*$/)
+        .regex(/^[a-z][a-z0-9_]*(?![\s\S])/)
         .describe('Stable, machine-readable, e.g. invalid_template_pack.'),
       message: z.string().min(1).describe('Human-readable summary.'),
       details: z
@@ -29,7 +31,7 @@ export const apiErrorSchema = z
               message: z.string().min(1),
               code: z
                 .string()
-                .regex(/^[a-z][a-z0-9_-]*$/)
+                .regex(/^[a-z][a-z0-9_-]*(?![\s\S])/)
                 .optional()
                 .describe(
                   'Stable code of this problem, e.g. file-missing or font_not_loaded.',

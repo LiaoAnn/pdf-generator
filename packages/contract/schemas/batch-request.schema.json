@@ -6,7 +6,7 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 64,
-      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?![\\s\\S])",
       "description": "Lower-case kebab-case identifier, e.g. `company-monthly-report`."
     },
     "templateVersion": {
@@ -21,7 +21,7 @@
     },
     "seed": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]{1,64}$",
+      "pattern": "^[A-Za-z0-9_-]{1,64}(?![\\s\\S])",
       "description": "Seed: 1-64 of A-Z a-z 0-9 _ -."
     }
   },

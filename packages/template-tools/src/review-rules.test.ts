@@ -671,13 +671,13 @@ describe('review regressions: untrusted resource limits and prototype names', ()
       }),
     ).toEqual([{ code: 'pack-too-large', file: '.' }]);
   });
-  it('turns stack-overflowing rules into one located rules-invalid issue', () => {
+  it('preserves the level-33 rules issue without a position when JSON location parsing overflows', () => {
     const files = pack();
     files['rules.json'] =
       '{"schemaVersion":1,"fields":{"deep":' +
-      '{"type":"object","fields":{"child":'.repeat(2000) +
+      '{"type":"object","fields":{"child":'.repeat(200_000) +
       '{"type":"name"}' +
-      '}}'.repeat(2000) +
+      '}}'.repeat(200_000) +
       '}}';
     let result: ReturnType<typeof checkPack> | undefined;
     expect(() => {
@@ -686,16 +686,22 @@ describe('review regressions: untrusted resource limits and prototype names', ()
     expect(result).toMatchObject({ ok: false });
     expect(
       result?.issues.map(({ message, ...issue }) => {
-        expect(message).not.toBe('');
+        expect(issue).not.toHaveProperty('line');
+        expect(issue).not.toHaveProperty('column');
+        expect(message).toContain(
+          'fields nest 33 levels deep; the limit is 32',
+        );
         return issue;
       }),
     ).toEqual([
       {
         code: 'rules-invalid',
         file: 'rules.json',
-        line: 1,
-        column: 1,
-        path: [],
+        path: [
+          'fields',
+          'deep',
+          ...Array.from({ length: 32 }, () => ['fields', 'child']).flat(),
+        ],
       },
     ]);
   });
