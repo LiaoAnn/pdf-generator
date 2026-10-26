@@ -25,7 +25,7 @@ Before the first call in a thread, run `orchestrator_capabilities` once (with `s
 
 Common settings:
 - `isolation`: leave unset (shared). The child works in your worktree and sees your files.
-- `mode`: `"wait"` with `timeoutMs` 1800000 for a test author or a single lens; for several lenses at once, start each with `"async"` and collect them with `task_status`. If a wait times out, keep the `taskId` and check `task_status` again; don't start a duplicate.
+- `mode`: always `"async"`, then end your turn. Don't use `"wait"`: while you wait you can't take messages, so a child that asks you a question (for example how to handle a case the contract already rejects) waits on you while you wait on it. T05-2's test author sat that way until the coordinator found the queued question (2026-10-26). The child's completion or question wakes your thread in a new turn: answer a question with `t3_pending_request_respond` (the thread and request ids are in the notice), or relay it to the coordinator when the ticket and plan don't settle it. Keep each `taskId`; on waking, `task_status` tells you which children are done. If you are woken with nothing from a child, check `task_status` before starting a duplicate.
 - `role`: `"test"` for a test author, `"review"` for a lens.
 - `clientRequestId`: `<ticket>-<slice>-<role>-r<round>`, for example `T05-s2-tests-r1` or `T05-final-correctness-r1`. Keep it stable across retries of the same round; a new round gets a new number.
 - `title`: the same string as `clientRequestId`.
