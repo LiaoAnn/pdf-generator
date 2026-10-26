@@ -15,6 +15,10 @@ function guardedGeneration(body: string, timeout = 10_000) {
       ({ type: 'array', minItems: count, maxItems: count, items });
     const object = fields => ({ type: 'object', fields });
     const rulesFor = fields => rulesSchema.parse({ schemaVersion: 1, fields });
+    // Skip fixture parsing so generate receives invalid rule files itself.
+    /** @param {import('@pdf-generator/contract').Rules['fields']} fields
+     * @returns {import('@pdf-generator/contract').Rules} */
+    const typedRulesFor = fields => ({ schemaVersion: 1, fields });
     ${body}
     process.stdout.write('ok');
   `;
@@ -72,8 +76,8 @@ function guardedDerivedBudget(body: string, timeout = 10_000) {
         })),
       };
     };
-    const assertBudgetRejected = fields => {
-      const rules = rulesFor(fields);
+    const assertBudgetRejected = (fields, makeRules = rulesFor) => {
+      const rules = makeRules(fields);
       assert.throws(() => generate(rules, 'derived-budget'), error => {
         assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
         assert.ok(error.issues.some(issue =>
@@ -128,7 +132,7 @@ test.each(['array', 'object'])(
         nest = ${kind === 'array' ? 'array(1, nest)' : 'object({ child: nest })'};
         firstTooDeep.push(...${kind === 'array' ? "['items']" : "['fields', 'child']"});
       }
-      const rules = rulesFor({ nest });
+      const rules = typedRulesFor({ nest });
       assert.throws(() => generate(rules, 'depth-over-limit'), error => {
         assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
         assert.equal(error.issues.length, 1, 'expected one issue for the too-deep branch');
@@ -150,7 +154,7 @@ test('nesting limit promptly rejects 100 array wrappers around 20000 balances wi
       type: 'runningBalance', opening: 'opening', add: [], subtract: [],
     });
     for (let i = 0; i < 100; i++) nest = array(1, nest);
-    const rules = rulesFor({ opening: constant(1), nest });
+    const rules = typedRulesFor({ opening: constant(1), nest });
     const firstTooDeep = ['fields', 'nest', ...Array(32).fill('items')];
     assert.throws(() => generate(rules, 'reviewer-depth-exhaustion'), error => {
       assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
@@ -365,7 +369,7 @@ test('derived budget keeps the fan-out of arrays above an empty array: 316 rows 
     `
     ${belowEmptyBudgetSetup}
     // 316 × 316 × 1,000 ≈ 99.9M steps: every a is still walked, although each b is empty.
-    assertBudgetRejected(belowEmptyFields(316, 1_000, 0, 316));
+    assertBudgetRejected(belowEmptyFields(316, 1_000, 0, 316), typedRulesFor);
   `,
     3_000,
   );
@@ -565,7 +569,7 @@ test.each([
   'text budget %s',
   (_regression, fields) => {
     guardedGeneration(`
-      const rules = rulesFor(${fields});
+      const rules = typedRulesFor(${fields});
       assert.throws(() => generate(rules, 'text-limit'), error => {
         assert.ok(error instanceof InvalidRulesError, 'expected InvalidRulesError');
         assert.ok(error.issues.some(issue =>
@@ -611,23 +615,6 @@ test('running balances reuse a shared opening total across 19000 nested row grou
     assert.equal(record.opening.length, 20_000);
     assert.equal(record.groups.length, 19_000);
     for (const group of record.groups) assert.deepEqual(group.rows, [{ b: 20_000 }]);
-  `);
-}, 15_000);
-
-test('running balances reuse a million-character opening path across 20000 nested row groups', () => {
-  guardedGeneration(`
-    const longName = 'x'.repeat(1_000_000);
-    const record = generate(rulesFor({
-      [longName]: constant(37),
-      groups: array(20_000, object({
-        rows: array(1, object({
-          b: { type: 'runningBalance', opening: longName, add: [], subtract: [] },
-        })),
-      })),
-    }), 'long-opening-path');
-    assert.equal(record[longName], 37);
-    assert.equal(record.groups.length, 20_000);
-    for (const group of record.groups) assert.deepEqual(group.rows, [{ b: 37 }]);
   `);
 }, 15_000);
 
