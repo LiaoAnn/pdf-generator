@@ -141,17 +141,44 @@ test('nested arrays enforce filler characters inclusively without counting non-t
   );
 });
 
-test('zero-item arrays contribute neither values nor filler characters', () => {
-  const input = document(
-    array(
-      array(
-        { type: 'text', lang: 'en', minLength: 1, maxLength: 1_000_001 },
-        100_001,
+test('zero-item arrays contribute one value and zero filler characters', () => {
+  const input = (maxItems: number) => ({
+    schemaVersion: 1,
+    fields: {
+      header: { type: 'name' },
+      rows: array(
+        array(
+          { type: 'text', lang: 'en', minLength: 1, maxLength: 1_000_001 },
+          0,
+        ),
+        maxItems,
       ),
-      0,
-    ),
+    },
+  });
+  expect(rulesSchema.safeParse(input(99_999)).success).toBe(true);
+  expectIssue(
+    input(100_000),
+    ['fields'],
+    'a record would hold up to 100001 values; the limit is 100000',
   );
-  expect(rulesSchema.safeParse(input).success).toBe(true);
+});
+
+test('sibling empty arrays in object items multiply into the record value budget inclusively', () => {
+  const items: RuleField = {
+    type: 'object',
+    fields: Object.fromEntries(
+      Array.from({ length: 200 }, (_, i) => [
+        `e${i}`,
+        array({ type: 'name' }, 0),
+      ]),
+    ),
+  };
+  expect(rulesSchema.safeParse(document(array(items, 500))).success).toBe(true);
+  expectIssue(
+    document(array(items, 100_000)),
+    ['fields'],
+    'a record would hold up to 20000000 values; the limit is 100000',
+  );
 });
 
 test.each([
