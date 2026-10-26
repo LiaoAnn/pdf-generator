@@ -8,14 +8,53 @@ export interface Rng {
   int(min: number, max: number): number;
   /** Uniformly chosen element. */
   pick<T>(items: readonly T[]): T;
-  /** Element chosen with probability weights[i] / sum(weights). */
-  weighted<T>(items: readonly T[], weights: readonly number[]): T;
+  /**
+   * Element chosen with probability weights[i] / sum(weights). Pass a
+   * `weightTable` to draw many times from the same weights.
+   */
+  weighted<T>(items: readonly T[], weights: readonly number[] | WeightTable): T;
   /** True with probability `probability` (0 → never, 1 → always). */
   chance(probability: number): boolean;
 }
 
 const twoTo32 = 2 ** 32;
 const twoTo53 = 2 ** 53;
+
+/** Weights prepared once by `weightTable`, for many weighted draws. */
+export type WeightTable = {
+  /** Running sums of the weights, scaled so the largest is 1. */
+  readonly cumulative: readonly number[];
+  /** Index of the last positive weight. */
+  readonly last: number;
+};
+
+/** Checks `weights` and sums them once, so each draw is a binary search. */
+export function weightTable(weights: readonly number[]): WeightTable {
+  let largest = 0;
+  for (const weight of weights) {
+    if (!Number.isFinite(weight) || weight < 0) {
+      throw new RangeError(`invalid weight ${weight}`);
+    }
+    largest = Math.max(largest, weight);
+  }
+  if (largest === 0) {
+    throw new RangeError(
+      'weights need one finite entry per item and a positive sum',
+    );
+  }
+  // Relative to the largest weight, so the total cannot overflow. Zero
+  // weights add nothing, so they are never the first sum above a target.
+  const cumulative: number[] = [];
+  let sum = 0;
+  let last = 0;
+  for (let i = 0; i < weights.length; i++) {
+    const weight = (weights[i] as number) / largest;
+    if (weight > 0) last = i;
+    sum += weight;
+    cumulative.push(sum);
+  }
+  return { cumulative, last };
+}
 
 /** A stream's 128-bit identity: four uint32 words. */
 export type StreamId = readonly [number, number, number, number];
@@ -143,38 +182,30 @@ export function streamRng(id: StreamId): Rng {
       if (items.length === 0) throw new RangeError('cannot pick from nothing');
       return items[below(items.length)] as T;
     },
-    weighted<T>(items: readonly T[], weights: readonly number[]): T {
-      let largest = 0;
-      for (const weight of weights) {
-        if (!Number.isFinite(weight) || weight < 0) {
-          throw new RangeError(`invalid weight ${weight}`);
-        }
-        largest = Math.max(largest, weight);
-      }
-      if (
-        items.length === 0 ||
-        weights.length !== items.length ||
-        largest === 0
-      ) {
+    weighted<T>(
+      items: readonly T[],
+      weights: readonly number[] | WeightTable,
+    ): T {
+      const { cumulative, last } = Array.isArray(weights)
+        ? weightTable(weights as readonly number[])
+        : (weights as WeightTable);
+      if (items.length === 0 || cumulative.length !== items.length) {
         throw new RangeError(
           'weights need one finite entry per item and a positive sum',
         );
       }
-      // Relative to the largest weight, so the total cannot overflow.
-      const scaled = weights.map(weight => weight / largest);
-      const total = scaled.reduce((sum, weight) => sum + weight, 0);
+      const total = cumulative[cumulative.length - 1] as number;
       const target = (below(twoTo53) / twoTo53) * total;
-      let last = 0;
-      let cumulative = 0;
-      for (let i = 0; i < scaled.length; i++) {
-        const weight = scaled[i] as number;
-        if (weight === 0) continue;
-        last = i;
-        cumulative += weight;
-        if (target < cumulative) return items[i] as T;
+      // The first running sum above target.
+      let low = 0;
+      let high = cumulative.length;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (target < (cumulative[middle] as number)) high = middle;
+        else low = middle + 1;
       }
       // Rounding can leave target at the total: take the last positive weight.
-      return items[last] as T;
+      return items[low < cumulative.length ? low : last] as T;
     },
     chance(probability: number): boolean {
       if (!(probability >= 0 && probability <= 1)) {
