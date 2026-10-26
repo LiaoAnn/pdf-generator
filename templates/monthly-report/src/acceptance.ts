@@ -2,7 +2,7 @@
 // and checks it. Passes when every fixture's self-check passes, every page
 // has the running header, footer and correct page number in gt.json, and the lists, tables,
 // figure and remarks in gt.json are the ones its data.json asks for.
-//   pnpm --filter @pdf-generator/monthly-report acceptance -- \
+//   pnpm --filter @pdf-generator/monthly-report acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t22]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { readdirSync, readFileSync } from 'node:fs';

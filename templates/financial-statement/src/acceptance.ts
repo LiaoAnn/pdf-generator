@@ -4,7 +4,7 @@
 // fragment of the split statement table starts with the same three header
 // rows with the first page's column x ranges, and the table rows in gt.json
 // are the ones its data.json asks for.
-//   pnpm --filter @pdf-generator/financial-statement acceptance -- \
+//   pnpm --filter @pdf-generator/financial-statement acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t24]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { readdirSync, readFileSync } from 'node:fs';

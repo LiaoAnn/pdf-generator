@@ -2,7 +2,7 @@
 // and checks it. Passes when every fixture's self-check passes and every
 // gt.json agrees with its data.json (src/compare.ts): each formula's LaTeX,
 // the numbered references, the first-page footnotes and the two columns.
-//   pnpm --filter @pdf-generator/paper acceptance -- \
+//   pnpm --filter @pdf-generator/paper acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t25]
 // Signs in with the local Access stand-in's service token (vite dev only).
 import { readdirSync, readFileSync } from 'node:fs';
