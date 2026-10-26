@@ -110,7 +110,7 @@ test('nested array multiplication and sibling addition enforce the record value 
   );
 });
 
-test('nested arrays enforce filler characters inclusively without counting non-text leaves', () => {
+test('nested arrays enforce text characters inclusively without counting numeric leaves', () => {
   const input = (maxLength: number) =>
     document(
       array(
@@ -125,7 +125,7 @@ test('nested arrays enforce filler characters inclusively without counting non-t
                 minLength: 1,
                 maxLength: 400,
               },
-              literal: { type: 'constant', value: 'not filler' },
+              literal: { type: 'constant', value: 123 },
             },
           },
           100,
@@ -137,31 +137,114 @@ test('nested arrays enforce filler characters inclusively without counting non-t
   expectIssue(
     input(601),
     ['fields'],
-    'a record would hold up to 1001000 characters of filler text; the limit is 1000000',
+    'a record would hold up to 1001000 characters of text; the limit is 1000000',
   );
 });
 
-test('zero-item arrays contribute one value and zero filler characters', () => {
-  const input = (maxItems: number) => ({
-    schemaVersion: 1,
-    fields: {
-      header: { type: 'name' },
-      rows: array(
-        array(
-          { type: 'text', lang: 'en', minLength: 1, maxLength: 1_000_001 },
-          0,
-        ),
-        maxItems,
-      ),
+test.each([
+  ['string constant', { type: 'constant', value: 'x'.repeat(60_000) }],
+  [
+    'longest string choice option',
+    { type: 'choice', options: ['short', 123, false, 'x'.repeat(60_000)] },
+  ],
+] satisfies [string, RuleField][])(
+  'rejects 6000000000 characters from an array of %s leaves',
+  (_label, items) => {
+    expectIssue(
+      document(array(items, 100_000)),
+      ['fields'],
+      'a record would hold up to 6000000000 characters of text; the limit is 1000000',
+    );
+  },
+);
+
+test.each([
+  ['string constant', { type: 'constant', value: 'x'.repeat(10_000) }],
+  [
+    'longest string choice option',
+    {
+      type: 'choice',
+      options: ['x'.repeat(10_000), 'y'.repeat(9_999), 123, true],
     },
-  });
-  expect(rulesSchema.safeParse(input(99_999)).success).toBe(true);
+  ],
+] satisfies [string, RuleField][])(
+  'accepts exactly 1000000 characters from an array of %s leaves',
+  (_label, items) => {
+    expect(rulesSchema.safeParse(document(array(items, 100))).success).toBe(
+      true,
+    );
+  },
+);
+
+test('adds text maxLength, string constants and the longest string choice across nested arrays inclusively', () => {
+  const input = (maxLength: number) =>
+    document(
+      array(
+        array(
+          {
+            type: 'object',
+            fields: {
+              prose: { type: 'text', lang: 'en', minLength: 1, maxLength },
+              literal: { type: 'constant', value: 'x'.repeat(300) },
+              choice: {
+                type: 'choice',
+                options: ['y'.repeat(500), 'z'.repeat(499), 123, false],
+              },
+            },
+          },
+          100,
+        ),
+        10,
+      ),
+    );
+  expect(rulesSchema.safeParse(input(200)).success).toBe(true);
   expectIssue(
-    input(100_000),
+    input(201),
     ['fields'],
-    'a record would hold up to 100001 values; the limit is 100000',
+    'a record would hold up to 1001000 characters of text; the limit is 1000000',
   );
 });
+
+test('number and boolean choice options contribute zero text characters', () => {
+  expect(
+    rulesSchema.safeParse(
+      document(
+        array({ type: 'choice', options: [1234567890, true, false] }, 100_000),
+      ),
+    ).success,
+  ).toBe(true);
+});
+
+test('string constants use JS string length rather than Unicode code point count', () => {
+  expectIssue(
+    document(array({ type: 'constant', value: '😀'.repeat(5_001) }, 100)),
+    ['fields'],
+    'a record would hold up to 1000200 characters of text; the limit is 1000000',
+  );
+});
+
+test.each([
+  ['text', { type: 'text', lang: 'en', minLength: 1, maxLength: 1_000_001 }],
+  ['string constant', { type: 'constant', value: 'x'.repeat(1_000_001) }],
+  ['string choice', { type: 'choice', options: ['x'.repeat(1_000_001)] }],
+] satisfies [string, RuleField][])(
+  'zero-item arrays contribute one value and zero characters for %s leaves',
+  (_label, items) => {
+    const input = (maxItems: number) => ({
+      schemaVersion: 1,
+      fields: {
+        header: { type: 'name' },
+        rows: array(array(items, 0), maxItems),
+      },
+    });
+    expect(rulesSchema.safeParse(input(99_999)).success).toBe(true);
+    expectIssue(
+      input(100_000),
+      ['fields'],
+      'a record would hold up to 100001 values; the limit is 100000',
+    );
+  },
+);
 
 test('sibling empty arrays in object items multiply into the record value budget inclusively', () => {
   const items: RuleField = {
@@ -246,4 +329,8 @@ test('Python consumers can discover runtime budgets in the rules schema descript
   );
   for (const limit of [/\b32\b/, /\b100000\b/, /\b1000000\b/])
     expect.soft(description).toMatch(limit);
+  expect.soft(description).toMatch(/1000000 characters of text/);
+  expect.soft(description).toMatch(/text maxLength/);
+  expect.soft(description).toMatch(/string constants/);
+  expect.soft(description).toMatch(/longest string choice option/);
 });

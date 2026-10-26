@@ -390,7 +390,7 @@ export const ruleLimits = {
   maxLevels: 32,
   /** The most values one record may hold. */
   maxValues: 100_000,
-  /** The most filler-text characters one record may hold. */
+  /** The most characters of text one record may hold. */
   maxTextCharacters: 1_000_000,
 } as const;
 
@@ -472,6 +472,26 @@ function worstCase(
   }
 }
 
+/** The most characters of text `field` holds; names, ids and the like are short and counted as values. */
+function longestText(field: RuleField): number {
+  switch (field.type) {
+    case 'text':
+      return field.maxLength;
+    case 'constant':
+      return typeof field.value === 'string' ? field.value.length : 0;
+    case 'choice':
+      return field.options.reduce<number>(
+        (longest, option) =>
+          typeof option === 'string'
+            ? Math.max(longest, option.length)
+            : longest,
+        0,
+      );
+    default:
+      return 0;
+  }
+}
+
 /** `rules.json` in a template pack: how the fake-data engine builds a record. */
 export const rulesSchema = z
   .unknown()
@@ -516,20 +536,18 @@ export const rulesSchema = z
         path: ['fields'],
       });
     }
-    const characters = worstCase(record, field =>
-      field.type === 'text' ? field.maxLength : 0,
-    );
+    const characters = worstCase(record, longestText);
     if (characters > ruleLimits.maxTextCharacters) {
       ctx.addIssue({
         code: 'custom',
-        message: `a record would hold up to ${characters} characters of filler text; the limit is ${ruleLimits.maxTextCharacters}`,
+        message: `a record would hold up to ${characters} characters of text; the limit is ${ruleLimits.maxTextCharacters}`,
         path: ['fields'],
       });
     }
   })
   .meta({
     title: 'Fake-data rule file',
-    description: `rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with \`[]\` exactly on array fields; \`[]\` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items; fields nest at most ${ruleLimits.maxLevels} levels (a root field is level 1, an object's fields and an array's items one level deeper); counting the most each array can hold (maxItems × its items; an empty array is one value), a record holds at most ${ruleLimits.maxValues} values and ${ruleLimits.maxTextCharacters} characters of filler text (the sum of text maxLength).`,
+    description: `rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with \`[]\` exactly on array fields; \`[]\` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items; fields nest at most ${ruleLimits.maxLevels} levels (a root field is level 1, an object's fields and an array's items one level deeper); counting the most each array can hold (maxItems × its items; an empty array is one value), a record holds at most ${ruleLimits.maxValues} values and ${ruleLimits.maxTextCharacters} characters of text (counting text maxLength, string constants and the longest string choice option).`,
   });
 
 export type Rules = z.infer<typeof rulesSchema>;
