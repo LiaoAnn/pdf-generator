@@ -3,18 +3,26 @@ import type { Rules } from '@pdf-generator/contract';
 import { expect, test } from 'vitest';
 import { generate } from './engine.ts';
 
-test('long ancestor keys do not multiply random-stream derivation work by the number of values', () => {
-  // Run both workloads in one fresh process, away from Vitest transforms.
-  // The ratio detects repeated path hashing without a machine-specific ms bound.
-  const script = `
+test.each(['ancestor', 'array-row field'])(
+  'long %s keys do not multiply random-stream derivation work by the number of values',
+  shape => {
+    // Run both workloads in one fresh process, away from Vitest transforms.
+    // The ratio detects repeated path hashing without a machine-specific ms bound.
+    const script = `
     import assert from 'node:assert/strict';
     import { generate } from ${JSON.stringify(new URL('./engine.ts', import.meta.url).href)};
     const count = 4_000;
-    const rulesFor = key => ({ schemaVersion: 1, fields: {
+    const shape = ${JSON.stringify(shape)};
+    const rulesFor = key => ({ schemaVersion: 1, fields: shape === 'ancestor' ? {
       [key]: { type: 'object', fields: {
         rows: { type: 'array', minItems: count, maxItems: count,
           items: { type: 'integer', min: 0, max: 1_000_000, blankProbability: 0.25 } },
       } },
+    } : {
+      rows: { type: 'array', minItems: count, maxItems: count,
+        items: { type: 'object', fields: {
+          [key]: { type: 'integer', min: 0, max: 1_000_000, blankProbability: 0.25 },
+        } } },
     } });
     const keys = ['x', 'x'.repeat(100_000)];
     const rules = keys.map(rulesFor);
@@ -23,7 +31,11 @@ test('long ancestor keys do not multiply random-stream derivation work by the nu
       const start = performance.now();
       const record = generate(rules[variant], seed);
       const elapsed = performance.now() - start;
-      assert.equal(record[keys[variant]].rows.length, count);
+      const rows = shape === 'ancestor' ? record[keys[variant]].rows : record.rows;
+      assert.equal(rows.length, count);
+      if (shape !== 'ancestor') {
+        assert.ok(rows.every(row => Object.hasOwn(row, keys[variant])));
+      }
       return elapsed;
     };
     // Warm both shapes, then alternate which runs first to limit order bias.
@@ -39,11 +51,13 @@ test('long ancestor keys do not multiply random-stream derivation work by the nu
       'long-key median ' + long.toFixed(2) + ' ms / short-key median ' +
       short.toFixed(2) + ' ms = ' + (long / short).toFixed(2) + 'x; expected <= 3x');
   `;
-  execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
-    encoding: 'utf8',
-    timeout: 60_000,
-  });
-}, 70_000);
+    execFileSync(process.execPath, ['--input-type=module', '--eval', script], {
+      encoding: 'utf8',
+      timeout: 60_000,
+    });
+  },
+  70_000,
+);
 
 test('nested paths, sibling names and array indices retain distinct value streams', () => {
   const integer = { type: 'integer', min: 0, max: 1_000_000 } as const;
