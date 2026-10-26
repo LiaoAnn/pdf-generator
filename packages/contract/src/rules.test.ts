@@ -200,7 +200,7 @@ describe('rules consumed by the seeded data engine', () => {
     { type: 'constant', value: false },
     { type: 'constant', value: '' },
     { type: 'choice', options: ['活期'] },
-    { type: 'date', min: '2026-02-31', max: '2026-02-31' },
+    { type: 'date', min: '2026-02-28', max: '2026-02-28' },
     { type: 'money', min: -1.5, max: -1.5, decimals: 0 },
     { type: 'integer', min: -1, max: -1 },
     { type: 'number', min: -0.5, max: -0.5, decimals: 0 },
@@ -604,3 +604,57 @@ describe('root-relative numeric FieldPath resolution', () => {
     },
   );
 });
+
+// Slice 2: YYYY-MM-DD must describe a Gregorian calendar day.
+test.each(
+  ['2026-02-31', '2026-04-31', '2023-02-29', '1900-02-29'].flatMap(date =>
+    ['min', 'max'].map(bound => ({ date, bound })),
+  ),
+)('rejects impossible Gregorian date $date at $bound', ({ date, bound }) => {
+  const field = {
+    type: 'date',
+    min: '1800-01-01',
+    max: '2100-12-31',
+    [bound]: date,
+  };
+  expectIssue(document(field), ['fields', 'value', bound]);
+});
+
+test.each(['2024-02-29', '2000-02-29', '2026-12-31'])(
+  'accepts real Gregorian date %s at both bounds',
+  date => {
+    const input = document({ type: 'date', min: date, max: date });
+    expect(rulesSchema.parse(input)).toEqual(input);
+  },
+);
+
+// Slice 4: top-level derived fields must resolve their references too.
+test.each([
+  ['sum', { type: 'sum', of: ['missing'] }, ['of', 0]],
+  [
+    'percentage',
+    { type: 'percentage', part: 'missing', whole: 'opening', decimals: 2 },
+    ['part'],
+  ],
+  [
+    'runningBalance',
+    { type: 'runningBalance', opening: 'missing', add: [], subtract: [] },
+    ['opening'],
+  ],
+] as const)(
+  'rejects a top-level %s referencing a missing numeric field',
+  (_type, field, suffix) => {
+    const result = rulesSchema.safeParse({
+      schemaVersion: 1,
+      fields: { opening: { type: 'constant', value: 100 }, x: field },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          message: 'missing does not name a numeric field',
+          path: ['fields', 'x', ...suffix],
+        }),
+      );
+  },
+);

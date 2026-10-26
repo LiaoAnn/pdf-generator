@@ -25,7 +25,7 @@
   ],
   "additionalProperties": false,
   "title": "Fake-data rule file",
-  "description": "rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.",
+  "description": "rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.",
   "$defs": {
     "RuleField": {
       "oneOf": [

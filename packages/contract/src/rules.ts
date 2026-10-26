@@ -26,11 +26,20 @@ export const taiwanCities = [
   '連江縣',
 ] as const;
 
+/** Whether a `YYYY-MM-DD` string names a day of the Gregorian calendar. */
+function isCalendarDate(date: string): boolean {
+  const [year = 0, month = 0, day = 0] = date.split('-').map(Number);
+  const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  return day <= (days[month - 1] ?? 0);
+}
+
 const probability = z.number().min(0).max(1);
 const gender = z.enum(['male', 'female', 'any']);
 const isoDate = z
   .string()
   .regex(/^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])(?![\s\S])/)
+  .refine(isCalendarDate, 'not a calendar date')
   .describe('YYYY-MM-DD');
 const decimals = (max: number) => z.int().min(0).max(max);
 
@@ -403,7 +412,7 @@ export const rulesSchema = z
   .meta({
     title: 'Fake-data rule file',
     description:
-      'rules.json in a template pack. Not expressible in JSON Schema: min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.',
+      'rules.json in a template pack. Not expressible in JSON Schema: date min and max are days of the Gregorian calendar (no 2026-02-31); min ≤ max (date, money, integer, number), minLength ≤ maxLength, minItems ≤ maxItems; choice weights have one entry per option and a positive sum; every field path resolves, from the record root, to a numeric field (money, integer, number, sum, runningBalance, percentage, or a numeric constant), with `[]` exactly on array fields; `[]` on an array the field itself is inside means the current row; sortBy on an array names a date field of its object items.',
   });
 
 export type Rules = z.infer<typeof rulesSchema>;

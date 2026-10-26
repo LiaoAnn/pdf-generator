@@ -579,3 +579,27 @@ describe('ground truth table fragments', () => {
     expect(gtSchema.safeParse(tableDocument({}, patch)).success).toBe(false);
   });
 });
+
+// Slice 2: cells use their referenced page's dimensions, just like blocks.
+test.each([
+  ['x1', [0, 0, 595.29, 20]],
+  ['y1', [0, 0, 100, 841.9]],
+])(
+  'rejects a table cell with %s beyond its page at the cell bbox',
+  (_axis, bbox) => {
+    const result = gtSchema.safeParse(tableDocument({}, { bbox }));
+    expect(result.success).toBe(false);
+    if (!result.success)
+      expect(result.error.issues).toContainEqual(
+        expect.objectContaining({
+          message: 'cell bbox lies outside its page',
+          path: ['blocks', 0, 'table', 'cells', 0, 'bbox'],
+        }),
+      );
+  },
+);
+
+test('accepts a table cell ending exactly at its referenced page edge', () => {
+  const value = tableDocument({}, { bbox: [0, 0, 595.28, 841.89] }, 2);
+  expect(gtSchema.parse(value)).toEqual(value);
+});
