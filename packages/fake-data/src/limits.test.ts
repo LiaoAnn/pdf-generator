@@ -27,6 +27,35 @@ function guardedGeneration(body: string, timeout = 10_000) {
   ).toBe('ok');
 }
 
+// Pair samples in one process and alternate order to balance JIT/GC effects.
+// Child timeouts contain runaway mutants; they are not performance assertions.
+const relativeGenerationTiming = `
+  const compareWork = (run, reference, limit, label) => {
+    reference();
+    run();
+    const samples = [[], []];
+    let record;
+    for (let round = 0; round < 3; round++) {
+      for (const which of (round % 2 ? [1, 0] : [0, 1])) {
+        const start = performance.now();
+        const result = (which ? run : reference)();
+        samples[which].push(performance.now() - start);
+        if (which) record = result;
+      }
+    }
+    const median = values => values.sort((a, b) => a - b)[1];
+    const baseline = median(samples[0]);
+    const elapsed = median(samples[1]);
+    assert.ok(elapsed / baseline < limit,
+      label + ': median ' + elapsed.toFixed(1) + ' ms / baseline ' +
+      baseline.toFixed(1) + ' ms = ' + (elapsed / baseline).toFixed(2) +
+      ', expected ratio < ' + limit);
+    return record;
+  };
+  const compareGeneration = (rules, reference, seed, limit, label) =>
+    compareWork(() => generate(rules, seed), () => generate(reference, seed), limit, label);
+`;
+
 function guardedDerivedBudget(body: string, timeout = 10_000) {
   guardedGeneration(
     `
@@ -633,7 +662,8 @@ test('running balances collapse 100000 repeated add paths across 20000 rows whil
 }, 15_000);
 
 test('distinct sums share the empty-array prefix across 20000 rows and 5000 columns promptly', () => {
-  guardedGeneration(`
+  guardedGeneration(
+    `
     const columns = Array.from({ length: 5_000 }, (_, i) => 'v' + i);
     // 5,000 sum leaves and derived steps + 20,000 row objects + 20,000 empty arrays + 1 outer array.
     const rules = rulesFor({
@@ -644,18 +674,35 @@ test('distinct sums share the empty-array prefix across 20000 rows and 5000 colu
         'sum_' + key, { type: 'sum', of: ['rows[].empty[].' + key] },
       ])),
     });
-    const start = performance.now();
+    ${relativeGenerationTiming}
+    // A 500-column timing probe keeps the uncached mutant cheap enough to
+    // reach the ratio assertion. The full 5,000-column record is checked below.
+    const timedColumns = columns.slice(0, 500);
+    const probe = rulesFor({
+      rows: array(20_000, object({
+        empty: array(0, object(Object.fromEntries(timedColumns.map(key => [key, constant(1)])))),
+      })),
+      ...Object.fromEntries(timedColumns.map(key => ['sum_' + key, rules.fields['sum_' + key]])),
+    });
+    // 100× fewer rows: sharing pays for paths + rows, not paths × rows.
+    const reference = structuredClone(probe);
+    reference.fields.rows.minItems = reference.fields.rows.maxItems = 200;
+    const measured = compareGeneration(probe, reference, 'shared-empty-prefix', 12,
+      'shared empty prefix');
+    assert.equal(measured.rows.length, 20_000);
+    for (const key of timedColumns) assert.equal(measured['sum_' + key], 0, key);
     const record = generate(rules, 'shared-empty-prefix');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 2_000, 'shared empty prefix took ' + elapsed.toFixed(1) + ' ms');
     assert.equal(record.rows.length, 20_000);
     for (const row of record.rows) assert.deepEqual(row, { empty: [] });
     for (const key of columns) assert.equal(record['sum_' + key], 0, key);
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test('distinct sums and percentages share populated column prefixes across 2000 rows promptly', () => {
-  guardedGeneration(`
+  guardedGeneration(
+    `
     const columns = Array.from({ length: 40 }, (_, i) => ['v' + i, i + 3]);
     const rules = rulesFor({
       rows: array(2_000, object({
@@ -668,10 +715,47 @@ test('distinct sums and percentages share populated column prefixes across 2000 
         }],
       ])),
     });
-    const start = performance.now();
+    ${relativeGenerationTiming}
+    // Generation/arithmetic mask the shallow c prefix. Amplify its depth in
+    // a bounded probe: 800 rows, 29 objects, 40 columns (<100,000 values).
+    // The flat reference reads the same 32,000 values and computes the same
+    // sums/percentages, without a shared object prefix to rediscover.
+    let deep = object(Object.fromEntries(columns.map(([key, value]) => [key, constant(value)])));
+    for (let i = 1; i < 29; i++) deep = object({ child: deep });
+    const prefix = 'rows[].c.' + 'child.'.repeat(28);
+    const probe = rulesFor({
+      rows: array(800, object({ c: deep })),
+      ...Object.fromEntries(columns.flatMap(([key]) => [
+        ['sum_' + key, { type: 'sum', of: [prefix + key] }],
+        ['ratio_' + key, { type: 'percentage', part: prefix + key, whole: prefix + 'v0', decimals: 2 }],
+      ])),
+    });
+    const reference = rulesFor({
+      ...Object.fromEntries(columns.map(([key, value]) => [key, array(800, constant(value))])),
+      ...Object.fromEntries(columns.flatMap(([key]) => [
+        ['sum_' + key, { type: 'sum', of: [key + '[]'] }],
+        ['ratio_' + key, { type: 'percentage', part: key + '[]', whole: 'v0[]', decimals: 2 }],
+      ])),
+    });
+    // Time derived traversal alone, so generating the extra wrappers does not
+    // hide lost prefix sharing. Each fill creates fresh evaluation caches.
+    const { derivedOrder, fillDerived } = await import(${JSON.stringify(new URL('./derived.ts', import.meta.url).href)});
+    const probeRecord = generate(probe, 'shared-populated-prefix');
+    const referenceRecord = generate(reference, 'shared-populated-prefix');
+    const probeOrder = derivedOrder(probe).order;
+    const referenceOrder = derivedOrder(reference).order;
+    const measured = compareWork(() => {
+      assert.deepEqual(fillDerived(probeRecord, probe, probeOrder), []);
+      return probeRecord;
+    }, () => {
+      assert.deepEqual(fillDerived(referenceRecord, reference, referenceOrder), []);
+      return referenceRecord;
+    }, 2.5, 'shared populated prefix');
+    for (const [key, value] of columns) {
+      assert.equal(measured['sum_' + key], 800 * value);
+      assert.equal(measured['ratio_' + key], Math.round(value * 10_000 / 3) / 100);
+    }
     const record = generate(rules, 'shared-populated-prefix');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 2_000, 'shared populated prefix took ' + elapsed.toFixed(1) + ' ms');
     assert.equal(record.rows.length, 2_000);
     for (const [key, value] of columns) {
       const expectedSum = 2_000 * value;
@@ -679,11 +763,14 @@ test('distinct sums and percentages share populated column prefixes across 2000 
       assert.equal(record['sum_' + key], expectedSum, key);
       assert.equal(record['ratio_' + key], expectedPercentage, key);
     }
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test('running balances share deep distinct add prefixes across 1000 rows and 20 balances promptly', () => {
-  guardedGeneration(`
+  guardedGeneration(
+    `
     const values = Array.from({ length: 40 }, (_, i) => i + 1);
     let nested = object(Object.fromEntries(values.map(value => ['v' + (value - 1), constant(value)])));
     // rows is level 1, its item level 2, 29 objects levels 3–31, constants level 32.
@@ -700,10 +787,19 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
         ])),
       })),
     });
-    const start = performance.now();
-    const record = generate(rules, 'shared-deep-row-prefix');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 2_000, 'shared deep row prefix took ' + elapsed.toFixed(1) + ' ms');
+    ${relativeGenerationTiming}
+    // Same rows, values, balances and additions, without the 28 single-child
+    // wrappers. Sharing adds O(rows × depth), not
+    // O(rows × balances × columns × depth).
+    const reference = structuredClone(rules);
+    reference.fields.rows.items.fields.deep = object(Object.fromEntries(
+      values.map(value => ['v' + (value - 1), constant(value)])));
+    for (let b = 0; b < 20; b++) {
+      reference.fields.rows.items.fields['b' + b].add =
+        values.map((_, i) => 'rows[].deep.v' + i);
+    }
+    const record = compareGeneration(rules, reference, 'shared-deep-row-prefix', 3,
+      'shared deep row prefix');
     assert.equal(record.rows.length, 1_000);
     const increment = values.reduce((sum, value) => sum + value, 0);
     for (const [i, row] of record.rows.entries()) {
@@ -711,8 +807,10 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
         assert.equal(row['b' + b], 17 + (i + 1) * increment, 'row ' + i + ', balance ' + b);
       }
     }
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test.each([
   [
@@ -763,7 +861,8 @@ test.each([
 ])(
   '%s',
   (_regression, opening) => {
-    guardedGeneration(`
+    guardedGeneration(
+      `
       const opening = ${opening};
       // 7,000 rows × 10 balances = 70,000 derived steps; 91,002 values.
       const rules = rulesFor({
@@ -777,19 +876,35 @@ test.each([
           ])),
         })),
       });
-      const start = performance.now();
+      ${relativeGenerationTiming}
+      // A 1,000-row probe keeps repeated samples cheap; check the original
+      // 7,000-row record below. The reference does the same add/subtract/print
+      // operations at ordinary magnitudes: zeros must not cost hundreds of
+      // divisions per normalization.
+      const probe = structuredClone(rules);
+      probe.fields.rows.minItems = probe.fields.rows.maxItems = 1_000;
+      const reference = structuredClone(probe);
+      reference.fields.opening.value = 1;
+      reference.fields.rows.items.fields.p.value = 1;
+      reference.fields.rows.items.fields.q.value = 1;
+      const measured = compareGeneration(probe, reference, 'extreme-constants', 8,
+        'extreme constants');
+      assert.equal(measured.rows.length, 1_000);
+      for (const row of measured.rows) {
+        for (let b = 0; b < 10; b++) assert.equal(row['b' + b], opening);
+      }
       const record = generate(rules, 'extreme-constants');
-      const elapsed = performance.now() - start;
-      assert.ok(elapsed < 2_000, 'extreme constants took ' + elapsed.toFixed(1) + ' ms');
       assert.equal(record.rows.length, 7_000);
       for (const [i, row] of record.rows.entries()) {
         for (let b = 0; b < 10; b++) {
           assert.equal(row['b' + b], opening, 'row ' + i + ', balance ' + b);
         }
       }
-    `);
+    `,
+      30_000,
+    );
   },
-  15_000,
+  35_000,
 );
 
 test('running balances deep inside nested arrays stay fast for 33000 rows × 10 paths × 31 levels', () => {
