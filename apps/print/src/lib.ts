@@ -88,6 +88,13 @@ export interface PrintedState {
    */
   outsidePages?: string[];
   /**
+   * `"page <n> <tag> clipped <how far> at the <side>"` of every data-gt
+   * element or element inside one that an ancestor (`overflow`, `contain:
+   * paint`, `clip-path`, ...) clips in print, inside its page's content area
+   * (T07-25).
+   */
+  clippedContent?: string[];
+  /**
    * Per page, whether it paints text, a background or a border at its own
    * scale (outside SVG and CSS transforms): what the PDF must draw at 0.75 pt
    * per CSS px unless Chrome shrank the page.
@@ -123,7 +130,8 @@ export type RenderErrorCode =
   | 'css_animation'
   | 'layout_unsettled'
   | 'request_blocked'
-  | 'print_overflow';
+  | 'print_overflow'
+  | 'content_clipped';
 
 /** A render that must not produce a PDF. */
 export class RenderError extends Error {
@@ -496,7 +504,7 @@ function rejectViewportBoxes(
 type PrintedReader = {
   __pdfgen: {
     loadPrintResources(): Promise<void>;
-    printed(options: { pageWidth: number }): PrintedState;
+    printed(options: { pageWidth: number }): Promise<PrintedState>;
     boxes(pageWidth?: number): {
       boxes: string[];
       viewportDependent: string[];
@@ -723,6 +731,19 @@ async function print<T>(
       'print_overflow',
       'Content reaches outside its page only in print, where Paged.js did not paginate',
       printed.outsidePages,
+    );
+  }
+  // gt.json describes the whole box and text of what an ancestor clips, the
+  // PDF only the part it shows (T07-25). Moved page boxes are refused below.
+  if (
+    printed.clippedContent &&
+    printed.clippedContent.length > 0 &&
+    !printed.movedBoxes?.length
+  ) {
+    throw new RenderError(
+      'content_clipped',
+      'Some data-gt content is clipped by an ancestor',
+      printed.clippedContent,
     );
   }
   if (
