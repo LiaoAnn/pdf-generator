@@ -79,13 +79,17 @@
     }
   };
 
-  // Elements with their own text, and ::before/::after with content.
+  // Elements with their own text, and ::before/::after with content. A
+  // page-number slot (T02-5) counts as having text: fillPageNumbers writes its
+  // digits only after Paged.js has laid the pages out.
   function findUsedInDocument() {
     for (const element of document.querySelectorAll('body, body *')) {
-      const ownText = [...element.childNodes].some(
-        node =>
-          node.nodeType === Node.TEXT_NODE && node.textContent?.trim() !== '',
-      );
+      const ownText =
+        element.matches('[data-gt-page-number], [data-gt-page-count]') ||
+        [...element.childNodes].some(
+          node =>
+            node.nodeType === Node.TEXT_NODE && node.textContent?.trim() !== '',
+        );
       if (ownText) {
         const style = getComputedStyle(element);
         use(style.fontFamily, style.fontWeight);

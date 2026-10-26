@@ -20,7 +20,10 @@ const slots =
   '第 <span data-gt-page-number></span> 頁，共 <span data-gt-page-count></span> 頁';
 const compact = (text: string) => text.replace(/\s/g, '');
 
-async function printThreePages(runningFooter: boolean) {
+async function printThreePages(runningFooter: boolean, slotOnlyFont = false) {
+  const pageSlots = slotOnlyFont
+    ? slots.replaceAll('<span ', '<span class="page-digit" ')
+    : slots;
   const response = await fetch(new URL('/print', (await worker.url).href), {
     method: 'POST',
     headers: {
@@ -34,15 +37,16 @@ async function printThreePages(runningFooter: boolean) {
             ${runningFooter ? '@bottom-right { content: element(pageNumber); }' : ''}
           }
           body { margin: 0; font: 16px "Noto Sans TC"; }
+          ${slotOnlyFont ? '.page-digit { font-family: "Noto Serif TC"; font-weight: 700; }' : ''}
           .pn { position: running(pageNumber); white-space: nowrap; }
           section { height: 100mm; }
           section + section { break-before: page; }
           p { margin: 0; }
         </style></head><body>
-        ${runningFooter ? `<div class="pn" data-gt="page_number">${slots}</div>` : ''}
+        ${runningFooter ? `<div class="pn" data-gt="page_number">${pageSlots}</div>` : ''}
         <section><p data-gt="paragraph">Alpha</p></section>
         <section><p data-gt="paragraph">Beta</p>
-          ${runningFooter ? '' : `<p data-gt="page_number">${slots}</p>`}
+          ${runningFooter ? '' : `<p data-gt="page_number">${pageSlots}</p>`}
         </section>
         <section><p data-gt="paragraph">Gamma</p></section>
         </body></html>`,
@@ -110,3 +114,49 @@ test('POST /print fills body slots with their containing page number rather than
   ).toEqual(['Alpha', 'Beta第2頁，共3頁', 'Gamma']);
   expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
 });
+
+test.each([
+  { placement: 'running footer', runningFooter: true },
+  { placement: 'in-flow paragraph', runningFooter: false },
+])(
+  'POST /print embeds and uses bold serif set only on empty $placement page-number slots',
+  async ({ runningFooter }) => {
+    // Empty slots have no text when font selection runs. Styling only the spans
+    // in an ordinary rule prevents body text or @page font discovery from
+    // masking a skipped slot; checking the digits also catches fallback printing
+    // even if the requested face was embedded elsewhere.
+    const { gt, pdf, pages } = await printThreePages(runningFooter, true);
+    expect(
+      gt.blocks
+        .filter(block => block.type === 'page_number')
+        .map(block => ({ page: block.page, text: compact(block.text) })),
+    ).toEqual(
+      runningFooter
+        ? [
+            { page: 1, text: '第1頁，共3頁' },
+            { page: 2, text: '第2頁，共3頁' },
+            { page: 3, text: '第3頁，共3頁' },
+          ]
+        : [{ page: 2, text: '第2頁，共3頁' }],
+    );
+    expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
+
+    const raw = Buffer.from(pdf).toString('latin1');
+    const embedded = [...raw.matchAll(/\/BaseFont\s*\/([^\s/<>]+)/g)].map(
+      match => (match[1] ?? '').replace(/^[A-Z]{6}\+/, ''),
+    );
+    expect.soft(embedded).toContain('NotoSerifTC-Bold');
+    expect(raw).toMatch(/\/FontFile[23]?\b/);
+    for (const [index, page] of pages.entries()) {
+      const digits = page.items.filter(item => /[0-9]/.test(item.text));
+      expect(digits.map(item => compact(item.text)).join('')).toBe(
+        runningFooter ? `${index + 1}3` : index === 1 ? '23' : '',
+      );
+      for (const digit of digits) {
+        expect
+          .soft(digit.font, `page ${index + 1}: ${digit.text}`)
+          .toBe('NotoSerifTC-Bold');
+      }
+    }
+  },
+);
