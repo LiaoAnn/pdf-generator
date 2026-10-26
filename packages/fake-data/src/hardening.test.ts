@@ -112,6 +112,37 @@ test.each([
     oneField(fixedArray(1000, fixedArray(1000, fixedArray(1000, constant)))),
   ],
   ['100001 leaves', oneField(fixedArray(100001, constant))],
+  ...(
+    [
+      [
+        '1000 × 1000 empty arrays even when the outer array is always blank',
+        fixedArray(1000, fixedArray(1000, fixedArray(0, constant))),
+      ],
+      [
+        '100000 objects with two empty arrays each',
+        fixedArray(100000, {
+          type: 'object',
+          fields: { a: fixedArray(0, constant), b: fixedArray(0, constant) },
+        }),
+      ],
+      ['100001 empty arrays', fixedArray(100001, fixedArray(0, constant))],
+    ] satisfies [string, RuleField][]
+  ).map(([label, field]): [string, Rules] => [
+    label,
+    // Rejection must use maxItems, before drawing a length or blank value.
+    // The broken implementation returns null without allocating huge records.
+    oneField({ ...field, minItems: 0, blankProbability: 1 } as RuleField),
+  ]),
+  [
+    '100000 leaves plus one empty sibling array',
+    {
+      schemaVersion: 1,
+      fields: {
+        value: { ...fixedArray(100000, constant), blankProbability: 1 },
+        empty: fixedArray(0, constant),
+      },
+    },
+  ],
   [
     'object fields summed across the record',
     {
@@ -142,18 +173,38 @@ test.each([
   10_000,
 );
 
-test('budget allows exactly 100000 leaves without charging for containers', () => {
+test('budget allows exactly 100000 leaves without charging extra for their array', () => {
+  const record = generate(
+    oneField(fixedArray(100000, constant)),
+    'leaf-boundary',
+  );
+  expect(record.value).toHaveLength(100000);
+});
+
+test('budget allows exactly 100000 empty arrays without charging extra for their outer array', () => {
+  const record = generate(
+    oneField(fixedArray(100000, fixedArray(0, constant))),
+    'empty-boundary',
+  );
+  expect(record.value).toHaveLength(100000);
+  expect(
+    Array.isArray(record.value) &&
+      record.value.every(value => Array.isArray(value) && value.length === 0),
+  ).toBe(true);
+});
+
+test('budget allows 99999 leaves plus one charged empty sibling array', () => {
   const record = generate(
     {
       schemaVersion: 1,
       fields: {
-        value: fixedArray(100000, constant),
+        value: fixedArray(99999, constant),
         empty: fixedArray(0, constant),
       },
     },
     'budget-boundary',
   );
-  expect(record.value).toHaveLength(100000);
+  expect(record.value).toHaveLength(99999);
   expect(record.empty).toEqual([]);
 });
 

@@ -133,24 +133,34 @@ const maxLevels = 32;
 /** The most filler-text characters one record may hold. */
 const maxTextCharacters = 1_000_000;
 
-/** How many of something `field` generates at most: arrays multiply, objects add. */
+/**
+ * How many of something `field` generates at most: arrays multiply, objects
+ * add. A field always counts at least `least`, so values counted with
+ * `least` 1 charge a container that holds nothing as one value.
+ */
 function worstCase(
   field: RuleField,
   leaf: (field: RuleField) => number,
+  least = 0,
 ): number {
+  let count: number;
   switch (field.type) {
     case 'object':
-      return Object.values(field.fields).reduce(
-        (sum, child) => sum + worstCase(child, leaf),
+      count = Object.values(field.fields).reduce(
+        (sum, child) => sum + worstCase(child, leaf, least),
         0,
       );
+      break;
     case 'array':
-      return field.maxItems === 0
-        ? 0
-        : field.maxItems * worstCase(field.items, leaf);
+      count =
+        field.maxItems === 0
+          ? 0
+          : field.maxItems * worstCase(field.items, leaf, least);
+      break;
     default:
-      return leaf(field);
+      count = leaf(field);
   }
+  return Math.max(least, count);
 }
 
 /** Every impossible range in the rule file, and a record too deep, large or long. */
@@ -184,7 +194,11 @@ function check(rules: Rules): Issue[] {
     visit(field, ['fields', key], 1);
   }
   const record: RuleField = { type: 'object', fields: rules.fields };
-  const count = worstCase(record, () => 1);
+  // The record itself is not a value; each field in it is.
+  const count = Object.values(rules.fields).reduce(
+    (sum, field) => sum + worstCase(field, () => 1, 1),
+    0,
+  );
   if (count > maxValues) {
     issues.push({
       path: ['fields'],
