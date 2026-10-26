@@ -225,12 +225,12 @@ const fanOutBudgetSetup = `
   };
 `;
 
-test('derived budget charges a balance for every line it re-sums: 1 row × 500 balances × 50,000 lines is rejected promptly', () => {
+test('derived budget charges a balance for every line it re-sums: 1 row × 500 balances × 40,000 lines is rejected promptly', () => {
   guardedDerivedBudget(
     `
     ${fanOutBudgetSetup}
-    // 1 × 500 × 50,000 = 25,000,000 steps; only ~50,500 values.
-    assertBudgetRejected(fanOutFields(1, [50_000], 500));
+    // 1 × 500 × 40,000 = 20,000,000 steps; 80,504 values.
+    assertBudgetRejected(fanOutFields(1, [40_000], 500));
   `,
     3_000,
   );
@@ -371,7 +371,7 @@ test('derived budget charges one step per path when an empty array sits above a 
   guardedDerivedBudget(`
     ${belowEmptyBudgetSetup}
     // Fan-out [0, 1,000] is 0, so each path costs 1: 1,000 × 90 = 90,000 steps,
-    // 90,000 balances + 1,000 empty arrays + the opening = 91,001 values.
+    // 90,000 balances + 1,000 empty arrays + 1,000 row objects + 2 root fields = 92,002 values.
     const start = performance.now();
     const record = generate(rulesFor(belowEmptyFields(1_000, 0, 1_000, 90)), 'empty-above-boundary');
     const elapsed = performance.now() - start;
@@ -569,18 +569,18 @@ test('text budget accepts exactly one million characters multiplied across array
   `);
 }, 15_000);
 
-test('running balances reuse a shared opening total across 20000 nested row groups', () => {
+test('running balances reuse a shared opening total across 19000 nested row groups', () => {
   guardedGeneration(`
     const record = generate(rulesFor({
       opening: array(20_000, constant(1)),
-      groups: array(20_000, object({
+      groups: array(19_000, object({
         rows: array(1, object({
           b: { type: 'runningBalance', opening: 'opening[]', add: [], subtract: [] },
         })),
       })),
     }), 'shared-opening');
     assert.equal(record.opening.length, 20_000);
-    assert.equal(record.groups.length, 20_000);
+    assert.equal(record.groups.length, 19_000);
     for (const group of record.groups) assert.deepEqual(group.rows, [{ b: 20_000 }]);
   `);
 }, 15_000);
@@ -635,7 +635,7 @@ test('running balances collapse 100000 repeated add paths across 20000 rows whil
 test('distinct sums share the empty-array prefix across 20000 rows and 5000 columns promptly', () => {
   guardedGeneration(`
     const columns = Array.from({ length: 5_000 }, (_, i) => 'v' + i);
-    // 5,000 sum leaves and derived steps + 20,000 charged empty arrays.
+    // 5,000 sum leaves and derived steps + 20,000 row objects + 20,000 empty arrays + 1 outer array.
     const rules = rulesFor({
       rows: array(20_000, object({
         empty: array(0, object(Object.fromEntries(columns.map(key => [key, constant(1)])))),
@@ -690,7 +690,7 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
     for (let i = 1; i < 29; i++) nested = object({ child: nested });
     const prefix = 'rows[].deep.' + 'child.'.repeat(28);
     const paths = values.map((_, i) => prefix + 'v' + i);
-    // 1,000 × 20 × 40 = 800,000 derived steps; 60,001 generated leaves.
+    // 1,000 × 20 × 40 = 800,000 derived steps; 90,002 generated values including the populated containers.
     const rules = rulesFor({
       opening: constant(17),
       rows: array(1_000, object({
@@ -765,10 +765,10 @@ test.each([
   (_regression, opening) => {
     guardedGeneration(`
       const opening = ${opening};
-      // 8,000 rows × 10 balances = 80,000 derived steps; ~96,000 values.
+      // 7,000 rows × 10 balances = 70,000 derived steps; 91,002 values.
       const rules = rulesFor({
         opening: constant(opening),
-        rows: array(8_000, object({
+        rows: array(7_000, object({
           p: constant(5e-324),
           q: constant(5e-324),
           ...Object.fromEntries(Array.from({ length: 10 }, (_, i) => [
@@ -781,7 +781,7 @@ test.each([
       const record = generate(rules, 'extreme-constants');
       const elapsed = performance.now() - start;
       assert.ok(elapsed < 2_000, 'extreme constants took ' + elapsed.toFixed(1) + ' ms');
-      assert.equal(record.rows.length, 8_000);
+      assert.equal(record.rows.length, 7_000);
       for (const [i, row] of record.rows.entries()) {
         for (let b = 0; b < 10; b++) {
           assert.equal(row['b' + b], opening, 'row ' + i + ', balance ' + b);
@@ -792,13 +792,13 @@ test.each([
   15_000,
 );
 
-test('running balances deep inside nested arrays stay fast for 49000 rows × 10 paths × 31 levels', () => {
+test('running balances deep inside nested arrays stay fast for 33000 rows × 10 paths × 31 levels', () => {
   guardedGeneration(`
     // 13 single-item wrappers + the rows array put each balance at level 31
-    // and its z leaves at level 32: 98,001 values, 490,000 derived steps.
+    // and its z leaves at level 32: 99,028 values, 330,000 derived steps.
     const prefix = Array(14).fill('a[]').join('.');
     const paths = Array.from({ length: 10 }, (_, i) => prefix + '.z[].v' + i);
-    let nest = array(49_000, object({
+    let nest = array(33_000, object({
       bal: { type: 'runningBalance', opening: 'o', add: paths, subtract: [] },
       z: array(0, object(Object.fromEntries(
         Array.from({ length: 10 }, (_, i) => ['v' + i, constant(1)])))),
@@ -814,7 +814,7 @@ test('running balances deep inside nested arrays stay fast for 49000 rows × 10 
       assert.equal(rows.length, 1);
       rows = rows[0].a;
     }
-    assert.equal(rows.length, 49_000);
+    assert.equal(rows.length, 33_000);
     for (const [i, row] of rows.entries()) assert.equal(row.bal, 0, 'row ' + i);
   `);
 }, 15_000);
@@ -823,7 +823,7 @@ test('running balances deep inside nested arrays keep every prefix over non-empt
   guardedGeneration(`
     const prefix = Array(14).fill('a[]').join('.');
     const paths = Array.from({ length: 10 }, (_, i) => prefix + '.z[].v' + i);
-    let nest = array(9_000, object({
+    let nest = array(7_000, object({
       bal: { type: 'runningBalance', opening: 'o', add: paths, subtract: [] },
       z: array(1, object(Object.fromEntries(
         Array.from({ length: 10 }, (_, i) => ['v' + i, constant(1)])))),
@@ -839,7 +839,7 @@ test('running balances deep inside nested arrays keep every prefix over non-empt
       assert.equal(rows.length, 1);
       rows = rows[0].a;
     }
-    assert.equal(rows.length, 9_000);
+    assert.equal(rows.length, 7_000);
     for (const [i, row] of rows.entries()) {
       assert.equal(row.bal, 10 * (i + 1), 'wrong balance at row ' + i);
     }
@@ -862,7 +862,7 @@ test.each([
         nested = object({ a: array(length, nested) });
       }
       const path = 'rows[].' + 'a[].'.repeat(14) + 'v';
-      // Empty: 1,501 values, 500,000 steps. Populated: 601 values, 50,000 steps.
+      // Empty: 26,504 values, 500,000 steps. Populated: 3,304 values, 50,000 steps.
       const rules = rulesFor({
         opening: constant(0),
         rows: array(1, object({
@@ -889,12 +889,12 @@ test.each([
   15_000,
 );
 
-test('running balances share 99900 charged empty rows arrays across 4000 balances promptly', () => {
+test('running balances share 49000 empty rows arrays across 4000 balances promptly', () => {
   guardedGeneration(
     `
     const fieldsFor = balance => ({
       o: constant(0),
-      a: array(999, object({
+      a: array(490, object({
         b: array(100, object({
           empty: array(0, object(Object.fromEntries(
             Array.from({ length: 4_000 }, (_, i) => ['b' + i, balance()])
@@ -902,13 +902,13 @@ test('running balances share 99900 charged empty rows arrays across 4000 balance
         })),
       })),
     });
-    // Seven levels, 99,900 empty arrays + one leaf; zero derived steps: no balance exists.
+    // Seven levels, 98,982 values including 49,000 empty arrays; zero derived steps: no balance exists.
     const rules = rulesFor(fieldsFor(() => ({
       type: 'runningBalance', opening: 'o', add: [], subtract: [],
     })));
     const constantRules = rulesFor(fieldsFor(() => constant(0)));
     const expected = generate(constantRules, 'shared-empty-rows');
-    assert.equal(expected.a.length, 999);
+    assert.equal(expected.a.length, 490);
     for (const outer of expected.a) {
       assert.equal(outer.b.length, 100);
       for (const inner of outer.b) assert.deepEqual(inner.empty, []);
@@ -926,7 +926,7 @@ test('running balances share 99900 charged empty rows arrays across 4000 balance
 test('running balances sharing populated rows arrays keep every prefix independent across groups', () => {
   guardedGeneration(
     `
-    // 90 × 5 × 201 + the opening = 90,451 values, below the 100,000 cap.
+    // 90 × (2 + 5 × 202) + 2 = 91,082 values, below the 100,000 cap.
     const rules = rulesFor({
       o: constant(0),
       a: array(90, object({
