@@ -958,3 +958,30 @@
 - **驗收測試**：上面三種寫法都被擋下；6 個樣板各 10 份的自我檢查全部仍通過；同一批次的自我檢查時間在 PR 說明（與 main 比較）
 - **不做**：改有文字區塊的比對
 - **來源**：PR（T14-8）的 Security 審查
+
+### T06-4 樣板工具：拒絕互相 `@import` 的樣式表
+- **目標**：樣板包的樣式表互相 `@import`（`a.css` ↔ `b.css`）時，Paged.js 0.4.3 的 `Polisher.convertViaSheet` 沒有記錄看過的檔案，會一直抓下去，60 秒後回 `pagination_timeout`。在上傳時的樣板包檢查拒絕 `@import` 循環，並用中文說明是哪幾個檔案
+- **Blocked by**：T07-10
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的樣板包檢查
+- **驗收測試**：互相 import 的兩個樣式表、以及自己 import 自己的樣式表，上傳時被拒絕且說明列出循環；巢狀但無循環的 import 照常通過；6 個樣板照常上傳
+- **不做**：改 Paged.js
+- **來源**：PR #81（T07-10）
+
+### T06-5 樣板工具：`print-parity.test.ts` 的固定 1.5 秒上限
+- **目標**：`packages/template-tools/src/print-parity.test.ts` 的「round 6 checks 160,000 unquoted data URLs in under 1.5 seconds」在負載下失敗（1583 ms）。改成與同一次執行裡的基準比較，不用固定毫秒上限（同 T15-5）
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的測試檔
+- **驗收測試**：在 VM 滿載時連跑 5 次都通過；對慢的版本（放在 worktree 外的副本）仍會失敗
+- **不做**：改被測的程式
+- **來源**：PR #81（T07-10）
+
+### T07-28 印 PDF：掃字型時把只在螢幕套用的規則視為關閉
+- **目標**：T07-10 掃字型時會把 `@media print` 規則暫時打開，但只在螢幕套用的規則仍然開著，可能蓋掉只靠繼承才用到的列印字型，讓那個字型沒被宣告。掃描時一併把只在螢幕（及 speech 等非列印媒體）套用的規則與 import 暫時關閉，結束後在 `finally` 還原
+- **Blocked by**：T07-10
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與其他改 print runtime 的 T07 票不要同時派
+- **驗收測試**：螢幕規則蓋掉、只在列印繼承到的粗體印出真的 Bold 字型；speech 媒體的 import 不影響字型；6 個樣板各 10 份 gt.json 與 main 相同
+- **不做**：改 gt 讀取
+- **來源**：PR #81（T07-10）
