@@ -7,6 +7,7 @@ import { checkPdf, readPdf } from './index.ts';
 
 let pdf: Uint8Array;
 let reference: GroundTruth;
+let budgetPdf: Uint8Array;
 
 beforeAll(async () => {
   const html = await readFile(
@@ -24,6 +25,10 @@ beforeAll(async () => {
       canvas.getContext('2d').fillRect(0, 0, 8, 8);
       image.src = canvas.toDataURL('image/png');
       await image.decode();
+      canvas.getContext('2d').clearRect(0, 0, 8, 8);
+      const transparent = document.querySelector('#transparent-image');
+      transparent.src = canvas.toDataURL('image/png');
+      await transparent.decode();
     })()`);
     await page.emulateMedia({ media: 'print' });
     await page.evaluate(`window.__pagedDone = false; window.PagedConfig = {
@@ -56,9 +61,22 @@ beforeAll(async () => {
       pages: [{ width: 595.28, height: 841.89 }],
       blocks,
     });
-    expect(reference.blocks).toHaveLength(12);
+    expect(reference.blocks).toHaveLength(16);
     pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     expect((await readPdf(pdf)).pages.flatMap(page => page.items)).toEqual([]);
+    // One large solid PNG compresses small; retain only PDFs, not pixel buffers.
+    await page.evaluate(`(async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 2100;
+      canvas.getContext('2d').fillRect(0, 0, 2100, 2100);
+      const image = document.querySelector('.pagedjs_pages #gradient-image');
+      image.src = canvas.toDataURL('image/png');
+      await image.decode();
+    })()`);
+    budgetPdf = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+    });
   } finally {
     await browser.close();
   }
@@ -74,6 +92,53 @@ function gt(id: string) {
   return gtSchema.parse(value);
 }
 
+test('a black-rect SVG pattern is visible measurable ink', async () => {
+  expect(await checkPdf(pdf, gt('black-pattern'))).toEqual({
+    ok: true,
+    differences: [],
+  });
+});
+
+test('CSS repeating-gradient barcode bars are visible measurable ink', async () => {
+  expect(await checkPdf(pdf, gt('repeating-bars'))).toEqual({
+    ok: true,
+    differences: [],
+  });
+});
+
+test('readPdf marks a 2100-by-2100 PNG exceeding the per-page pixel budget unmeasured', async () => {
+  const expected = gt('gradient-image');
+  const box = expected.blocks[0]?.bbox;
+  if (!box) throw new Error('missing block');
+  const document = await readPdf(budgetPdf);
+  const imagePaint = document.pages[0]?.paints.find(
+    p =>
+      Math.abs(p.box[0] - box[0]) < 1 &&
+      Math.abs(p.box[1] - box[1]) < 1 &&
+      Math.abs(p.box[2] - box[2]) < 1 &&
+      Math.abs(p.box[3] - box[3]) < 1,
+  );
+  expect(
+    imagePaint,
+    'large PNG must remain represented, fail closed',
+  ).toBeDefined();
+  expect(imagePaint?.unmeasured).toBe(true);
+  expect(imagePaint?.image).toBeUndefined();
+});
+
+test('checkPdf refuses a block drawn only by an over-budget PNG with a cannot-measure diagnostic', async () => {
+  const expected = gt('gradient-image');
+  const report = await checkPdf(budgetPdf, expected);
+  expect(report.ok).toBe(false);
+  expect(report.differences).toEqual([
+    expect.objectContaining({
+      kind: 'ink',
+      blockId: 'gradient-image',
+      message: expect.stringContaining("can't measure"),
+    }),
+  ]);
+});
+
 test.each([
   ['cancelled-path', 'a self-cancelling even-odd path'],
   ['white-path', 'a white full-box rectangle'],
@@ -85,6 +150,8 @@ test.each([
     'black then white composited together in a half-opacity group',
   ],
   ['white-gradient', 'a white-to-white gradient'],
+  ['white-pattern', 'an SVG white-rect pattern'],
+  ['transparent-image', 'an all-transparent PNG image'],
 ])('%s rejects %s as painting nothing', async (id, _regression) => {
   const expected = gt(id);
   const report = await checkPdf(pdf, expected);

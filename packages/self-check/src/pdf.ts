@@ -1,4 +1,15 @@
 import { getDocumentProxy, getResolvedPDFJS } from 'unpdf';
+import {
+  asMatrix,
+  asRect,
+  identity,
+  intersect,
+  type Matrix,
+  mapRect,
+  multiply,
+  type Rect,
+} from './geometry.ts';
+import { type ImagePixels, readPaints } from './paints.ts';
 
 /** One run of text in a PDF page's text layer. */
 export interface PdfTextItem {
@@ -67,7 +78,64 @@ export interface PdfShading {
   r0: number;
   r1: number;
   /** `[a, b, c, d, e, f]` taking a page-frame point to shading space. */
-  toShading: [number, number, number, number, number, number];
+  toShading: PdfMatrix;
+}
+
+/** `[a, b, c, d, e, f]`: (x, y) to (a x + c y + e, b x + d y + f). */
+export type PdfMatrix = [number, number, number, number, number, number];
+
+/**
+ * A free-form gradient as triangles (PDF shading types 4 to 7, as pdf.js
+ * splits them): the colour at a point is the colour of the last triangle
+ * containing it, interpolated between its corners; outside every triangle,
+ * the point isn't painted.
+ */
+export interface PdfMesh {
+  /** x, y per vertex in shading space, 3 vertices a triangle. */
+  positions: Float32Array;
+  /** R, G, B and an unused byte per vertex. */
+  colors: Uint8Array;
+  /** Vertices: 3 per triangle. */
+  count: number;
+  toShading: PdfMatrix;
+}
+
+/**
+ * A soft mask: what a paint shows is multiplied, at each point, by the
+ * mask's paints composited there (in the same frame): their luminosity over
+ * `backdrop` when `luminosity`, else their alpha.
+ */
+export interface PdfMask {
+  paints: PdfPaint[];
+  luminosity: boolean;
+  backdrop: string;
+}
+
+/** A decoded raster image. */
+export interface PdfImage {
+  width: number;
+  height: number;
+  /** Row-major RGBA, 4 bytes a pixel, row 0 at the image's top. */
+  rgba: Uint8Array;
+  /**
+   * Page frame to image space, the unit square: the pixel at (u, v) is
+   * column floor(u * width), row floor((1 - v) * height); outside it, none.
+   */
+  toImage: PdfMatrix;
+}
+
+/**
+ * A tiling pattern: its tile's paints repeat every `step` in pattern space.
+ * The colour at a page point is that of the tile's paints at the point
+ * `toPattern` takes it to, moved by whole steps into `[bbox x0, x0 + step x)`
+ * and `[bbox y0, y0 + step y)`; where no tile paint shows, nothing is painted.
+ */
+export interface PdfTile {
+  /** In pattern space (y up), as page paints are in the page frame. */
+  paints: PdfPaint[];
+  bbox: [number, number, number, number];
+  step: [number, number];
+  toPattern: PdfMatrix;
 }
 
 /**
@@ -91,6 +159,20 @@ export interface PdfPaint extends PdfShape {
   groups?: PdfGroup[];
   /** A gradient giving its colour at each point; `color` is then left out. */
   shading?: PdfShading;
+  /** A mesh gradient giving its colour at each point. */
+  mesh?: PdfMesh;
+  /** The soft mask in force. */
+  mask?: PdfMask;
+  /** A raster image giving its colour and alpha at each point. */
+  image?: PdfImage;
+  /** A tiling pattern (an SVG `<pattern>`, a CSS background image or repeating gradient) giving its colour and alpha at each point. */
+  tile?: PdfTile;
+  /**
+   * Its colour can't be measured (an image over the decoding budget, an
+   * image mask, another kind of shading or pattern): it adds no ink and
+   * hides the ink under it.
+   */
+  unmeasured?: true;
   /** The clipping paths in force, outermost first. */
   clips: PdfShape[];
   /** The bounds of `polygons` inside the clips' bounds, as a mark's box. */
@@ -127,9 +209,11 @@ interface TextContentItem {
 export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   // A plain Uint8Array copy: pdf.js refuses Buffers (what puppeteer returns)
   // and may detach the array it is given. fontExtraProperties keeps each
-  // font's name.
+  // font's name; images come as decoded pixels, not bitmaps.
   const document = await getDocumentProxy(new Uint8Array(pdf), {
     fontExtraProperties: true,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
   });
   const { OPS } = await getResolvedPDFJS();
   try {
@@ -180,22 +264,31 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
           ...(rotated ? { dir: [a / length, -b / length] } : {}),
         });
       }
-      // Shading patterns are resolved into the page's objects once its
-      // operators have been read.
+      const marks = readMarks(operators, OPS, [left, bottom, right, top]);
       const objectOf = (id: string): unknown => {
-        for (const objects of [page.objs, page.commonObjs]) {
-          try {
-            if (objects.has(id)) return objects.get(id);
-          } catch {}
-        }
-        return undefined;
+        const objects = id.startsWith('g_') ? page.commonObjs : page.objs;
+        return objects.has(id) ? objects.get(id) : undefined;
       };
-      const { marks, paints } = readMarks(
-        operators,
-        OPS,
-        [left, bottom, right, top],
-        objectOf,
-      );
+      const images = await pageImages(operators, OPS, page);
+      let budget = maxPagePixels;
+      const decode = (image: unknown) => {
+        const pixels = decodeImage(image, budget);
+        if (pixels) budget -= pixels.width * pixels.height;
+        return pixels;
+      };
+      const decoded = new Map<string, ImagePixels | undefined>();
+      const paints = readPaints(operators, OPS, {
+        frame: [1, 0, 0, -1, -left, top],
+        clip: [left, bottom, right, top],
+        sources: {
+          objectOf,
+          imageOf: id => {
+            if (!decoded.has(id)) decoded.set(id, decode(images.get(id)));
+            return decoded.get(id);
+          },
+          decode,
+        },
+      });
       pages.push({
         width: right - left,
         height: top - bottom,
@@ -211,63 +304,108 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   }
 }
 
-type Matrix = [number, number, number, number, number, number];
-/** `[x0, y0, x1, y1]` in PDF user space (y up). */
-type Rect = [number, number, number, number];
+/**
+ * The most image pixels decoded per page (16 MB of RGBA): images past it
+ * aren't measured, so the blocks they alone draw are refused, not passed.
+ */
+const maxPagePixels = 1 << 22;
 
-const identity: Matrix = [1, 0, 0, 1, 0, 0];
-
-const multiply = (m: Matrix, n: Matrix): Matrix => [
-  m[0] * n[0] + m[2] * n[1],
-  m[1] * n[0] + m[3] * n[1],
-  m[0] * n[2] + m[2] * n[3],
-  m[1] * n[2] + m[3] * n[3],
-  m[0] * n[4] + m[2] * n[5] + m[4],
-  m[1] * n[4] + m[3] * n[5] + m[5],
-];
-
-/** The axis-aligned bounds of `rect` mapped through `m`. */
-function mapRect(m: Matrix, [x0, y0, x1, y1]: Rect): Rect {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const [x, y] of [
-    [x0, y0],
-    [x1, y0],
-    [x0, y1],
-    [x1, y1],
-  ] as const) {
-    xs.push(m[0] * x + m[2] * y + m[4]);
-    ys.push(m[1] * x + m[3] * y + m[5]);
-  }
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+/**
+ * The image XObjects a page's operators paint, also inside tiling patterns,
+ * by id, once pdf.js has resolved them.
+ */
+async function pageImages(
+  operators: { fnArray: number[]; argsArray: unknown[] },
+  OPS: Record<string, number>,
+  page: {
+    objs: { get(id: string, callback: (value: unknown) => void): unknown };
+    commonObjs: {
+      get(id: string, callback: (value: unknown) => void): unknown;
+    };
+  },
+): Promise<Map<string, unknown>> {
+  const ids = new Set<string>();
+  const scan = (list: { fnArray: number[]; argsArray: unknown[] }) => {
+    list.fnArray.forEach((fn, i) => {
+      const args = (list.argsArray[i] ?? []) as unknown[];
+      if (fn === OPS.paintImageXObject && typeof args[0] === 'string') {
+        ids.add(args[0]);
+      } else if (
+        (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) &&
+        args[0] === 'TilingPattern'
+      ) {
+        const inner = args[2] as { fnArray?: unknown; argsArray?: unknown };
+        if (Array.isArray(inner?.fnArray) && Array.isArray(inner.argsArray)) {
+          scan({ fnArray: inner.fnArray, argsArray: inner.argsArray });
+        }
+      }
+    });
+  };
+  scan(operators);
+  const images = new Map<string, unknown>();
+  await Promise.all(
+    [...ids].map(
+      id =>
+        new Promise<void>(resolve => {
+          const objects = id.startsWith('g_') ? page.commonObjs : page.objs;
+          objects.get(id, value => {
+            images.set(id, value);
+            resolve();
+          });
+        }),
+    ),
+  );
+  return images;
 }
 
-const intersect = (a: Rect, b: Rect): Rect => [
-  Math.max(a[0], b[0]),
-  Math.max(a[1], b[1]),
-  Math.min(a[2], b[2]),
-  Math.min(a[3], b[3]),
-];
-
-const asMatrix = (value: unknown): Matrix | undefined =>
-  Array.isArray(value) &&
-  value.length === 6 &&
-  value.every(n => typeof n === 'number')
-    ? (value as Matrix)
-    : undefined;
-
-const asRect = (value: unknown): Rect | undefined => {
-  const values = ArrayBuffer.isView(value)
-    ? Array.from(value as Float32Array)
-    : value;
-  return Array.isArray(values) &&
-    values.length === 4 &&
-    values.every(n => typeof n === 'number' && Number.isFinite(n)) &&
-    values[0] <= values[2] &&
-    values[1] <= values[3]
-    ? (values as Rect)
-    : undefined;
-};
+/**
+ * pdf.js's decoded image (`kind` 1: 1 bit grey, 2: RGB, 3: RGBA; rows top
+ * first) as RGBA, if it has at most `budget` pixels.
+ */
+function decodeImage(image: unknown, budget: number): ImagePixels | undefined {
+  const { width, height, kind, data } = (image ?? {}) as {
+    width?: unknown;
+    height?: unknown;
+    kind?: unknown;
+    data?: unknown;
+  };
+  if (
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    !(width > 0 && height > 0) ||
+    width * height > budget ||
+    !(data instanceof Uint8ClampedArray || data instanceof Uint8Array)
+  ) {
+    return undefined;
+  }
+  const rgba = new Uint8Array(width * height * 4);
+  if (kind === 3 && data.length >= rgba.length)
+    rgba.set(data.subarray(0, rgba.length));
+  else if (kind === 2 && data.length >= width * height * 3) {
+    for (let p = 0; p < width * height; p++) {
+      rgba[4 * p] = data[3 * p] ?? 0;
+      rgba[4 * p + 1] = data[3 * p + 1] ?? 0;
+      rgba[4 * p + 2] = data[3 * p + 2] ?? 0;
+      rgba[4 * p + 3] = 255;
+    }
+  } else if (kind === 1) {
+    // A set bit is white, as pdf.js draws it.
+    const row = Math.ceil(width / 8);
+    if (data.length < row * height) return undefined;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bit = ((data[y * row + (x >> 3)] ?? 0) >> (7 - (x & 7))) & 1;
+        rgba.fill(bit ? 255 : 0, 4 * (y * width + x), 4 * (y * width + x) + 3);
+        rgba[4 * (y * width + x) + 3] = 255;
+      }
+    }
+  } else return undefined;
+  // A transparent pixel's colour is meaningless; pdf.js leaves some there.
+  for (let p = 3; p < rgba.length; p += 4) {
+    if (rgba[p] === 0) rgba.fill(0, p - 3, p);
+  }
+  return { width, height, rgba };
+}
 
 interface GraphicsState {
   ctm: Matrix;
@@ -276,240 +414,6 @@ interface GraphicsState {
   /** Constant alpha of fills (and images) and of strokes: 0 paints nothing. */
   fillAlpha: number;
   strokeAlpha: number;
-  /** The transparency groups painting this, outermost first. */
-  groups: PdfGroup[];
-  /** The space of the page or form XObject being painted: patterns' parent. */
-  base: Matrix;
-  /** The clipping paths in force, in the page frame. */
-  clips: PdfShape[];
-  fill: Paint;
-  stroke: Paint;
-}
-
-/**
- * `#rrggbb`; a gradient, as pdf.js's shading IR and the matrix from its
- * space to PDF space; undefined: no colour (a tiling pattern); null: paints
- * nothing.
- */
-type Paint = string | { ir: unknown; matrix: Matrix } | undefined | null;
-
-const invert = ([a, b, c, d, e, f]: Matrix): Matrix | undefined => {
-  const det = a * d - b * c;
-  if (!det) return undefined;
-  return [
-    d / det,
-    -b / det,
-    -c / det,
-    a / det,
-    (c * f - d * e) / det,
-    (b * e - a * f) / det,
-  ];
-};
-
-const isPoint = (value: unknown): value is [number, number] =>
-  Array.isArray(value) &&
-  value.length === 2 &&
-  value.every(n => typeof n === 'number' && Number.isFinite(n));
-
-/**
- * A gradient from pdf.js's shading IR (`["RadialAxial", "axial" | "radial",
- * bbox, stops, p0, p1, r0, r1]`); `toPage` takes its space to the page frame.
- * Any other shading: undefined.
- */
-function shadingOf(ir: unknown, toPage: Matrix): PdfShading | undefined {
-  if (!Array.isArray(ir) || ir[0] !== 'RadialAxial') return undefined;
-  const [, kind, , stops, from, to, r0, r1] = ir as unknown[];
-  const toShading = invert(toPage);
-  if (
-    (kind !== 'axial' && kind !== 'radial') ||
-    !Array.isArray(stops) ||
-    stops.length === 0 ||
-    !stops.every(
-      stop =>
-        Array.isArray(stop) &&
-        typeof stop[0] === 'number' &&
-        typeof stop[1] === 'string' &&
-        /^#[0-9a-f]{6}$/i.test(stop[1]),
-    ) ||
-    !isPoint(from) ||
-    !isPoint(to) ||
-    !toShading
-  ) {
-    return undefined;
-  }
-  const radius = (value: unknown) =>
-    typeof value === 'number' && Number.isFinite(value) ? value : 0;
-  return {
-    kind,
-    stops: (stops as [number, string][]).map(([offset, color]) => [
-      offset,
-      color.toLowerCase(),
-    ]),
-    from,
-    to,
-    r0: radius(r0),
-    r1: radius(r1),
-    toShading,
-  };
-}
-
-/** A subpath in user space: `[x0, y0, x1, y1, …]`. */
-interface Subpath {
-  points: number[];
-  closed: boolean;
-}
-
-/** Segments a curve is flattened into: 0.06 pt off a 50 pt circle's arc. */
-const curveSegments = 16;
-
-/**
- * The subpaths of pdf.js 6's path data (`DrawOPS`: moveTo 0, lineTo 1,
- * curveTo 2, quadraticCurveTo 3, closePath 4), curves flattened.
- */
-function subpathsOf(value: unknown): Subpath[] {
-  const raw = Array.isArray(value) ? value[0] : value;
-  const data = ArrayBuffer.isView(raw)
-    ? Array.from(raw as Float32Array)
-    : Array.isArray(raw)
-      ? (raw as number[])
-      : [];
-  const subpaths: Subpath[] = [];
-  let current: Subpath | undefined;
-  let x = 0;
-  let y = 0;
-  let startX = 0;
-  let startY = 0;
-  const at = (i: number) => data[i] ?? 0;
-  const open = () => {
-    if (!current) {
-      current = { points: [x, y], closed: false };
-      subpaths.push(current);
-    }
-    return current;
-  };
-  const curve = (point: (t: number) => [number, number]) => {
-    const path = open();
-    for (let k = 1; k <= curveSegments; k++) {
-      [x, y] = point(k / curveSegments);
-      path.points.push(x, y);
-    }
-  };
-  for (let i = 0; i < data.length; ) {
-    const op = data[i++];
-    if (op === 0) {
-      x = startX = at(i++);
-      y = startY = at(i++);
-      current = undefined;
-      open();
-    } else if (op === 1) {
-      const path = open();
-      x = at(i++);
-      y = at(i++);
-      path.points.push(x, y);
-    } else if (op === 2) {
-      const [ax, ay, bx, by, cx, cy] = [0, 1, 2, 3, 4, 5].map(k => at(i + k));
-      i += 6;
-      const [px, py] = [x, y];
-      curve(t => {
-        const u = 1 - t;
-        return [
-          u * u * u * px +
-            3 * u * u * t * (ax ?? 0) +
-            3 * u * t * t * (bx ?? 0) +
-            t * t * t * (cx ?? 0),
-          u * u * u * py +
-            3 * u * u * t * (ay ?? 0) +
-            3 * u * t * t * (by ?? 0) +
-            t * t * t * (cy ?? 0),
-        ];
-      });
-    } else if (op === 3) {
-      const [ax, ay, cx, cy] = [0, 1, 2, 3].map(k => at(i + k));
-      i += 4;
-      const [px, py] = [x, y];
-      curve(t => {
-        const u = 1 - t;
-        return [
-          u * u * px + 2 * u * t * (ax ?? 0) + t * t * (cx ?? 0),
-          u * u * py + 2 * u * t * (ay ?? 0) + t * t * (cy ?? 0),
-        ];
-      });
-    } else if (op === 4) {
-      if (current) current.closed = true;
-      current = undefined;
-      x = startX;
-      y = startY;
-    } else break;
-  }
-  return subpaths;
-}
-
-/** Twice the signed area of a flat point list. */
-function signedArea(points: number[]): number {
-  let area = 0;
-  const n = points.length >> 1;
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    area +=
-      (points[2 * i] ?? 0) * (points[2 * j + 1] ?? 0) -
-      (points[2 * j] ?? 0) * (points[2 * i + 1] ?? 0);
-  }
-  return area;
-}
-
-/**
- * The region a stroke of `width` along the subpaths covers, in user space:
- * one quad per segment and an octagon per vertex (round joins), all wound
- * the same way so that the nonzero rule unites them. Dashes are drawn solid.
- */
-function strokeOutline(subpaths: Subpath[], width: number): number[][] {
-  const half = width / 2;
-  const polygons: number[][] = [];
-  const add = (points: number[]) => {
-    if (signedArea(points) < 0) {
-      const reversed: number[] = [];
-      for (let k = points.length - 2; k >= 0; k -= 2) {
-        reversed.push(points[k] ?? 0, points[k + 1] ?? 0);
-      }
-      polygons.push(reversed);
-    } else polygons.push(points);
-  };
-  for (const { points, closed } of subpaths) {
-    const n = points.length >> 1;
-    const segments = closed ? n : n - 1;
-    for (let i = 0; i < n; i++) {
-      const px = points[2 * i] ?? 0;
-      const py = points[2 * i + 1] ?? 0;
-      // An open subpath's ends are butt caps, not joins.
-      if (closed || (i > 0 && i < n - 1)) {
-        const join: number[] = [];
-        for (let k = 0; k < 8; k++) {
-          const angle = (k * Math.PI) / 4;
-          join.push(px + half * Math.cos(angle), py + half * Math.sin(angle));
-        }
-        add(join);
-      }
-      if (i >= segments) continue;
-      const j = (i + 1) % n;
-      const qx = points[2 * j] ?? 0;
-      const qy = points[2 * j + 1] ?? 0;
-      const length = Math.hypot(qx - px, qy - py);
-      if (length === 0) continue;
-      const nx = (-(qy - py) / length) * half;
-      const ny = ((qx - px) / length) * half;
-      add([
-        px + nx,
-        py + ny,
-        qx + nx,
-        qy + ny,
-        qx - nx,
-        qy - ny,
-        px - nx,
-        py - ny,
-      ]);
-    }
-  }
-  return polygons;
 }
 
 /**
@@ -521,12 +425,8 @@ function readMarks(
   operators: { fnArray: number[]; argsArray: unknown[] },
   OPS: Record<string, number>,
   view: Rect,
-  objectOf: (id: string) => unknown,
-): { marks: PdfMark[]; paints: PdfPaint[] } {
+): PdfMark[] {
   const [left, , , top] = view;
-  // PDF space (y up) to the page frame (y down, from the MediaBox's corner).
-  const frame: Matrix = [1, 0, 0, -1, -left, top];
-  let groupCount = 0;
   const filled = new Set(
     [
       'fill',
@@ -555,16 +455,7 @@ function readMarks(
       'paintSolidColorImageMask',
     ].map(name => OPS[name]),
   );
-  const evenOdd = new Set(
-    ['eoFill', 'eoFillStroke', 'closeEOFillStroke'].map(name => OPS[name]),
-  );
-  const closing = new Set(
-    ['closeStroke', 'closeFillStroke', 'closeEOFillStroke'].map(
-      name => OPS[name],
-    ),
-  );
   const marks: PdfMark[] = [];
-  const paints: PdfPaint[] = [];
   const stack: GraphicsState[] = [];
   let state: GraphicsState = {
     ctm: identity,
@@ -572,86 +463,8 @@ function readMarks(
     lineWidth: 1,
     fillAlpha: 1,
     strokeAlpha: 1,
-    groups: [],
-    base: identity,
-    clips: [],
-    fill: '#000000',
-    stroke: '#000000',
   };
-  let clipping: PdfShape['rule'] | undefined;
-  /** User-space points through the CTM into the page frame. */
-  const toPage = (points: number[]) => {
-    const [a, b, c, d, e, f] = state.ctm;
-    const out: number[] = [];
-    for (let k = 0; k < points.length; k += 2) {
-      const x = points[k] ?? 0;
-      const y = points[k + 1] ?? 0;
-      out.push(a * x + c * y + e - left, top - (b * x + d * y + f));
-    }
-    return out;
-  };
-  const rectPolygon = ([x0, y0, x1, y1]: Rect) => [
-    x0 - left,
-    top - y0,
-    x1 - left,
-    top - y0,
-    x1 - left,
-    top - y1,
-    x0 - left,
-    top - y1,
-  ];
-  /** Records a paint over `polygons` (page frame), if it shows. */
-  const paint = (
-    polygons: number[][],
-    rule: PdfShape['rule'],
-    color: Paint,
-    alpha: number,
-  ) => {
-    if (color === null || alpha <= 0 || polygons.length === 0) return;
-    const shading =
-      typeof color === 'object'
-        ? shadingOf(color.ir, multiply(frame, color.matrix))
-        : undefined;
-    let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
-    for (const points of polygons) {
-      for (let k = 0; k < points.length; k += 2) {
-        const x = points[k] ?? 0;
-        const y = points[k + 1] ?? 0;
-        minX = Math.min(minX, x);
-        maxX = Math.max(maxX, x);
-        minY = Math.min(minY, y);
-        maxY = Math.max(maxY, y);
-      }
-    }
-    // The clip's rect is in PDF space (y up), the polygons in the page frame.
-    const [x0, y0, x1, y1] = intersect(
-      [minX + left, top - maxY, maxX + left, top - minY],
-      state.clip,
-    );
-    if (!(x0 <= x1 && y0 <= y1)) return;
-    paints.push({
-      polygons,
-      rule,
-      ...(typeof color === 'string' ? { color } : {}),
-      ...(shading ? { shading } : {}),
-      alpha,
-      ...(state.groups.length > 0 ? { groups: state.groups } : {}),
-      clips: state.clips,
-      box: [x0 - left, top - y1, x1 - left, top - y0],
-    });
-  };
-  const colorOf = (args: unknown[]) =>
-    typeof args[0] === 'string' && /^#[0-9a-f]{6}$/i.test(args[0])
-      ? args[0].toLowerCase()
-      : undefined;
-  /** A shading pattern (`["Shading", id, matrix]`); a tiling one: undefined. */
-  const patternOf = (args: unknown[]): Paint => {
-    if (args[0] !== 'Shading' || typeof args[1] !== 'string') return undefined;
-    const ir = objectOf(args[1]);
-    return ir === undefined
-      ? undefined
-      : { ir, matrix: multiply(state.base, asMatrix(args[2]) ?? identity) };
-  };
+  let clipping = false;
   const push = () => stack.push({ ...state });
   const pop = () => {
     state = stack.pop() ?? state;
@@ -677,14 +490,7 @@ function readMarks(
         else if (entry[0] === 'ca') state.fillAlpha = entry[1];
         else if (entry[0] === 'CA') state.strokeAlpha = entry[1];
       }
-    } else if (fn === OPS.setFillRGBColor) state.fill = colorOf(args);
-    else if (fn === OPS.setStrokeRGBColor) state.stroke = colorOf(args);
-    else if (fn === OPS.setFillColorN) state.fill = patternOf(args);
-    else if (fn === OPS.setStrokeColorN) state.stroke = patternOf(args);
-    else if (fn === OPS.setFillTransparent) state.fill = null;
-    else if (fn === OPS.setStrokeTransparent) state.stroke = null;
-    else if (fn === OPS.clip) clipping = 'nonzero';
-    else if (fn === OPS.eoClip) clipping = 'evenodd';
+    } else if (fn === OPS.clip || fn === OPS.eoClip) clipping = true;
     else if (fn === OPS.constructPath) {
       const bounds = asRect(args[2]);
       const op = args[0] as number;
@@ -693,20 +499,6 @@ function readMarks(
         // Only paint at some opacity is a mark.
         const stroke = stroked.has(op) && state.strokeAlpha > 0;
         const fill = filled.has(op) && state.fillAlpha > 0;
-        const subpaths = subpathsOf(args[1]);
-        if (closing.has(op)) {
-          const last = subpaths[subpaths.length - 1];
-          if (last) last.closed = true;
-        }
-        const area = () => subpaths.map(({ points }) => toPage(points));
-        if (fill) {
-          paint(
-            area(),
-            evenOdd.has(op) ? 'evenodd' : 'nonzero',
-            state.fill,
-            state.fillAlpha,
-          );
-        }
         if (stroke || fill) {
           // A stroke reaches half its width beyond the path: on each axis,
           // as far as the CTM stretches a circle of that radius.
@@ -714,85 +506,35 @@ function readMarks(
           const half = stroke ? state.lineWidth / 2 : 0;
           const hx = half * Math.hypot(a, c);
           const hy = half * Math.hypot(b, d);
-          const reach: Rect = [
+          mark('path', [
             rect[0] - hx,
             rect[1] - hy,
             rect[2] + hx,
             rect[3] + hy,
-          ];
-          mark('path', reach);
-          if (stroke) {
-            paint(
-              strokeOutline(subpaths, state.lineWidth).map(toPage),
-              'nonzero',
-              state.stroke,
-              state.strokeAlpha,
-            );
-          }
+          ]);
         }
         if (clipping) {
           mark('clip', rect);
           state.clip = intersect(state.clip, rect);
-          state.clips = [...state.clips, { polygons: area(), rule: clipping }];
         }
       }
-      clipping = undefined;
+      clipping = false;
     } else if (images.has(fn)) {
-      if (state.fillAlpha > 0) {
-        const rect = mapRect(state.ctm, [0, 0, 1, 1]);
-        mark('image', rect);
-        paint(
-          [toPage([0, 0, 1, 0, 1, 1, 0, 1])],
-          'nonzero',
-          undefined,
-          state.fillAlpha,
-        );
-      }
-    } else if (fn === OPS.shadingFill) {
-      mark('path', state.clip);
-      // Its shading (an id or the IR itself) in the current user space.
-      const ir = typeof args[0] === 'string' ? objectOf(args[0]) : args[0];
-      paint(
-        [rectPolygon(state.clip)],
-        'nonzero',
-        { ir, matrix: state.ctm },
-        state.fillAlpha,
-      );
-    } else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
+      if (state.fillAlpha > 0) mark('image', mapRect(state.ctm, [0, 0, 1, 1]));
+    } else if (fn === OPS.shadingFill) mark('path', state.clip);
+    else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
       push();
-      if (fn === OPS.beginGroup) {
-        // A transparency group is composited, then painted at the alpha in
-        // force when it starts, which inside it starts again at 1.
-        state.groups = [
-          ...state.groups,
-          { id: groupCount++, alpha: state.fillAlpha },
-        ];
-        state.fillAlpha = 1;
-        state.strokeAlpha = 1;
-      }
       const group = args[0] as { matrix?: unknown; bbox?: unknown } | undefined;
       const m =
         fn === OPS.paintFormXObjectBegin
           ? asMatrix(args[0])
           : asMatrix(group?.matrix);
       if (m) state.ctm = multiply(state.ctm, m);
-      if (fn === OPS.paintFormXObjectBegin) state.base = state.ctm;
       const bbox = asRect(
         fn === OPS.paintFormXObjectBegin ? args[1] : group?.bbox,
       );
-      if (bbox) {
-        const rect = mapRect(state.ctm, bbox);
-        state.clip = intersect(state.clip, rect);
-        const [x0, y0, x1, y1] = bbox;
-        state.clips = [
-          ...state.clips,
-          {
-            polygons: [toPage([x0, y0, x1, y0, x1, y1, x0, y1])],
-            rule: 'nonzero',
-          },
-        ];
-      }
+      if (bbox) state.clip = intersect(state.clip, mapRect(state.ctm, bbox));
     } else if (fn === OPS.paintFormXObjectEnd || fn === OPS.endGroup) pop();
   });
-  return { marks, paints };
+  return marks;
 }

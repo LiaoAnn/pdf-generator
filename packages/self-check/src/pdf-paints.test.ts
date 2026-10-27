@@ -16,6 +16,9 @@ const sources = {
   ),
   nonzero: svg('<path d="M10 20h60v40H10z M20 30h40v20H20z"/>'),
   white: svg(`${rect} fill="white"/>`),
+  pattern: svg(
+    `<defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></pattern></defs>${rect} fill="url(#p)"/>`,
+  ),
   overpaint: svg(`${rect} fill="black"/>${rect} fill="white"/>`),
   fillOpacity: svg(`${rect} fill-opacity="0.5"/>`),
   opacity: svg(`${rect} opacity="0.5"/>`),
@@ -34,6 +37,8 @@ const sources = {
   ),
   circle: svg('<circle cx="50" cy="50" r="30"/>'),
   image: '<img data-oracle alt="" />',
+  background:
+    '<div data-oracle style="position:absolute;left:32px;top:40px;width:100px;height:100px"></div>',
   pages: `${svg(`${rect} fill="#ff0000"/>`)}</section><section>${svg('<rect x="40" y="60" width="20" height="10" fill="#0000ff"/>')}`,
 };
 type Fixture = keyof typeof sources;
@@ -59,15 +64,22 @@ beforeAll(async () => {
           html.replace('<!-- PAINT -->', `<section>${source}</section>`),
         );
         await page.emulateMedia({ media: 'print' });
-        // Generate an opaque PNG locally; no external image or service.
+        // Known row-major RGBA PNG, generated locally without a dependency.
         await page.evaluate(`(async () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = canvas.height = 2;
+          const ctx = canvas.getContext('2d');
+          const pixels = ctx.createImageData(2, 2);
+          pixels.data.set([255,0,0,255, 0,255,0,255,
+            0,0,255,255, 0,0,0,0]);
+          ctx.putImageData(pixels, 0, 0);
+          const url = canvas.toDataURL('image/png');
           const image = document.querySelector('img');
-          if (image) {
-            const canvas = document.createElement('canvas');
-            canvas.width = canvas.height = 8;
-            canvas.getContext('2d').fillRect(0, 0, 8, 8);
-            image.src = canvas.toDataURL('image/png');
-            await image.decode();
+          if (image) { image.src = url; await image.decode(); }
+          const background = document.querySelector('div[data-oracle]');
+          if (background) {
+            const preload = new Image(); preload.src = url; await preload.decode();
+            background.style.backgroundImage = 'url(' + url + ')';
           }
         })()`);
         // DOM positions are independent of the PDF reader. Reset at each
@@ -180,6 +192,25 @@ test('white fill is reported as white instead of being treated as black ink or o
   closeBox(paint.box, expected('white', [10, 20, 70, 60]));
 });
 
+test('an SVG pattern fill carries a measurable tile', () => {
+  const paint = single('pattern');
+  expect(paint.tile).toBeDefined();
+  expect(paint.tile?.paints.length).toBeGreaterThan(0);
+  expect(paint.unmeasured).toBeUndefined();
+  expect(paint.color).toBeUndefined();
+  expect(paint.shading).toBeUndefined();
+  closeBox(paint.box, expected('pattern', [10, 20, 70, 60]));
+});
+
+test.each(['axial', 'radial'] as const)(
+  '%s gradient is measurable shading rather than an unsupported tiling pattern',
+  name => {
+    const paint = single(name);
+    expect(paint.shading).toBeDefined();
+    expect(paint.tile).toBeUndefined();
+  },
+);
+
 test('black then white overpaint retains both colours in content-stream order instead of merging their bounds', () => {
   const result = paints('overpaint');
   expect(result).toHaveLength(2);
@@ -290,12 +321,41 @@ test('circle curves flatten into a curved contour instead of the circle bounding
 test('raster image reports one transformed rectangular paint without inventing a solid colour', () => {
   const paint = single('image');
   expect(paint.color).toBeUndefined();
+  expect(paint.image).toBeDefined();
   expect(paint.polygons).toHaveLength(1);
   closeBox(
     bounds(paint.polygons[0] ?? []),
     expected('image', [0, 0, 100, 100]),
   );
   closeBox(paint.box, expected('image', [0, 0, 100, 100]));
+});
+
+test('a PNG image decodes exact RGBA rows and maps DOM corners to the unit square', () => {
+  const image = single('image').image;
+  expect(image).toBeDefined();
+  if (!image) throw new Error('missing decoded image');
+  expect([image.width, image.height]).toEqual([2, 2]);
+  expect([...image.rgba]).toEqual([
+    255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 0, 0, 0, 0,
+  ]);
+  const [a, b, c, d, e, f] = image.toImage;
+  const [x0, y0, x1, y1] = fixture('image').boxes[0] as Box;
+  for (const [x, y, u, v] of [
+    [x0, y0, 0, 1],
+    [x1, y0, 1, 1],
+    [x0, y1, 0, 0],
+    [x1, y1, 1, 0],
+  ] as const) {
+    expect(a * x + c * y + e).toBeCloseTo(u, 2);
+    expect(b * x + d * y + f).toBeCloseTo(v, 2);
+  }
+});
+
+test('a repeating CSS PNG background contains an image paint inside its tile', () => {
+  const paint = single('background');
+  expect(paint.tile).toBeDefined();
+  expect(paint.tile?.paints.some(p => p.image !== undefined)).toBe(true);
+  expect(paint.unmeasured).toBeUndefined();
 });
 
 test('page paints reset their geometry and colour at each page instead of leaking page-one state', () => {
@@ -323,13 +383,19 @@ test('workerd preserves real nonempty paint geometry and colour identically to N
     },
   });
   await worker.url;
-  const response = await worker.fetch('http://fixture.test/read', {
-    method: 'POST',
-    body: new Uint8Array(fixture('overpaint').pdf),
-  });
-  const result = (await response.json()) as PdfDocument;
-  expect(response.status, JSON.stringify(result)).toBe(200);
-  const actual = result.pages[0]?.paints;
-  expect(actual).toHaveLength(2); // Comparing two empty stub results must fail.
-  expect(actual).toEqual(paints('overpaint'));
+  for (const name of ['overpaint', 'image', 'background'] as const) {
+    const response = await worker.fetch('http://fixture.test/read', {
+      method: 'POST',
+      body: new Uint8Array(fixture(name).pdf),
+    });
+    const result = (await response.json()) as PdfDocument;
+    expect(response.status, JSON.stringify(result)).toBe(200);
+    const actual = result.pages[0]?.paints;
+    if (name === 'image') expect(actual?.[0]?.image).toBeDefined();
+    if (name === 'background') expect(actual?.[0]?.tile).toBeDefined();
+    expect(actual?.length).toBeGreaterThan(0);
+    expect(actual).toHaveLength(paints(name).length); // Comparing two empty stub results must fail.
+    // JSON serializes Uint8Array as numeric-key objects; compare the same wire form.
+    expect(actual).toEqual(JSON.parse(JSON.stringify(paints(name))));
+  }
 });

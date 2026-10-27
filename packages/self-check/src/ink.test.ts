@@ -38,6 +38,188 @@ const axial = (start: string, end: string): PdfShading => ({
   toShading: [1, 0, 0, 1, 0, 0],
 });
 
+const imagePaint = (rgba: number[], alpha = 1) =>
+  paint(box, {
+    color: undefined,
+    alpha,
+    image: {
+      width: 2,
+      height: 2,
+      rgba: new Uint8Array(rgba),
+      toImage: [0.01, 0, 0, -0.01, 0, 1],
+    },
+  });
+
+test.each([
+  ['transparent', Array(16).fill(0)],
+  ['opaque white', Array(16).fill(255)],
+] as const)('an image of %s pixels paints no ink on white', (_name, rgba) => {
+  expectNoInk(measureInk([imagePaint([...rgba])], box, 0, noBackground));
+});
+
+test('one black image pixel among transparent pixels contributes only its top-right cell', () => {
+  const rgba = Array(16).fill(0);
+  rgba[7] = 255;
+  expectInk(
+    measureInk([imagePaint(rgba)], box, 0, noBackground),
+    [50, 0, 100, 50],
+    [0.5, 0.5],
+  );
+});
+
+test.each([
+  ['pixel alpha', 128, 1],
+  ['paint alpha', 255, 0.5],
+] as const)(
+  'a half-opacity black image pixel over white still contributes ink via %s',
+  (_name, pixelAlpha, paintAlpha) => {
+    const rgba = Array(16).fill(0);
+    rgba[7] = pixelAlpha;
+    expectInk(
+      measureInk([imagePaint(rgba, paintAlpha)], box, 0, noBackground),
+      [50, 0, 100, 50],
+      [0.5, 0.5],
+    );
+  },
+);
+
+const tilePaint = (paints: PdfPaint[]) =>
+  paint(box, {
+    color: undefined,
+    tile: {
+      paints,
+      bbox: [0, 0, 4, 4],
+      step: [4, 4],
+      toPattern: [1, 0, 0, -1, 0, 100],
+    },
+  });
+
+test('a tile of only white rectangles adds no ink', () => {
+  expectNoInk(
+    measureInk(
+      [
+        tilePaint([
+          paint([0, 0, 4, 4], {
+            color: '#ffffff',
+          }),
+        ]),
+      ],
+      box,
+      0,
+      noBackground,
+    ),
+  );
+});
+
+test('a one-by-one black tile in a four-by-four step repeats with quarter coverage on both axes', () => {
+  expectInk(
+    measureInk([tilePaint([paint([0, 0, 1, 1])])], box, 0, noBackground),
+    [0, 3, 97, 100],
+    [0.25, 0.25],
+  );
+});
+
+test.each([false, true])(
+  'an unmeasured paint over black hides all ink even when background=%s',
+  background => {
+    const tile = paint(box, { color: undefined, unmeasured: true });
+    const actual = measureInk(
+      background ? [tile, paint(box)] : [paint(box), tile],
+      box,
+      0,
+      p => background && p === tile,
+    );
+    expectNoInk(actual);
+    expect(actual.unmeasured).toBe(true);
+  },
+);
+
+test('a black square beside an unmeasured paint remains ink without borrowing the unmeasured bounds', () => {
+  const actual = measureInk(
+    [
+      paint([0, 0, 40, 100], { color: undefined, unmeasured: true }),
+      paint([60, 20, 80, 40]),
+    ],
+    box,
+    0,
+    noBackground,
+  );
+  expectInk(actual, [60, 20, 80, 40], [0.2, 0.2]);
+  expect(actual.unmeasured).toBe(true);
+});
+
+test('black drawn after an unmeasured paint cannot restore measurable ink over the unmeasured paint', () => {
+  const actual = measureInk(
+    [paint(box, { color: undefined, unmeasured: true }), paint(box)],
+    box,
+    0,
+    noBackground,
+  );
+  expectNoInk(actual);
+  expect(actual.unmeasured).toBe(true);
+});
+
+test('unmeasured paint confined to the margin still marks the measurement as unmeasured', () => {
+  const actual = measureInk(
+    [paint([-2, 20, -1, 22], { color: undefined, unmeasured: true })],
+    box,
+    2,
+    noBackground,
+  );
+  expectNoInk(actual);
+  expect(actual.unmeasured).toBe(true);
+});
+
+test('a clipped unmeasured paint hides only samples inside its clip', () => {
+  const actual = measureInk(
+    [
+      paint(box),
+      paint(box, {
+        color: undefined,
+        unmeasured: true,
+        clips: [{ polygons: [rectangle([0, 0, 40, 100])], rule: 'nonzero' }],
+      }),
+    ],
+    box,
+    0,
+    noBackground,
+  );
+  expectInk(actual, [40, 0, 100, 100], [0.6, 1]);
+  expect(actual.unmeasured).toBe(true);
+});
+
+test.each(['absent', 'outside', 'clipped-out'] as const)(
+  'unmeasured stays false when a paint is %s relative to the sampled region',
+  location => {
+    const tiles =
+      location === 'absent'
+        ? []
+        : [
+            paint(location === 'outside' ? [102, 0, 110, 100] : box, {
+              color: undefined,
+              unmeasured: true,
+              clips:
+                location === 'clipped-out'
+                  ? [
+                      {
+                        polygons: [rectangle([102, 0, 110, 100])],
+                        rule: 'nonzero',
+                      },
+                    ]
+                  : [],
+            }),
+          ];
+    const actual = measureInk(
+      [...tiles, paint([60, 20, 80, 40])],
+      box,
+      1,
+      noBackground,
+    );
+    expectInk(actual, [60, 20, 80, 40], [0.2, 0.2]);
+    expect(actual.unmeasured).toBe(false);
+  },
+);
+
 test('group opacity composites black then white together before blending onto white', () => {
   const groups = [{ id: 1, alpha: 0.5 }];
   expectNoInk(
@@ -125,11 +307,16 @@ test('a solid matching its gradient background leaves no ink after background su
   );
 });
 
-test('different unknown-colour paints cannot cancel foreground ink against its background', () => {
-  const background = paint(box, { color: undefined });
+test('decoded black image pixels contrast with decoded red background pixels', () => {
+  const background = imagePaint([
+    255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 0, 0, 255,
+  ]);
   expectInk(
     measureInk(
-      [background, paint(box, { color: undefined })],
+      [
+        background,
+        imagePaint([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]),
+      ],
       box,
       0,
       p => p === background,
@@ -261,9 +448,9 @@ test.each<{ name: string; paints: PdfPaint[] }>([
     paints: [paint(box, { color: '#f0f0f0' })],
   },
   {
-    name: 'an image with unknown colour cannot be discarded as white-ish',
+    name: 'decoded opaque black image pixels cannot be discarded as white',
     paints: [
-      { box, polygons: [rectangle(box)], rule: 'nonzero', alpha: 1, clips: [] },
+      imagePaint([0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255, 0, 0, 0, 255]),
     ],
   },
 ])('$name', ({ paints }) => {

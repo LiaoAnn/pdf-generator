@@ -4,7 +4,7 @@
 <style>
 @page { size: A4; margin: 20mm; }
 html, body { margin: 0; padding: 0; }
-body { width: 340px; font-size: 0; }
+body { width: 510px; font-size: 0; }
 section { display: inline-block; vertical-align: top; box-sizing: border-box;
   width: 140px; height: 120px; padding: 10px; margin: 0 24px 24px 0;
   break-inside: avoid; }
@@ -27,4 +27,8 @@ img { display: block; width: 100px; height: 100px; }
 <section><svg aria-hidden="true" id="white-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="white-gradient-fill"><stop stop-color="white"/><stop offset="1" stop-color="white"/></linearGradient></defs><rect width="100" height="100" fill="url(#white-gradient-fill)"/></svg></section>
 <section><svg aria-hidden="true" id="visible-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="visible-gradient-fill"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><rect width="100" height="100" fill="url(#visible-gradient-fill)"/></svg></section>
 <section class="gradient-band"><img id="gradient-image" data-gt="image" alt=""/></section>
+<section style="padding:0;height:100px;margin-bottom:0"><svg aria-hidden="true" id="white-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="white-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></pattern></defs><rect width="100" height="100" fill="url(#white-pattern-fill)"/></svg></section>
+<section style="padding:0;height:100px;margin-bottom:0"><svg aria-hidden="true" id="black-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="black-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="black"/></pattern></defs><rect width="100" height="100" fill="url(#black-pattern-fill)"/></svg></section>
+<section><img id="transparent-image" data-gt="image" alt=""/></section>
+<section><div id="repeating-bars" data-gt="image" style="width:100px;height:100px;background:repeating-linear-gradient(to right,black 0px,black 2px,white 2px,white 4px)"></div></section>
 </body></html>

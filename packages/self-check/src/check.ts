@@ -761,7 +761,9 @@ function inkDifference(
   if (!ink.box && spilling.every(({ kind }) => kind === 'clip')) {
     return {
       ...where,
-      message: `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
+      message: ink.unmeasured
+        ? `${at} has no text and the PDF paints only a pattern fill in its box [${block.bbox.join(', ')}], which the self-check can't measure yet, so its box can't be checked`
+        : `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
     };
   }
   const inkBox = unionOf([
