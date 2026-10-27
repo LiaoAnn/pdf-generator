@@ -636,17 +636,16 @@ describe('print parity: round 5 forbids CSS escapes outside comments', () => {
   );
 });
 
-it('checks 40,000 nested var() functions in under 1.5 seconds', () => {
-  checkPack(pack(undefined, 'p{--x:var(--ink)}'));
+it('checks 40,000 nested var() functions without super-linear scanning relative to a function-free baseline', () => {
   const files = pack(
     undefined,
     `p{--x:${'var('.repeat(40_000)}0${')'.repeat(40_000)}}`,
   );
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(1_500);
+  // Unloaded medians: 24/35 ms (0.68×).
+  // Equal CSS lengths (200,008 characters); the reference is a flat token
+  // list, so scanCss never pushes or searches a nested function stack.
+  const baseline = pack(undefined, `p{--x:${'none,'.repeat(40_000)}0}`);
+  relativeCheckTimings(files, baseline, 'Nested var() functions');
 }, 30_000);
 
 describe('print parity: round 6 image-set direct function allowlist', () => {
