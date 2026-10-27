@@ -147,13 +147,18 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
           ...(rotated ? { dir: [a / length, -b / length] } : {}),
         });
       }
-      const marks = readMarks(operators, OPS, [left, bottom, right, top]);
+      const { marks, paints } = readMarks(operators, OPS, [
+        left,
+        bottom,
+        right,
+        top,
+      ]);
       pages.push({
         width: right - left,
         height: top - bottom,
         items,
         marks,
-        paints: [],
+        paints,
       });
       page.cleanup();
     }
@@ -228,6 +233,172 @@ interface GraphicsState {
   /** Constant alpha of fills (and images) and of strokes: 0 paints nothing. */
   fillAlpha: number;
   strokeAlpha: number;
+  /** The alpha of the transparency groups painting this, multiplied. */
+  groupAlpha: number;
+  /** The clipping paths in force, in the page frame. */
+  clips: PdfShape[];
+  /** `#rrggbb`; undefined: not a colour (a pattern); null: paints nothing. */
+  fillColor: string | undefined | null;
+  strokeColor: string | undefined | null;
+}
+
+/** A subpath in user space: `[x0, y0, x1, y1, …]`. */
+interface Subpath {
+  points: number[];
+  closed: boolean;
+}
+
+/** Segments a curve is flattened into: 0.06 pt off a 50 pt circle's arc. */
+const curveSegments = 16;
+
+/**
+ * The subpaths of pdf.js 6's path data (`DrawOPS`: moveTo 0, lineTo 1,
+ * curveTo 2, quadraticCurveTo 3, closePath 4), curves flattened.
+ */
+function subpathsOf(value: unknown): Subpath[] {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const data = ArrayBuffer.isView(raw)
+    ? Array.from(raw as Float32Array)
+    : Array.isArray(raw)
+      ? (raw as number[])
+      : [];
+  const subpaths: Subpath[] = [];
+  let current: Subpath | undefined;
+  let x = 0;
+  let y = 0;
+  let startX = 0;
+  let startY = 0;
+  const at = (i: number) => data[i] ?? 0;
+  const open = () => {
+    if (!current) {
+      current = { points: [x, y], closed: false };
+      subpaths.push(current);
+    }
+    return current;
+  };
+  const curve = (point: (t: number) => [number, number]) => {
+    const path = open();
+    for (let k = 1; k <= curveSegments; k++) {
+      [x, y] = point(k / curveSegments);
+      path.points.push(x, y);
+    }
+  };
+  for (let i = 0; i < data.length; ) {
+    const op = data[i++];
+    if (op === 0) {
+      x = startX = at(i++);
+      y = startY = at(i++);
+      current = undefined;
+      open();
+    } else if (op === 1) {
+      const path = open();
+      x = at(i++);
+      y = at(i++);
+      path.points.push(x, y);
+    } else if (op === 2) {
+      const [ax, ay, bx, by, cx, cy] = [0, 1, 2, 3, 4, 5].map(k => at(i + k));
+      i += 6;
+      const [px, py] = [x, y];
+      curve(t => {
+        const u = 1 - t;
+        return [
+          u * u * u * px +
+            3 * u * u * t * (ax ?? 0) +
+            3 * u * t * t * (bx ?? 0) +
+            t * t * t * (cx ?? 0),
+          u * u * u * py +
+            3 * u * u * t * (ay ?? 0) +
+            3 * u * t * t * (by ?? 0) +
+            t * t * t * (cy ?? 0),
+        ];
+      });
+    } else if (op === 3) {
+      const [ax, ay, cx, cy] = [0, 1, 2, 3].map(k => at(i + k));
+      i += 4;
+      const [px, py] = [x, y];
+      curve(t => {
+        const u = 1 - t;
+        return [
+          u * u * px + 2 * u * t * (ax ?? 0) + t * t * (cx ?? 0),
+          u * u * py + 2 * u * t * (ay ?? 0) + t * t * (cy ?? 0),
+        ];
+      });
+    } else if (op === 4) {
+      if (current) current.closed = true;
+      current = undefined;
+      x = startX;
+      y = startY;
+    } else break;
+  }
+  return subpaths;
+}
+
+/** Twice the signed area of a flat point list. */
+function signedArea(points: number[]): number {
+  let area = 0;
+  const n = points.length >> 1;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area +=
+      (points[2 * i] ?? 0) * (points[2 * j + 1] ?? 0) -
+      (points[2 * j] ?? 0) * (points[2 * i + 1] ?? 0);
+  }
+  return area;
+}
+
+/**
+ * The region a stroke of `width` along the subpaths covers, in user space:
+ * one quad per segment and an octagon per vertex (round joins), all wound
+ * the same way so that the nonzero rule unites them. Dashes are drawn solid.
+ */
+function strokeOutline(subpaths: Subpath[], width: number): number[][] {
+  const half = width / 2;
+  const polygons: number[][] = [];
+  const add = (points: number[]) => {
+    if (signedArea(points) < 0) {
+      const reversed: number[] = [];
+      for (let k = points.length - 2; k >= 0; k -= 2) {
+        reversed.push(points[k] ?? 0, points[k + 1] ?? 0);
+      }
+      polygons.push(reversed);
+    } else polygons.push(points);
+  };
+  for (const { points, closed } of subpaths) {
+    const n = points.length >> 1;
+    const segments = closed ? n : n - 1;
+    for (let i = 0; i < n; i++) {
+      const px = points[2 * i] ?? 0;
+      const py = points[2 * i + 1] ?? 0;
+      // An open subpath's ends are butt caps, not joins.
+      if (closed || (i > 0 && i < n - 1)) {
+        const join: number[] = [];
+        for (let k = 0; k < 8; k++) {
+          const angle = (k * Math.PI) / 4;
+          join.push(px + half * Math.cos(angle), py + half * Math.sin(angle));
+        }
+        add(join);
+      }
+      if (i >= segments) continue;
+      const j = (i + 1) % n;
+      const qx = points[2 * j] ?? 0;
+      const qy = points[2 * j + 1] ?? 0;
+      const length = Math.hypot(qx - px, qy - py);
+      if (length === 0) continue;
+      const nx = (-(qy - py) / length) * half;
+      const ny = ((qx - px) / length) * half;
+      add([
+        px + nx,
+        py + ny,
+        qx + nx,
+        qy + ny,
+        qx - nx,
+        qy - ny,
+        px - nx,
+        py - ny,
+      ]);
+    }
+  }
+  return polygons;
 }
 
 /**
@@ -239,7 +410,7 @@ function readMarks(
   operators: { fnArray: number[]; argsArray: unknown[] },
   OPS: Record<string, number>,
   view: Rect,
-): PdfMark[] {
+): { marks: PdfMark[]; paints: PdfPaint[] } {
   const [left, , , top] = view;
   const filled = new Set(
     [
@@ -269,7 +440,16 @@ function readMarks(
       'paintSolidColorImageMask',
     ].map(name => OPS[name]),
   );
+  const evenOdd = new Set(
+    ['eoFill', 'eoFillStroke', 'closeEOFillStroke'].map(name => OPS[name]),
+  );
+  const closing = new Set(
+    ['closeStroke', 'closeFillStroke', 'closeEOFillStroke'].map(
+      name => OPS[name],
+    ),
+  );
   const marks: PdfMark[] = [];
+  const paints: PdfPaint[] = [];
   const stack: GraphicsState[] = [];
   let state: GraphicsState = {
     ctm: identity,
@@ -277,8 +457,71 @@ function readMarks(
     lineWidth: 1,
     fillAlpha: 1,
     strokeAlpha: 1,
+    groupAlpha: 1,
+    clips: [],
+    fillColor: '#000000',
+    strokeColor: '#000000',
   };
-  let clipping = false;
+  let clipping: PdfShape['rule'] | undefined;
+  /** User-space points through the CTM into the page frame. */
+  const toPage = (points: number[]) => {
+    const [a, b, c, d, e, f] = state.ctm;
+    const out: number[] = [];
+    for (let k = 0; k < points.length; k += 2) {
+      const x = points[k] ?? 0;
+      const y = points[k + 1] ?? 0;
+      out.push(a * x + c * y + e - left, top - (b * x + d * y + f));
+    }
+    return out;
+  };
+  const rectPolygon = ([x0, y0, x1, y1]: Rect) => [
+    x0 - left,
+    top - y0,
+    x1 - left,
+    top - y0,
+    x1 - left,
+    top - y1,
+    x0 - left,
+    top - y1,
+  ];
+  /** Records a paint over `polygons` (page frame), if it shows. */
+  const paint = (
+    polygons: number[][],
+    rule: PdfShape['rule'],
+    color: string | undefined | null,
+    alpha: number,
+  ) => {
+    if (color === null || alpha <= 0 || polygons.length === 0) return;
+    let [minX, minY, maxX, maxY] = [Infinity, Infinity, -Infinity, -Infinity];
+    for (const points of polygons) {
+      for (let k = 0; k < points.length; k += 2) {
+        const x = points[k] ?? 0;
+        const y = points[k + 1] ?? 0;
+        minX = Math.min(minX, x);
+        maxX = Math.max(maxX, x);
+        minY = Math.min(minY, y);
+        maxY = Math.max(maxY, y);
+      }
+    }
+    // The clip's rect is in PDF space (y up), the polygons in the page frame.
+    const [x0, y0, x1, y1] = intersect(
+      [minX + left, top - maxY, maxX + left, top - minY],
+      state.clip,
+    );
+    if (!(x0 <= x1 && y0 <= y1)) return;
+    paints.push({
+      polygons,
+      rule,
+      ...(color === undefined ? {} : { color }),
+      alpha: alpha * state.groupAlpha,
+      clips: state.clips,
+      box: [x0 - left, top - y1, x1 - left, top - y0],
+    });
+  };
+  const colorOf = (args: unknown[]) =>
+    typeof args[0] === 'string' && /^#[0-9a-f]{6}$/i.test(args[0])
+      ? args[0].toLowerCase()
+      : undefined;
   const push = () => stack.push({ ...state });
   const pop = () => {
     state = stack.pop() ?? state;
@@ -304,7 +547,14 @@ function readMarks(
         else if (entry[0] === 'ca') state.fillAlpha = entry[1];
         else if (entry[0] === 'CA') state.strokeAlpha = entry[1];
       }
-    } else if (fn === OPS.clip || fn === OPS.eoClip) clipping = true;
+    } else if (fn === OPS.setFillRGBColor) state.fillColor = colorOf(args);
+    else if (fn === OPS.setStrokeRGBColor) state.strokeColor = colorOf(args);
+    else if (fn === OPS.setFillColorN) state.fillColor = undefined;
+    else if (fn === OPS.setStrokeColorN) state.strokeColor = undefined;
+    else if (fn === OPS.setFillTransparent) state.fillColor = null;
+    else if (fn === OPS.setStrokeTransparent) state.strokeColor = null;
+    else if (fn === OPS.clip) clipping = 'nonzero';
+    else if (fn === OPS.eoClip) clipping = 'evenodd';
     else if (fn === OPS.constructPath) {
       const bounds = asRect(args[2]);
       const op = args[0] as number;
@@ -313,6 +563,20 @@ function readMarks(
         // Only paint at some opacity is a mark.
         const stroke = stroked.has(op) && state.strokeAlpha > 0;
         const fill = filled.has(op) && state.fillAlpha > 0;
+        const subpaths = subpathsOf(args[1]);
+        if (closing.has(op)) {
+          const last = subpaths[subpaths.length - 1];
+          if (last) last.closed = true;
+        }
+        const area = () => subpaths.map(({ points }) => toPage(points));
+        if (fill) {
+          paint(
+            area(),
+            evenOdd.has(op) ? 'evenodd' : 'nonzero',
+            state.fillColor,
+            state.fillAlpha,
+          );
+        }
         if (stroke || fill) {
           // A stroke reaches half its width beyond the path: on each axis,
           // as far as the CTM stretches a circle of that radius.
@@ -320,24 +584,52 @@ function readMarks(
           const half = stroke ? state.lineWidth / 2 : 0;
           const hx = half * Math.hypot(a, c);
           const hy = half * Math.hypot(b, d);
-          mark('path', [
+          const reach: Rect = [
             rect[0] - hx,
             rect[1] - hy,
             rect[2] + hx,
             rect[3] + hy,
-          ]);
+          ];
+          mark('path', reach);
+          if (stroke) {
+            paint(
+              strokeOutline(subpaths, state.lineWidth).map(toPage),
+              'nonzero',
+              state.strokeColor,
+              state.strokeAlpha,
+            );
+          }
         }
         if (clipping) {
           mark('clip', rect);
           state.clip = intersect(state.clip, rect);
+          state.clips = [...state.clips, { polygons: area(), rule: clipping }];
         }
       }
-      clipping = false;
+      clipping = undefined;
     } else if (images.has(fn)) {
-      if (state.fillAlpha > 0) mark('image', mapRect(state.ctm, [0, 0, 1, 1]));
-    } else if (fn === OPS.shadingFill) mark('path', state.clip);
-    else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
+      if (state.fillAlpha > 0) {
+        const rect = mapRect(state.ctm, [0, 0, 1, 1]);
+        mark('image', rect);
+        paint(
+          [toPage([0, 0, 1, 0, 1, 1, 0, 1])],
+          'nonzero',
+          undefined,
+          state.fillAlpha,
+        );
+      }
+    } else if (fn === OPS.shadingFill) {
+      mark('path', state.clip);
+      paint([rectPolygon(state.clip)], 'nonzero', undefined, state.fillAlpha);
+    } else if (fn === OPS.paintFormXObjectBegin || fn === OPS.beginGroup) {
       push();
+      if (fn === OPS.beginGroup) {
+        // A transparency group is painted at the alpha in force when it
+        // starts, which inside it starts again at 1.
+        state.groupAlpha *= state.fillAlpha;
+        state.fillAlpha = 1;
+        state.strokeAlpha = 1;
+      }
       const group = args[0] as { matrix?: unknown; bbox?: unknown } | undefined;
       const m =
         fn === OPS.paintFormXObjectBegin
@@ -347,8 +639,19 @@ function readMarks(
       const bbox = asRect(
         fn === OPS.paintFormXObjectBegin ? args[1] : group?.bbox,
       );
-      if (bbox) state.clip = intersect(state.clip, mapRect(state.ctm, bbox));
+      if (bbox) {
+        const rect = mapRect(state.ctm, bbox);
+        state.clip = intersect(state.clip, rect);
+        const [x0, y0, x1, y1] = bbox;
+        state.clips = [
+          ...state.clips,
+          {
+            polygons: [toPage([x0, y0, x1, y0, x1, y1, x0, y1])],
+            rule: 'nonzero',
+          },
+        ];
+      }
     } else if (fn === OPS.paintFormXObjectEnd || fn === OPS.endGroup) pop();
   });
-  return marks;
+  return { marks, paints };
 }
