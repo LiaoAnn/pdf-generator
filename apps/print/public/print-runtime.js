@@ -103,27 +103,97 @@
     }
   }
 
+  // A print-only block's declarations, and those of the blocks nested in it
+  // (an @page's margin boxes, a @media print's rules): a platform family named
+  // in font or font-family, bold when that block asks for bold.
+  /** @param {string} body a block's contents, without its braces */
+  function usePrintBlock(body) {
+    let own = '';
+    let depth = 0;
+    let start = 0;
+    for (let index = 0; index < body.length; index++) {
+      if (body[index] === '{') {
+        if (depth++ === 0) {
+          own += body.slice(start, index);
+          start = index + 1;
+        }
+      } else if (body[index] === '}' && depth > 0 && --depth === 0) {
+        usePrintBlock(body.slice(start, index));
+        start = index + 1;
+      }
+    }
+    if (depth === 0) own += body.slice(start);
+    else usePrintBlock(body.slice(start));
+    const weight = /font-weight\s*:\s*([^;}]+)/i.exec(own)?.[1] ?? '';
+    for (const [, value = ''] of own.matchAll(
+      /font(?:-family)?\s*:\s*([^;}]+)/gi,
+    )) {
+      const lower = value.toLowerCase();
+      const bold =
+        isBold(weight) || /(^|\s)(bold|bolder|[6-9]00)(\s|$)/.test(lower);
+      for (const key of Object.keys(platformFonts)) {
+        if (lower.includes(key)) use(key, bold ? '700' : '400');
+      }
+    }
+  }
+
+  // Whether an @import with this media list applies to the print: all but
+  // screen- or speech-only lists (Paged.js applies the rest).
+  /** @param {string} media */
+  const printsWith = media =>
+    !media
+      .split(',')
+      .every(query => /^\s*(only\s+)?(screen|speech)\b/i.test(query));
+
   // Rules computed styles can't show before Paged.js runs: @page rules (margin
   // boxes exist only after pagination) and @media print rules (Paged.js
   // applies them; the page is still on screen media here). Read them from the
   // stylesheets' text, as Paged.js does, of <style> and linked stylesheets
-  // alike: a platform family named anywhere in a declaration block's font or
-  // font-family, bold when the block asks for bold.
+  // alike, and of the sheets they @import: a platform family named anywhere in
+  // a declaration block's font or font-family, bold when the block asks for
+  // bold.
   async function findUsedInAtRules() {
-    const texts = [
-      ...[...document.querySelectorAll('style')].map(
-        style => style.textContent ?? '',
-      ),
-      ...(await Promise.all(
-        linkedStylesheets().map(link =>
-          fetch(link.href)
-            .then(response => (response.ok ? response.text() : ''))
-            .catch(() => ''),
-        ),
-      )),
-    ];
-    for (const text of texts) {
+    /** @type {Set<string>} Imports already read, as "<print>|<url>". */
+    const imported = new Set();
+    /** @param {string} url */
+    const fetchText = url =>
+      fetch(url)
+        .then(response => (response.ok ? response.text() : ''))
+        .catch(() => '');
+    /**
+     * Reads one sheet's imports, then its print-only rules. An import with a
+     * media list (`@import "p.css" print;`) applies to the print as a whole
+     * sheet that screen styles never showed, so all of its rules count;
+     * screen- or speech-only imports don't print at all.
+     * @param {string} text
+     * @param {string} base the URL the sheet's relative URLs resolve against
+     * @param {boolean} print whether the whole sheet applies only in print
+     * @returns {Promise<void>}
+     */
+    const scan = async (text, base, print) => {
       const css = text.replace(/\/\*[\s\S]*?\*\//g, '');
+      const imports =
+        /@import\s+(?:url\(\s*(["']?)(.*?)\1\s*\)|(["'])(.*?)\3)([^;]*);/gi;
+      for (const [, , urlHref, , stringHref, media = ''] of css.matchAll(
+        imports,
+      )) {
+        if (!printsWith(media)) continue;
+        let url;
+        try {
+          url = new URL(urlHref ?? stringHref ?? '', base).href;
+        } catch {
+          continue;
+        }
+        const importPrint = print || media.trim() !== '';
+        const key = `${importPrint}|${url}`;
+        if (imported.has(key)) continue;
+        imported.add(key);
+        await scan(await fetchText(url), url, importPrint);
+      }
+      if (print) {
+        usePrintBlock(css);
+        return;
+      }
       const starts = /@page\b|@media\b[^{;]*\bprint\b/gi;
       for (let match = starts.exec(css); match; match = starts.exec(css)) {
         const open = css.indexOf('{', match.index);
@@ -134,25 +204,18 @@
           if (css[end] === '{') depth++;
           else if (css[end] === '}' && --depth === 0) break;
         }
-        const rule = css.slice(open + 1, end);
-        const outer = rule.replace(/\{[^{}]*\}/g, '');
-        for (const block of [outer, ...(rule.match(/\{[^{}]*\}/g) ?? [])]) {
-          const weight = /font-weight\s*:\s*([^;}]+)/i.exec(block)?.[1] ?? '';
-          const fonts = [
-            ...block.matchAll(/font(?:-family)?\s*:\s*([^;}]+)/gi),
-          ];
-          for (const [, value = ''] of fonts) {
-            const lower = value.toLowerCase();
-            const bold =
-              isBold(weight) || /(^|\s)(bold|bolder|[6-9]00)(\s|$)/.test(lower);
-            for (const key of Object.keys(platformFonts)) {
-              if (lower.includes(key)) use(key, bold ? '700' : '400');
-            }
-          }
-        }
+        usePrintBlock(css.slice(open + 1, end));
         starts.lastIndex = end;
       }
-    }
+    };
+    await Promise.all([
+      ...[...document.querySelectorAll('style')].map(style =>
+        scan(style.textContent ?? '', document.baseURI, false),
+      ),
+      ...linkedStylesheets().map(async link =>
+        scan(await fetchText(link.href), link.href, false),
+      ),
+    ]);
   }
 
   // Declares only the faces in use (T03 Must 8) and waits for them. A face
