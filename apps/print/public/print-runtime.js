@@ -617,9 +617,26 @@
   // an absolutely positioned box escapes. Only the part inside the page's
   // content area counts; reaching outside it is outsidePages()'s to report.
   // Skipped, unless marked data-gt themselves: MathML elements in KaTeX's
-  // .katex-mathml copy, clipped to 1px on purpose (the class alone exempts
-  // nothing: a pack can use it), and an SVG's drawing, which its <svg> clips
-  // by design (text in it counts).
+  // .katex-mathml copy, which KaTeX's CSS hides (hiddenCopy()), and an SVG's
+  // drawing, which its <svg> clips by design (text in it counts).
+  // Whether `copy` shows at most 1px of what is inside it, as KaTeX's CSS
+  // makes its MathML copy: no larger than 1px, clipping both ways, and
+  // positioned, so what is absolutely positioned in it can't escape the
+  // clip. A pack can name any element katex-mathml; this is what exempts it.
+  /** @param {Element | null} copy */
+  function hiddenCopy(copy) {
+    if (!copy) return false;
+    const box = copy.getBoundingClientRect();
+    const style = getComputedStyle(copy);
+    return (
+      box.width <= 1 &&
+      box.height <= 1 &&
+      style.overflowX !== 'visible' &&
+      style.overflowY !== 'visible' &&
+      style.position !== 'static'
+    );
+  }
+
   async function clippedContent() {
     const tolerance = 1;
     const round = (/** @type {number} */ value) => value.toFixed(1);
@@ -637,7 +654,7 @@
         if (
           !element.hasAttribute('data-gt') &&
           ((element.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
-            element.closest('.katex-mathml')) ||
+            hiddenCopy(element.closest('.katex-mathml'))) ||
             (element instanceof SVGElement &&
               !(element instanceof SVGTextContentElement)))
         ) {

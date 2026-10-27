@@ -133,6 +133,37 @@ test.each([
 });
 
 test.each([
+  {
+    name: 'pack-authored MathML inside a visible 100x30 katex-mathml wrapper',
+    body: '<div data-gt="image" style="width:100px;height:100px"><div class="katex-mathml" style="width:100px;height:30px;overflow:hidden"><math style="display:block;width:100px;height:100px;background:black"><mspace width="100px" height="100px"></mspace></math></div></div>',
+  },
+  {
+    name: 'absolute MathML escaping an unpositioned 1px katex-mathml wrapper into a clipping ancestor',
+    body: '<div data-gt="image" style="width:100px;height:100px"><div style="position:relative;width:100px;height:30px;overflow:hidden"><span class="katex-mathml" style="display:block;width:1px;height:1px;overflow:hidden"><math style="position:absolute;top:0;left:0;display:block;width:100px;height:100px;background:black"><mspace width="100px" height="100px"></mspace></math></span></div></div>',
+  },
+])('refuses clipping of $name', async ({ body }) => {
+  // Only the outer 100x30 clip changes. In the absolute case the static 1px
+  // wrapper stays overflow:hidden, but cannot clip its positioned descendant.
+  // Both fixtures draw textless ink, so text_missing cannot cause the refusal.
+  const control = await post(
+    document(
+      body.replace(
+        'height:30px;overflow:hidden',
+        'height:30px;overflow:visible',
+      ),
+    ),
+  );
+  expect(
+    control.status,
+    control.status === 200 ? '' : await control.clone().text(),
+  ).toBe(200);
+  expect(control.headers.get('content-type')).toMatch(/^application\/pdf\b/);
+  await control.arrayBuffer();
+
+  await expectError(await post(document(body)), 1);
+});
+
+test.each([
   { side: 'top', offset: 'top:-20px' },
   { side: 'left', offset: 'left:-20px' },
 ])('refuses a data-gt box clipped at the $side', async ({ side, offset }) => {
