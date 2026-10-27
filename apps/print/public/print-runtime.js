@@ -620,7 +620,8 @@
   // .katex-mathml copy, which KaTeX's CSS hides (hiddenCopy()), and an SVG's
   // drawing, which its <svg> clips by design (text in it counts).
   // Whether `copy` shows at most 1px of what is inside it, as KaTeX's CSS
-  // makes its MathML copy: no larger than 1px, clipping both ways, and
+  // makes its MathML copy: no larger than 1px, overflow: hidden both ways
+  // (overflow: clip can widen its clip with overflow-clip-margin), and
   // positioned, so what is absolutely positioned in it can't escape the
   // clip. A pack can name any element katex-mathml; this is what exempts it.
   /** @param {Element | null} copy */
@@ -631,8 +632,8 @@
     return (
       box.width <= 1 &&
       box.height <= 1 &&
-      style.overflowX !== 'visible' &&
-      style.overflowY !== 'visible' &&
+      style.overflowX === 'hidden' &&
+      style.overflowY === 'hidden' &&
       style.position !== 'static'
     );
   }
