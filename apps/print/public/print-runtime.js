@@ -616,32 +616,15 @@
   // that clips it (overflow, contain: paint, clip-path, ...), and not by one
   // an absolutely positioned box escapes. Only the part inside the page's
   // content area counts; reaching outside it is outsidePages()'s to report.
-  // Skipped, unless marked data-gt themselves: MathML elements in KaTeX's
-  // .katex-mathml copy, which KaTeX's CSS hides (hiddenCopy()), and an SVG's
-  // drawing, which its <svg> clips by design (text in it counts).
-  // Whether `copy` shows at most 1px of what is inside it, as KaTeX's CSS
-  // makes its MathML copy: no larger than 1px, overflow: hidden both ways
-  // (overflow: clip can widen its clip with overflow-clip-margin), and
-  // positioned, so what is absolutely positioned in it can't escape the
-  // clip. A pack can name any element katex-mathml; this is what exempts it.
-  /** @param {Element | null} copy */
-  function hiddenCopy(copy) {
-    if (!copy) return false;
-    const box = copy.getBoundingClientRect();
-    const style = getComputedStyle(copy);
-    return (
-      box.width <= 1 &&
-      box.height <= 1 &&
-      style.overflowX === 'hidden' &&
-      style.overflowY === 'hidden' &&
-      style.position !== 'static'
-    );
-  }
-
+  // Skipped, unless marked data-gt themselves: an SVG's drawing, which its
+  // <svg> clips by design (text in it counts), and MathML in a .katex-mathml
+  // element that shows at most 1px of it, as KaTeX's CSS hides its MathML
+  // copy. What the browser shows decides, not the class or the CSS: a pack
+  // can name any element katex-mathml and style it to look hidden.
   async function clippedContent() {
     const tolerance = 1;
     const round = (/** @type {number} */ value) => value.toFixed(1);
-    /** @type {{ element: Element, page: number, area: DOMRect }[]} */
+    /** @type {{ element: Element, page: number, area: DOMRect, copy: boolean }[]} */
     const targets = [];
     pagedPages().forEach((page, index) => {
       const content = page.querySelector(
@@ -652,17 +635,20 @@
       for (const element of content.querySelectorAll(
         '[data-gt], [data-gt] *',
       )) {
+        const marked = element.hasAttribute('data-gt');
         if (
-          !element.hasAttribute('data-gt') &&
-          ((element.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
-            hiddenCopy(element.closest('.katex-mathml'))) ||
-            (element instanceof SVGElement &&
-              !(element instanceof SVGTextContentElement)))
+          !marked &&
+          element instanceof SVGElement &&
+          !(element instanceof SVGTextContentElement)
         ) {
           continue;
         }
         if (element.getClientRects().length === 0) continue;
-        targets.push({ element, page: index + 1, area });
+        const copy =
+          !marked &&
+          element.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
+          element.closest('.katex-mathml') !== null;
+        targets.push({ element, page: index + 1, area, copy });
       }
     });
     if (targets.length === 0) return [];
@@ -691,10 +677,17 @@
     });
     /** @type {string[]} */
     const clipped = [];
-    for (const { element, page, area } of targets) {
+    for (const { element, page, area, copy } of targets) {
       const entry = seen.get(element);
       if (!entry) {
         clipped.push(`page ${page} ${element.localName} not measured`);
+        continue;
+      }
+      const shown = entry.intersectionRect;
+      if (
+        copy &&
+        (!entry.isIntersecting || (shown.width <= 1 && shown.height <= 1))
+      ) {
         continue;
       }
       const box = entry.boundingClientRect;
@@ -703,7 +696,6 @@
       const bottom = Math.min(box.bottom, area.bottom);
       const left = Math.max(box.left, area.left);
       if (right - left <= 0 || bottom - top <= 0) continue;
-      const shown = entry.intersectionRect;
       /** @type {[string, number][]} */
       const sides = [
         ['top', shown.top - top],

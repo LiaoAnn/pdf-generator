@@ -145,10 +145,20 @@ test.each([
     name: 'textless MathML exposed by overflow-clip-margin on a positioned 1px katex-mathml wrapper',
     body: '<div data-gt="image" style="width:100px;height:100px"><div style="width:100px;height:30px;overflow:hidden"><div class="katex-mathml" style="position:relative;width:1px;height:1px;overflow:clip;overflow-clip-margin:100px"><math style="position:absolute;top:0;left:0;display:block;width:100px;height:100px;background:black"><mspace width="100px" height="100px"></mspace></math></div></div></div>',
   },
+  {
+    name: 'textless absolute MathML escaping a zero-font inline katex-mathml wrapper',
+    body: '<div data-gt="image" style="width:100px;height:100px"><div style="position:relative;width:100px;height:30px;overflow:hidden"><span class="katex-mathml" style="display:inline;font-size:0;line-height:0;position:relative;overflow:hidden"><math style="position:absolute;top:0;left:0;display:block;width:100px;height:100px;background:black"><mspace width="100px" height="100px"></mspace></math></span></div></div>',
+  },
+  {
+    name: 'textless absolute MathML escaping a display:contents katex-mathml wrapper',
+    body: '<div data-gt="image" style="width:100px;height:100px"><div style="position:relative;width:100px;height:30px;overflow:hidden"><span class="katex-mathml" style="display:contents;position:relative;overflow:hidden"><math style="position:absolute;top:0;left:0;display:block;width:100px;height:100px;background:black"><mspace width="100px" height="100px"></mspace></math></span></div></div>',
+  },
 ])('refuses clipping of $name', async ({ body }) => {
   // Only the outer 100x30 clip changes. In the absolute case the static 1px
   // wrapper stays overflow:hidden, but cannot clip its positioned descendant.
   // overflow-clip-margin exposes the drawing beyond the positioned 1px wrapper.
+  // Inline and display:contents wrappers do not hide the 100x100 MathML ink,
+  // even with overflow:hidden and a zero-font or absent wrapper box.
   // All fixtures draw textless ink, so text_missing cannot cause the refusal.
   const control = await post(
     document(
