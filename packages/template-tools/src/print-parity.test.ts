@@ -35,6 +35,35 @@ function pack(
   };
 }
 
+function relativeCheckTimings(
+  files: PackFiles,
+  baseline: PackFiles,
+  label: string,
+) {
+  expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
+  expect(checkPack(baseline)).toMatchObject({ ok: true, issues: [] });
+  const times: number[] = [];
+  const reference: number[] = [];
+  // Warm both full inputs, then interleave so machine speed affects both.
+  for (let i = 0; i < 3; i++) {
+    let start = performance.now();
+    const result = checkPack(files);
+    times.push(performance.now() - start);
+    expect(result).toMatchObject({ ok: true, issues: [] });
+    start = performance.now();
+    const control = checkPack(baseline);
+    reference.push(performance.now() - start);
+    expect(control).toMatchObject({ ok: true, issues: [] });
+  }
+  console.info(
+    `${label} timings (ms): ${times.join(', ')}; reference: ${reference.join(', ')}`,
+  );
+  const median = (values: number[]) =>
+    [...values].sort((a, b) => a - b)[1] ?? 0;
+  // Fourfold headroom follows machine speed; medians tolerate one outlier.
+  expect(median(times)).toBeLessThan(median(reference) * 4);
+}
+
 // Check each rule independently: a crossing RCDATA element can also contain
 // forbidden statements, and those are separate diagnostics at separate places.
 function rejects(
@@ -401,14 +430,13 @@ describe('print parity: correctness review controls', () => {
   );
 });
 
-it('checks 20,000 marked mustache paragraphs in under three seconds', () => {
-  checkPack(pack()); // Warm parsers; measure only the public check, not setup.
+it('checks 20,000 marked mustache paragraphs without super-linear scanning relative to a mustache-free baseline', () => {
   const files = pack('<p data-gt="paragraph">{{value}}</p>'.repeat(20_000));
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(3_000);
+  // Unloaded medians: 412/253 ms (1.63×).
+  // Equal template lengths (720,000 characters before withHead); the literal
+  // reference adds HTML parsing work but has no mustache statements.
+  const baseline = pack('<p data-gt="paragraph"><b>x</b>x</p>'.repeat(20_000));
+  relativeCheckTimings(files, baseline, 'Mustache paragraphs');
 }, 30_000);
 
 describe('print parity: round 4 SVG attribute CSS scanning', () => {
@@ -496,16 +524,17 @@ describe('print parity: round 4 CSS bad-string newlines', () => {
   }
 });
 
-it('checks 8,000 complete if branches in under three seconds', () => {
-  checkPack(pack('{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'));
+it('checks 8,000 complete if branches without super-linear scanning relative to a branch-free baseline', () => {
   const files = pack(
     '{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'.repeat(8_000),
   );
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(3_000);
+  // Unloaded medians: 318/164 ms (1.94×).
+  // Equal template lengths (384,000 characters before withHead); a padded
+  // mustache keeps Handlebars parsing active without creating any branches.
+  const baseline = pack(
+    `<p data-gt="paragraph">{{value}}${' '.repeat(12)}</p>`.repeat(8_000),
+  );
+  relativeCheckTimings(files, baseline, 'Complete if branches');
 }, 30_000);
 
 describe('print parity: round 5 forbids CSS escapes outside comments', () => {
@@ -607,17 +636,16 @@ describe('print parity: round 5 forbids CSS escapes outside comments', () => {
   );
 });
 
-it('checks 40,000 nested var() functions in under 1.5 seconds', () => {
-  checkPack(pack(undefined, 'p{--x:var(--ink)}'));
+it('checks 40,000 nested var() functions without super-linear scanning relative to a function-free baseline', () => {
   const files = pack(
     undefined,
     `p{--x:${'var('.repeat(40_000)}0${')'.repeat(40_000)}}`,
   );
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(1_500);
+  // Unloaded medians: 24/35 ms (0.68×).
+  // Equal CSS lengths (200,008 characters); the reference is a flat token
+  // list, so scanCss never pushes or searches a nested function stack.
+  const baseline = pack(undefined, `p{--x:${'none,'.repeat(40_000)}0}`);
+  relativeCheckTimings(files, baseline, 'Nested var() functions');
 }, 30_000);
 
 describe('print parity: round 6 image-set direct function allowlist', () => {
@@ -718,30 +746,8 @@ it('round 6 checks 160,000 unquoted data URLs without super-linear scanning rela
     undefined,
     `p{background-image:${'none,'.repeat(415_997)}none}`,
   );
-  expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
-  expect(checkPack(baseline)).toMatchObject({ ok: true, issues: [] });
-  const times: number[] = [];
-  const reference: number[] = [];
-  // Warm both full inputs, then interleave so machine speed affects both.
-  for (let i = 0; i < 3; i++) {
-    let start = performance.now();
-    const result = checkPack(files);
-    times.push(performance.now() - start);
-    expect(result).toMatchObject({ ok: true, issues: [] });
-    start = performance.now();
-    const control = checkPack(baseline);
-    reference.push(performance.now() - start);
-    expect(control).toMatchObject({ ok: true, issues: [] });
-  }
-  console.info(
-    `Unquoted data URL timings (ms): ${times.join(', ')}; URL-free reference: ${reference.join(', ')}`,
-  );
-  const median = (values: number[]) =>
-    [...values].sort((a, b) => a - b)[1] ?? 0;
-  // Measured ratios are about 1 (353–539 ms vs 323–391 ms). A factor of 4
-  // preserves the old bound's roughly fourfold headroom without depending
-  // on machine speed; medians tolerate one scheduling outlier per series.
-  expect(median(times)).toBeLessThan(median(reference) * 4);
+  // Measured ratios are about 1 (353–539 ms vs 323–391 ms).
+  relativeCheckTimings(files, baseline, 'Unquoted data URL');
 }, 30_000);
 
 it('round 6 reports sample text conversion failure at the mustache without throwing', () => {
