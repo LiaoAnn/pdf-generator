@@ -524,16 +524,17 @@ describe('print parity: round 4 CSS bad-string newlines', () => {
   }
 });
 
-it('checks 8,000 complete if branches in under three seconds', () => {
-  checkPack(pack('{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'));
+it('checks 8,000 complete if branches without super-linear scanning relative to a branch-free baseline', () => {
   const files = pack(
     '{{#if value}}<p data-gt="paragraph">x</p>{{/if}}'.repeat(8_000),
   );
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(3_000);
+  // Unloaded medians: 318/164 ms (1.94×).
+  // Equal template lengths (384,000 characters before withHead); a padded
+  // mustache keeps Handlebars parsing active without creating any branches.
+  const baseline = pack(
+    `<p data-gt="paragraph">{{value}}${' '.repeat(12)}</p>`.repeat(8_000),
+  );
+  relativeCheckTimings(files, baseline, 'Complete if branches');
 }, 30_000);
 
 describe('print parity: round 5 forbids CSS escapes outside comments', () => {
