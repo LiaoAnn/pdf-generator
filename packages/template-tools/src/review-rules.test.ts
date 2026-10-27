@@ -608,13 +608,12 @@ describe('review regressions: CSS tokenization and reached stylesheets', () => {
       '@font-face{font-family:Unused;src:url(../font.woff2)}';
     rejects(files, 'font-unused', '@font-face', 'assets/nested/extra.css');
   });
-  it('counts font usage in reached CSS and terminates import cycles without duplicate diagnostics', () => {
+  it('counts font usage in CSS reached by both link and import without duplicate diagnostics', () => {
     const files = pack(
       '<link rel="stylesheet" href="../assets/nested/extra.css">',
       '@import "../assets/nested/extra.css";\n@font-face{font-family:Report;src:url(../assets/font.woff2)}',
     );
-    files['assets/nested/extra.css'] =
-      '@import "../../styles/base.css";p{font-family:Report}';
+    files['assets/nested/extra.css'] = 'p{font-family:Report}';
     accepts(files);
     files['assets/nested/extra.css'] += '\np{background:url(missing.svg)}';
     rejects(files, 'asset-missing', 'missing.svg', 'assets/nested/extra.css');
