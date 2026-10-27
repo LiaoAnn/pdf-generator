@@ -263,40 +263,62 @@ export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
   // by them (/Headers). The browser hands the ids out on demand, so their
   // order changes from print to print (a rerun of 100 fixtures differed in
   // 5). All three are removed, the IDTree's objects becoming null; the rest
-  // of the structure tree stays.
-  const nodeId = (value: Value | undefined) =>
-    value?.kind === 'token' &&
+  // of the structure tree stays. Only the structure tree the catalog names
+  // is read.
+  const root = dict(
+    dict(entries?.get('/Root')?.value)?.get('/StructTreeRoot')?.value,
+  );
+  const nodeId = (value: Value) =>
+    value.kind === 'token' &&
     /^\(node\d+\)$/.test(file.word(value.token) ?? '');
-  const trees: string[] = [];
-  for (let at = 0; at < file.tokens.length; at++) {
-    const token = file.tokens[at] as Token;
-    if (token.kind !== 'name') continue;
-    const name = file.word(token);
-    const [value] = file.parse(at + 1);
-    if (name === '/ID' && nodeId(value)) {
-      blank(token.start, value?.end ?? token.end);
-    } else if (
-      name === '/Headers' &&
-      value?.kind === 'array' &&
-      value.items.every(nodeId)
-    ) {
-      blank(token.start, value.end);
-    } else if (name === '/IDTree' && value?.kind === 'ref') {
-      blank(token.start, value.end);
-      trees.push(value.key);
-    }
-  }
+  // Each object is read once, so a reference loop ends.
   const seen = new Set<string>();
-  for (let key = trees.pop(); key !== undefined; key = trees.pop()) {
-    const object = file.objects.get(key);
-    if (seen.has(key) || !object) continue;
-    seen.add(key);
-    const kids = dict(file.parse(object.from)[0])?.get('/Kids')?.value;
-    for (const kid of kids?.kind === 'array' ? kids.items : []) {
-      if (kid.kind === 'ref') trees.push(kid.key);
-    }
+  const unseen = (value: Value) => {
+    if (value.kind !== 'ref') return true;
+    if (seen.has(value.key)) return false;
+    seen.add(value.key);
+    return true;
+  };
+  const items = (value: Value | undefined) => {
+    const resolved = file.resolve(value);
+    return resolved?.kind === 'array' ? resolved.items : value ? [value] : [];
+  };
+  const tree = root?.get('/IDTree');
+  const trees: Value[] = [];
+  if (tree?.value.kind === 'ref') {
+    blank(tree.key.start, tree.value.end);
+    trees.push(tree.value);
+  }
+  for (let node = trees.pop(); node; node = trees.pop()) {
+    const object = node.kind === 'ref' && file.objects.get(node.key);
+    if (!object || !unseen(node)) continue;
+    const kids = dict(node)?.get('/Kids')?.value;
+    trees.push(...items(kids).filter(kid => kid.kind === 'ref'));
     const { start, end } = object;
     edits.push([start, ` null${' '.repeat(end - start - ' null'.length)}`]);
+  }
+  const elements = items(root?.get('/K')?.value);
+  for (let element = elements.pop(); element; element = elements.pop()) {
+    if (!unseen(element)) continue;
+    const resolved = file.resolve(element);
+    if (resolved?.kind === 'array') {
+      elements.push(...resolved.items);
+      continue;
+    }
+    if (resolved?.kind !== 'dict') continue;
+    const id = resolved.entries.get('/ID');
+    if (id && nodeId(id.value)) blank(id.key.start, id.value.end);
+    for (const owner of items(resolved.entries.get('/A')?.value)) {
+      const headers = unseen(owner) && dict(owner)?.get('/Headers');
+      if (
+        headers &&
+        headers.value.kind === 'array' &&
+        headers.value.items.every(nodeId)
+      ) {
+        blank(headers.key.start, headers.value.end);
+      }
+    }
+    elements.push(...items(resolved.entries.get('/K')?.value));
   }
   if (edits.length === 0) return pdf;
   edits.sort(([a], [b]) => a - b);
