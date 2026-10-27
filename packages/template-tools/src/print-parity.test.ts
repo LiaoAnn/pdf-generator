@@ -35,6 +35,35 @@ function pack(
   };
 }
 
+function relativeCheckTimings(
+  files: PackFiles,
+  baseline: PackFiles,
+  label: string,
+) {
+  expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
+  expect(checkPack(baseline)).toMatchObject({ ok: true, issues: [] });
+  const times: number[] = [];
+  const reference: number[] = [];
+  // Warm both full inputs, then interleave so machine speed affects both.
+  for (let i = 0; i < 3; i++) {
+    let start = performance.now();
+    const result = checkPack(files);
+    times.push(performance.now() - start);
+    expect(result).toMatchObject({ ok: true, issues: [] });
+    start = performance.now();
+    const control = checkPack(baseline);
+    reference.push(performance.now() - start);
+    expect(control).toMatchObject({ ok: true, issues: [] });
+  }
+  console.info(
+    `${label} timings (ms): ${times.join(', ')}; reference: ${reference.join(', ')}`,
+  );
+  const median = (values: number[]) =>
+    [...values].sort((a, b) => a - b)[1] ?? 0;
+  // Fourfold headroom follows machine speed; medians tolerate one outlier.
+  expect(median(times)).toBeLessThan(median(reference) * 4);
+}
+
 // Check each rule independently: a crossing RCDATA element can also contain
 // forbidden statements, and those are separate diagnostics at separate places.
 function rejects(
@@ -401,14 +430,13 @@ describe('print parity: correctness review controls', () => {
   );
 });
 
-it('checks 20,000 marked mustache paragraphs in under three seconds', () => {
-  checkPack(pack()); // Warm parsers; measure only the public check, not setup.
+it('checks 20,000 marked mustache paragraphs without super-linear scanning relative to a mustache-free baseline', () => {
   const files = pack('<p data-gt="paragraph">{{value}}</p>'.repeat(20_000));
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(3_000);
+  // Unloaded medians: 412/253 ms (1.63×).
+  // Equal template lengths (720,000 characters before withHead); the literal
+  // reference adds HTML parsing work but has no mustache statements.
+  const baseline = pack('<p data-gt="paragraph"><b>x</b>x</p>'.repeat(20_000));
+  relativeCheckTimings(files, baseline, 'Mustache paragraphs');
 }, 30_000);
 
 describe('print parity: round 4 SVG attribute CSS scanning', () => {
@@ -718,30 +746,8 @@ it('round 6 checks 160,000 unquoted data URLs without super-linear scanning rela
     undefined,
     `p{background-image:${'none,'.repeat(415_997)}none}`,
   );
-  expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
-  expect(checkPack(baseline)).toMatchObject({ ok: true, issues: [] });
-  const times: number[] = [];
-  const reference: number[] = [];
-  // Warm both full inputs, then interleave so machine speed affects both.
-  for (let i = 0; i < 3; i++) {
-    let start = performance.now();
-    const result = checkPack(files);
-    times.push(performance.now() - start);
-    expect(result).toMatchObject({ ok: true, issues: [] });
-    start = performance.now();
-    const control = checkPack(baseline);
-    reference.push(performance.now() - start);
-    expect(control).toMatchObject({ ok: true, issues: [] });
-  }
-  console.info(
-    `Unquoted data URL timings (ms): ${times.join(', ')}; URL-free reference: ${reference.join(', ')}`,
-  );
-  const median = (values: number[]) =>
-    [...values].sort((a, b) => a - b)[1] ?? 0;
-  // Measured ratios are about 1 (353–539 ms vs 323–391 ms). A factor of 4
-  // preserves the old bound's roughly fourfold headroom without depending
-  // on machine speed; medians tolerate one scheduling outlier per series.
-  expect(median(times)).toBeLessThan(median(reference) * 4);
+  // Measured ratios are about 1 (353–539 ms vs 323–391 ms).
+  relativeCheckTimings(files, baseline, 'Unquoted data URL');
 }, 30_000);
 
 it('round 6 reports sample text conversion failure at the mustache without throwing', () => {
