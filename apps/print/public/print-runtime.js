@@ -148,25 +148,37 @@
   // Print-only rules apply to the print with the cascade and inheritance,
   // which their text alone can't show (a family set on html by @media print,
   // bold set on h1 by a plain rule): @media print rules, and sheets @import-ed
-  // with a print media list, which apply as whole sheets. Read computed styles
-  // once with their media set to all, then restore it before anything else
-  // reads the page.
+  // with a print media list, which apply as whole sheets. Screen- or
+  // speech-only rules, imports and sheets don't print, but apply on screen
+  // and can hide what the print inherits (`@media screen { h1 { font-weight:
+  // normal } }`). Read computed styles once with the print-only media set to
+  // all and the non-print media to not all, then restore both before
+  // anything else reads the page. The only computed-style scan, so a face
+  // only screen styles use isn't declared.
   function findUsedInPrintStyles() {
-    /** @type {[MediaList, string][]} */
+    /** @type {[MediaList, string, string][]} list, original, scan media */
     const flipped = [];
     /** @param {CSSRuleList} rules */
     const collect = rules => {
       for (const rule of rules) {
         if (rule instanceof CSSImportRule) {
           const media = rule.media.mediaText;
-          if (media !== '' && printsWith(media))
-            flipped.push([rule.media, media]);
+          if (media !== '' && !printsWith(media)) {
+            flipped.push([rule.media, media, 'not all']);
+            continue;
+          }
+          if (media !== '') flipped.push([rule.media, media, 'all']);
           try {
             if (rule.styleSheet) collect(rule.styleSheet.cssRules);
           } catch {}
         } else if (rule instanceof CSSMediaRule) {
           const media = rule.media.mediaText;
-          if (/\bprint\b/i.test(media)) flipped.push([rule.media, media]);
+          if (/\bprint\b/i.test(media))
+            flipped.push([rule.media, media, 'all']);
+          else if (!printsWith(media)) {
+            flipped.push([rule.media, media, 'not all']);
+            continue;
+          }
         }
         if ('cssRules' in rule && rule.cssRules instanceof CSSRuleList) {
           collect(rule.cssRules);
@@ -174,13 +186,17 @@
       }
     };
     for (const sheet of document.styleSheets) {
+      const media = sheet.media.mediaText;
+      if (media !== '' && !printsWith(media)) {
+        flipped.push([sheet.media, media, 'not all']);
+        continue;
+      }
       try {
         collect(sheet.cssRules);
       } catch {}
     }
-    if (flipped.length === 0) return;
     try {
-      for (const [media] of flipped) media.mediaText = 'all';
+      for (const [media, , scan] of flipped) media.mediaText = scan;
       findUsedInDocument();
     } finally {
       for (const [media, text] of flipped) media.mediaText = text;
@@ -264,7 +280,6 @@
   // that fails to load stays in document.fonts with status "error".
   async function loadUsedFaces() {
     await stylesheetsSettled();
-    findUsedInDocument();
     findUsedInPrintStyles();
     await findUsedInAtRules();
     const faces = [...used].sort().map(entry => {
