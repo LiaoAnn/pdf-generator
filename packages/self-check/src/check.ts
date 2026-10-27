@@ -133,6 +133,13 @@ const glyphBodyEm = 0.7;
 // logos, figure and barcode (local Chrome 1xx) it was at most 0.35 pt off an
 // edge and 0.53 pt off centre; 1 pt still catches a box moved by more.
 const inkTolerancePt = 1;
+/**
+ * The least share of a text-free block's box its paint must cover along one
+ * axis (T14-8). The 6 templates' blocks cover at least 0.94 on their better
+ * axis (an image, a barcode's height, an underline's width); a 1px dot in a
+ * large box covers almost nothing.
+ */
+const minInkCoverage = 0.5;
 
 type Item = PdfTextItem & { index: number };
 
@@ -717,6 +724,33 @@ const anchored = (a0: number, a1: number, b0: number, b1: number) =>
   Math.abs(a0 - b0 - (b1 - a1)) <= inkTolerancePt;
 
 /**
+ * The share of `[b0, b1]` that the boxes cover on one axis (0: x, 1: y),
+ * overlaps counted once.
+ */
+function coverage(
+  boxes: readonly Box[],
+  axis: 0 | 1,
+  b0: number,
+  b1: number,
+): number {
+  const spans = boxes
+    .map((box): [number, number] => [
+      Math.max(axis === 0 ? box[0] : box[1], b0),
+      Math.min(axis === 0 ? box[2] : box[3], b1),
+    ])
+    .filter(([a0, a1]) => a1 > a0)
+    .sort((a, b) => a[0] - b[0]);
+  let covered = 0;
+  let end = b0;
+  for (const [a0, a1] of spans) {
+    if (a1 <= end) continue;
+    covered += a1 - Math.max(a0, end);
+    end = a1;
+  }
+  return covered / (b1 - b0);
+}
+
+/**
  * Compares a block with no printed text with the marks its page draws. Marks
  * covering its whole box (the page clip, a section background) say nothing
  * about it; the rest overlapping it must lie inside it, and on each axis sit
@@ -730,6 +764,7 @@ function inkDifference(
   const t = inkTolerancePt;
   const [x0, y0, x1, y1] = block.bbox;
   const inside: Box[] = [];
+  const paintedInside: Box[] = [];
   const spilling: Box[] = [];
   // A clip places a drawing but paints nothing: something must be painted.
   let painted = false;
@@ -737,6 +772,7 @@ function inkDifference(
     const [m0, n0, m1, n1] = box;
     if (m0 >= x0 - t && n0 >= y0 - t && m1 <= x1 + t && n1 <= y1 + t) {
       inside.push(box);
+      if (kind !== 'clip') paintedInside.push(box);
       painted ||= kind !== 'clip';
     } else if (
       // Overlapping it, but not covering all of it.
@@ -770,7 +806,18 @@ function inkDifference(
     anchored(u0, u1, x0, x1) &&
     anchored(v0, v1, y0, y1)
   ) {
-    return undefined;
+    if (
+      coverage(paintedInside, 0, x0, x1) >= minInkCoverage ||
+      coverage(paintedInside, 1, y0, y1) >= minInkCoverage
+    ) {
+      return undefined;
+    }
+    const paintBox = unionOf(paintedInside);
+    return {
+      ...where,
+      inkBox: paintBox,
+      message: `${at}: the PDF paints only [${paintBox.join(', ')}], less than half of its box [${block.bbox.join(', ')}] on either axis, so its box can't be checked`,
+    };
   }
   return {
     ...where,

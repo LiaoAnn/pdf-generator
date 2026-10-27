@@ -19,6 +19,12 @@ html, body { margin: 0; padding: 0; }
 #barcode::before { content: ''; position: absolute; top: 0; bottom: 0;
   left: 7pt; right: 7pt;
   background: repeating-linear-gradient(90deg, black 0 2pt, transparent 2pt 4pt); }
+#centred-dot, #corner-dots { position: relative; width: 100px; height: 100px; }
+#centred-dot i, #corner-dots i { position: absolute; width: 1px; height: 1px; background: black; }
+#centred-dot i { left: 49.5px; top: 49.5px; }
+#corner-dots i:first-child { left: 0; top: 0; }
+/* Different paints keep the two rectangles as separate PDF marks. */
+#corner-dots i:last-child { right: 0; bottom: 0; background: #111; }
 /* VARIANT */
 </style></head><body>
 <img id="image" data-gt="image" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=">
@@ -27,4 +33,6 @@ html, body { margin: 0; padding: 0; }
 <div id="underline" data-gt="field"></div>
 <div id="barcode" data-gt="image"></div>
 <div id="blank" data-gt="field"></div>
+<div id="centred-dot" data-gt="image"><i></i></div>
+<div id="corner-dots" data-gt="image"><i></i><i></i></div>
 </body></html>

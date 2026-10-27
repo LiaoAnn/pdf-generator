@@ -121,13 +121,35 @@ test.each(['fill', 'stroke', 'image'] as const)(
   },
 );
 
-test('an SVG image clip still anchors its small painted circle within the full image box', async () => {
+test('an SVG image clip cannot supply coverage for its small painted circle', async () => {
   const svg =
     '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><circle cx="30" cy="35" r="5"/></svg>';
   const { pdf, gt } = await print(
     `<img id="block" data-gt="image" width="100" height="100" src="data:image/svg+xml,${encodeURIComponent(svg)}">`,
   );
-  expect(await checkPdf(pdf, gt)).toEqual({ ok: true, differences: [] });
+  const result = await checkPdf(pdf, gt);
+  expect(result).toEqual({
+    ok: false,
+    differences: [
+      {
+        kind: 'ink',
+        page: 1,
+        blockId: 'block',
+        bbox: gt.blocks[0]?.bbox,
+        inkBox: expect.any(Array),
+        message: expect.any(String),
+      },
+    ],
+  });
+  const difference = result.differences[0];
+  if (difference?.kind !== 'ink' || !difference.inkBox)
+    throw new Error('expected painted circle bounds');
+  // The SVG viewport clips, but only the 10px circle paints.
+  [78.75, 82.5, 86.25, 90].forEach((edge, i) => {
+    expect(
+      Math.abs((difference.inkBox?.[i] ?? NaN) - edge),
+    ).toBeLessThanOrEqual(1);
+  });
 });
 
 test('nonuniform scaling preserves the horizontal stroke width instead of using determinant scaling', async () => {
