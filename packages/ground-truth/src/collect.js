@@ -37,7 +37,7 @@ export function collect() {
     ['.pagedjs_margin-right', 'right'],
   ];
   // KaTeX's MathML copy of a formula that the browser hides (T07-26), as the
-  // print runtime's hiddenCopies() decides: a .katex-mathml element that
+  // print runtime's hiddenCopies() decides: a .katex-mathml span or div that
   // clips all of its content to at most 1x1 px (absolutely positioned, one
   // block box no larger than 1x1 px as shown, overflow hidden or clip on both
   // axes with no clip margin, nothing in it fixed-positioned), all of whose
@@ -51,6 +51,7 @@ export function collect() {
       const box = wrapper.getBoundingClientRect();
       if (
         !(wrapper instanceof HTMLElement) ||
+        !['span', 'div'].includes(wrapper.localName) ||
         wrapper.matches('[data-gt]') ||
         wrapper.querySelector('[data-gt], td, th') !== null ||
         style.position !== 'absolute' ||
@@ -380,11 +381,12 @@ export function collect() {
   // with the copy left out (an inline display: none on its .katex-mathml
   // element) once everything is measured, and put back. Pack CSS can react to
   // that edit (a [style] selector, :has()), so the new text is taken only if
-  // nothing else innerText reads changed (each element's display, visibility,
-  // text-transform, white-space and content-visibility, outside the copies)
-  // and it is the text read before with exactly the copies' text taken out,
-  // in order (whitespace aside). Otherwise the text read before stays, copy
-  // and all, for the self-check to report.
+  // no computed style changed meanwhile (every property of the block, its
+  // ancestors and the elements in it outside the copies, and the text
+  // properties of their ::first-letter and ::first-line) and it is the text
+  // read before with exactly the copies' text taken out, in order
+  // (whitespace aside). Otherwise the text read before stays, copy and all,
+  // for the self-check to report.
   const owners = textOwners.filter(([owner]) =>
     copyWrappers.some(wrapper => owner.contains(wrapper)),
   );
@@ -392,11 +394,20 @@ export function collect() {
     const copies = copyWrappers.map(wrapper =>
       wrapper.innerText.replace(/\s/g, ''),
     );
-    const read = owners.map(([owner]) =>
-      [owner, ...Array.from(owner.querySelectorAll('*'))].filter(
-        element => !copyWrappers.some(wrapper => wrapper.contains(element)),
-      ),
-    );
+    const read = owners.map(([owner]) => {
+      /** @type {Element[]} */
+      const ancestors = [];
+      for (let at = owner.parentElement; at !== null; at = at.parentElement) {
+        ancestors.push(at);
+      }
+      return [
+        ...ancestors,
+        owner,
+        ...Array.from(owner.querySelectorAll('*')).filter(
+          element => !copyWrappers.some(wrapper => wrapper.contains(element)),
+        ),
+      ];
+    });
     const styles = copyWrappers.map(wrapper => wrapper.getAttribute('style'));
     /** @type {string[][]} */
     const looks = [];
@@ -418,12 +429,16 @@ export function collect() {
               .map(element => {
                 const style = getComputedStyle(element);
                 return [
-                  style.display,
-                  style.visibility,
-                  style.textTransform,
-                  style.whiteSpace,
-                  style.contentVisibility,
-                ].join(' ');
+                  ...Array.from(style, name => style.getPropertyValue(name)),
+                  ...['::first-letter', '::first-line'].flatMap(pseudo => {
+                    const text = getComputedStyle(element, pseudo);
+                    return [
+                      text.textTransform,
+                      text.getPropertyValue('-webkit-locale'),
+                      text.visibility,
+                    ];
+                  }),
+                ].join(';');
               })
               .join('\n'),
           ),

@@ -137,6 +137,125 @@ test.each(paintRegressions)(
   30_000,
 );
 
+test.each([
+  {
+    name: 'locale changes outside the copy',
+    copy: 'IİI',
+    visible:
+      '<span class="visible"><span class="first">i</span><span class="second">i</span></span>',
+    printed: 'İI',
+    css: '.visible span { text-transform:uppercase } .first { -webkit-locale:"tr" } .second { -webkit-locale:"en" } .katex-mathml[style*="none"] ~ .visible .first { -webkit-locale:"en" } .katex-mathml[style*="none"] ~ .visible .second { -webkit-locale:"tr" }',
+  },
+  {
+    name: 'first-letter transformations outside the copy',
+    copy: 'aAa',
+    visible:
+      '<span class="visible first">a</span><span class="visible second">A</span>',
+    printed: 'Aa',
+    css: '.visible { display:inline-block;width:20px;height:20px } .first::first-letter { text-transform:uppercase } .second::first-letter { text-transform:lowercase } .katex-mathml[style*="none"] ~ .first::first-letter { text-transform:lowercase } .katex-mathml[style*="none"] ~ .second::first-letter { text-transform:uppercase }',
+  },
+])(
+  'round 5 preserves printed text despite $name',
+  async ({ copy, visible, printed, css }) => {
+    await withPrintedPage(
+      `<div data-gt="paragraph"><span class="clip katex-mathml"><math><mtext>${copy}</mtext></math></span>${visible}</div>`,
+      async page => {
+        const block = page.locator('.pagedjs_page [data-gt]');
+        // Chromium innerText reflects the printed case transformations. Establish
+        // the pre-edit oracle before asking the reader to mutate the wrappers.
+        expect((await block.innerText()).replace(/\s/g, '')).toBe(
+          copy + printed,
+        );
+        const result = await readGroundTruth(page, source);
+        expect(
+          result.blocks[0]?.text.replace(/\s/g, '').slice(-printed.length),
+        ).toBe(printed);
+      },
+      `${sealingCss} .clip { overflow-clip-margin:0px } ${css}`,
+    );
+  },
+  30_000,
+);
+
+test.each([
+  {
+    name: 'fieldset legend',
+    markup:
+      '<fieldset class="clip katex-mathml"><legend><math><mtext>REQUIRED</mtext></math></legend></fieldset>',
+  },
+  {
+    name: 'MathML wrapper',
+    markup: '<math class="clip katex-mathml"><mtext>REQUIRED</mtext></math>',
+  },
+  {
+    name: 'flex wrapper',
+    markup:
+      '<span class="clip katex-mathml" style="display:flex"><math><mtext>REQUIRED</mtext></math></span>',
+  },
+  {
+    name: 'two-pixel height',
+    markup:
+      '<span class="clip katex-mathml" style="height:2px"><math><mtext>REQUIRED</mtext></math></span>',
+  },
+  {
+    name: 'HTML alone',
+    markup: '<span class="clip katex-mathml"><span>REQUIRED</span></span>',
+  },
+  {
+    name: 'HTML alongside MathML',
+    markup:
+      '<span class="clip katex-mathml"><span>REQUIRED</span><math><mtext>COPY</mtext></math></span>',
+  },
+])(
+  'round 5 retains text from $name in blocks and cells',
+  async ({ name, markup }) => {
+    await withPrintedPage(
+      `<div data-gt="paragraph">${markup}</div><table data-gt="table"><tbody><tr><td>${markup}</td></tr></tbody></table>`,
+      async page => {
+        if (name === 'fieldset legend') {
+          const box = await page
+            .locator('.pagedjs_page fieldset')
+            .first()
+            .boundingBox();
+          expect(box?.width).toBe(1);
+          expect(box?.height).toBe(1);
+        }
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks).toHaveLength(2);
+        for (const block of result.blocks)
+          expect(block.text).toContain('REQUIRED');
+        const table = result.blocks.find(block => block.type === 'table');
+        expect(table?.table.cells[0]?.text).toContain('REQUIRED');
+      },
+      `${sealingCss} .clip { overflow-clip-margin:0px;min-inline-size:0 } math, mtext, legend { display:block;width:1px;height:1px;padding:0;border:0 }`,
+    );
+  },
+  30_000,
+);
+
+test.each([null, 'color: rgb(1, 2, 3); display: block !important;'])(
+  'round 5 restores the exact wrapper style attribute %s',
+  async style => {
+    await withPrintedPage(
+      `<div data-gt="paragraph"><span class="clip katex-mathml"${style === null ? '' : ` style="${style}"`}><math><mtext>COPY</mtext></math></span><span class="visible">PRINTED</span></div>`,
+      async page => {
+        const wrapper = page.locator('.pagedjs_page .katex-mathml');
+        expect(await wrapper.getAttribute('style')).toBe(style);
+        await readGroundTruth(page, source);
+        expect(await wrapper.getAttribute('style')).toBe(style);
+        expect(await page.locator('.pagedjs_page .visible').isVisible()).toBe(
+          true,
+        );
+        expect(await page.locator('.pagedjs_page .visible').innerText()).toBe(
+          'PRINTED',
+        );
+      },
+      `${sealingCss} .katex-mathml[style*="none"] ~ .visible { display:none }`,
+    );
+  },
+  30_000,
+);
+
 const sealedPaintRegressions = [
   { name: 'CSS height', css: 'mtext { height:1px }' },
   { name: 'block display', css: 'mtext { display:block }' },

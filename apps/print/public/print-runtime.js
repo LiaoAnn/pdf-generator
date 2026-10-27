@@ -850,7 +850,7 @@
 
   // The text nodes of KaTeX's MathML copy of a formula that the browser hides
   // (T07-26), which the PDF doesn't print: text in a MathML element, not
-  // itself marked data-gt, inside a .katex-mathml element that clips all of
+  // itself marked data-gt, inside a .katex-mathml span or div that clips all of
   // its content to at most 1×1 px, as KaTeX's CSS makes it: absolutely
   // positioned, one block box no larger than 1×1 px as shown (transforms
   // included), overflow hidden or clip on both axes with no clip margin, and
@@ -888,6 +888,7 @@
     const box = element.getBoundingClientRect();
     return (
       element instanceof HTMLElement &&
+      ['span', 'div'].includes(element.localName) &&
       style.position === 'absolute' &&
       (style.display === 'block' || style.display === 'flow-root') &&
       ['hidden', 'clip'].includes(style.overflowX) &&

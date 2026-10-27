@@ -198,6 +198,66 @@ test.each(paintRegressions)(
   },
 );
 
+const strictCopyCases = [
+  {
+    name: 'fieldset legend escapes the wrapper clip',
+    markup:
+      '<fieldset class="clip katex-mathml"><legend><math><mtext>REQUIRED</mtext></math></legend></fieldset>',
+  },
+  {
+    name: 'MathML itself is not a span or div wrapper',
+    markup: '<math class="clip katex-mathml"><mtext>REQUIRED</mtext></math>',
+  },
+  {
+    name: 'flex wrapper is not a sealed block',
+    markup:
+      '<span class="clip katex-mathml" style="display:flex"><math><mtext>REQUIRED</mtext></math></span>',
+  },
+  {
+    name: 'height alone exceeds one pixel',
+    markup:
+      '<span class="clip katex-mathml" style="height:2px"><math><mtext>REQUIRED</mtext></math></span>',
+  },
+  {
+    name: 'sealed HTML text without MathML',
+    markup:
+      '<span class="clip katex-mathml"><span class="required">REQUIRED</span></span>',
+  },
+  {
+    name: 'sealed HTML text alongside MathML',
+    markup:
+      '<span class="clip katex-mathml"><span class="required">REQUIRED</span><math><mtext>COPY</mtext></math></span>',
+  },
+  {
+    name: 'data-gt marked mtext inside a sealed wrapper',
+    markup:
+      '<span class="clip katex-mathml"><math><mtext data-gt="paragraph">REQUIRED</mtext></math></span>',
+  },
+];
+
+test.each(strictCopyCases)(
+  'round 5 requires missing text from $name',
+  async ({ markup }) => {
+    const response = await print(
+      document(
+        `<div data-gt="paragraph">PRINTED${markup}</div>`,
+        `<style>${sealingCss} .clip { overflow-clip-margin:0px;min-inline-size:0 } math, mtext, legend, .required { display:block;width:1px;height:1px;padding:0;border:0 } mtext, .required { visibility:hidden }</style>`,
+      ),
+    );
+    expect(
+      response.status,
+      response.status === 200
+        ? 'unexpected PDF success'
+        : await response.clone().text(),
+    ).toBe(422);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('text_missing');
+    expect(error.details?.map(detail => detail.message)).toContain(
+      'page 1: REQUIRED',
+    );
+  },
+);
+
 const sealedPaintRegressions = [
   { name: 'CSS height', css: 'mtext { height:1px }' },
   { name: 'block display', css: 'mtext { display:block }' },
