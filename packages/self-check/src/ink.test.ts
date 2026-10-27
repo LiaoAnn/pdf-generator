@@ -50,6 +50,52 @@ const imagePaint = (rgba: number[], alpha = 1) =>
     },
   });
 
+test.each([true, false])(
+  'an inverting transfer hides black ink through a white mask (luminosity=%s)',
+  luminosity => {
+    const masked = paint(box, {
+      mask: {
+        paints: [paint(box, { color: '#ffffff' })],
+        luminosity,
+        backdrop: '#000000',
+        transfer: Array.from({ length: 256 }, (_, i) => 255 - i),
+      },
+    });
+    expectNoInk(measureInk([masked], box, 0, noBackground));
+  },
+);
+
+test('a white luminosity mask without a transfer preserves black ink', () => {
+  const masked = paint(box, {
+    mask: {
+      paints: [paint(box, { color: '#ffffff' })],
+      luminosity: true,
+      backdrop: '#000000',
+    },
+  });
+  expectInk(measureInk([masked], box, 0, noBackground), box, [1, 1]);
+});
+
+test.each([
+  ['too short', Array(255).fill(255)],
+  ['nonnumeric entry', [...Array(255).fill(255), 'invalid'] as number[]],
+] as const)(
+  'a %s mask transfer fails closed instead of certifying ink',
+  (_name, transfer) => {
+    const masked = paint(box, {
+      mask: {
+        paints: [paint(box, { color: '#ffffff' })],
+        luminosity: true,
+        backdrop: '#000000',
+        transfer,
+      },
+    });
+    const actual = measureInk([masked], box, 0, noBackground);
+    expect(actual.unmeasured).toBe(true);
+    expectNoInk(actual);
+  },
+);
+
 test.each([
   ['transparent', Array(16).fill(0)],
   ['opaque white', Array(16).fill(255)],

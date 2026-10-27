@@ -58,7 +58,8 @@ interface GraphicsState {
   strokeAlpha: number;
   groups: PdfGroup[];
   /** The soft mask in force. */
-  mask: PdfMask | undefined;
+  /** The soft mask in force; 'unmeasured': one it can't read. */
+  mask: PdfMask | 'unmeasured' | undefined;
   /** The space of the page, form XObject or tile being painted: patterns' parent. */
   base: Matrix;
   /** The clipping paths in force, in the output frame. */
@@ -331,9 +332,8 @@ export function readPaints(
   const targets: PdfPaint[][] = [[]];
   const stack: GraphicsState[] = [];
   /** Per open group: the soft mask it draws, if it is one. */
-  const groupKinds: ({ luminosity: boolean; backdrop: string } | undefined)[] =
-    [];
-  let pendingMask: PdfMask | undefined;
+  const groupKinds: (Omit<PdfMask, 'paints'> | 'unmeasured' | undefined)[] = [];
+  let pendingMask: PdfMask | 'unmeasured' | undefined;
   let groupCount = 0;
   let state: GraphicsState = {
     ctm: identity,
@@ -385,7 +385,8 @@ export function readPaints(
     );
     if (!(x0 <= x1 && y0 <= y1)) return;
     let colour: Partial<PdfPaint> = { unmeasured: true };
-    if (typeof source === 'string') colour = { color: source };
+    if (state.mask === 'unmeasured') colour = { unmeasured: true };
+    else if (typeof source === 'string') colour = { color: source };
     else if (source && 'ir' in source) {
       colour = shadingOf(source.ir, multiply(frame, source.matrix)) ?? colour;
     } else if (source && 'tile' in source) colour = { tile: source.tile };
@@ -398,7 +399,9 @@ export function readPaints(
       ...colour,
       alpha,
       ...(state.groups.length > 0 ? { groups: state.groups } : {}),
-      ...(state.mask ? { mask: state.mask } : {}),
+      ...(state.mask && state.mask !== 'unmeasured'
+        ? { mask: state.mask }
+        : {}),
       clips: state.clips,
       box: [x0, y0, x1, y1],
     });
@@ -575,17 +578,34 @@ export function readPaints(
         | {
             matrix?: unknown;
             bbox?: unknown;
-            smask?: { subtype?: unknown; backdrop?: unknown };
+            smask?: {
+              subtype?: unknown;
+              backdrop?: unknown;
+              transferMap?: unknown;
+            };
           }
         | undefined;
       if (fn === OPS.beginGroup) {
         if (group?.smask) {
           // Its content draws a soft mask, for a later `SMask` to use.
           const backdrop = colorOf([group.smask.backdrop]) ?? '#000000';
-          groupKinds.push({
-            luminosity: group.smask.subtype === 'Luminosity',
-            backdrop,
-          });
+          const map = group.smask.transferMap;
+          const transfer =
+            map === undefined || map === null
+              ? undefined
+              : (ArrayBuffer.isView(map) || Array.isArray(map)) &&
+                  (map as ArrayLike<unknown>).length === 256
+                ? Array.from(map as ArrayLike<unknown>, Number)
+                : [];
+          groupKinds.push(
+            transfer?.length === 0 || transfer?.some(n => !(n >= 0 && n <= 255))
+              ? 'unmeasured'
+              : {
+                  luminosity: group.smask.subtype === 'Luminosity',
+                  backdrop,
+                  ...(transfer ? { transfer } : {}),
+                },
+          );
           targets.push([]);
           state.groups = [];
           state.mask = undefined;
@@ -624,7 +644,10 @@ export function readPaints(
     } else if (fn === OPS.paintFormXObjectEnd) pop();
     else if (fn === OPS.endGroup) {
       const kind = groupKinds.pop();
-      if (kind) pendingMask = { paints: targets.pop() ?? [], ...kind };
+      if (kind) {
+        const paints = targets.pop() ?? [];
+        pendingMask = kind === 'unmeasured' ? kind : { paints, ...kind };
+      }
       pop();
     }
   });

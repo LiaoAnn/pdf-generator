@@ -290,9 +290,6 @@ function contains({ polygons, rule }: PdfShape, x: number, y: number) {
   return rule === 'evenodd' ? (winding & 1) !== 0 : winding !== 0;
 }
 
-const groupAlpha = (groups: readonly PdfGroup[] | undefined) =>
-  (groups ?? []).reduce((alpha, group) => alpha * group.alpha, 1);
-
 /** `top` at its alpha over `under`, source-over; either may be none. */
 function over(under: Sample, top: Sample): Sample {
   if (!top || top[1] <= 0) return under;
@@ -310,37 +307,65 @@ function over(under: Sample, top: Sample): Sample {
 }
 
 /**
- * Paints composited at one point (a tile's, a mask's), over nothing; a
- * group's alpha is applied to each of its paints there.
+ * Paints composited at one point (a tile's, a mask's), over nothing; each
+ * group composited on its own, then at its alpha, as measureInk does.
  */
 function composeAt(paints: readonly PdfPaint[], x: number, y: number): Sample {
-  let result: Sample;
+  const stack: { group?: PdfGroup; sample: Sample }[] = [{ sample: undefined }];
+  const close = () => {
+    const layer = stack.pop();
+    const under = stack[stack.length - 1];
+    if (!layer?.group || !under || !layer.sample) return;
+    const [color, alpha] = layer.sample;
+    under.sample = over(under.sample, [color, alpha * layer.group.alpha]);
+  };
   for (const paint of paints) {
+    const groups = paint.groups ?? [];
+    let common = 0;
+    while (
+      common < groups.length &&
+      stack[common + 1]?.group?.id === groups[common]?.id
+    ) {
+      common++;
+    }
+    while (stack.length - 1 > common) close();
+    for (const group of groups.slice(common)) {
+      stack.push({ group, sample: undefined });
+    }
     if (!contains(paint, x, y) || !paint.clips.every(c => contains(c, x, y))) {
       continue;
     }
     const sample = paintSample(paint, x, y);
-    if (sample) {
-      result = over(result, [
-        sample[0],
-        sample[1] * paint.alpha * groupAlpha(paint.groups),
-      ]);
+    const top = stack[stack.length - 1];
+    if (sample && top) {
+      top.sample = over(top.sample, [sample[0], sample[1] * paint.alpha]);
     }
   }
-  return result;
+  while (stack.length > 1) close();
+  return stack[0]?.sample;
 }
+
+/** Whether a soft mask's transfer, if any, is 256 values from 0 to 255. */
+const readableMask = (mask: PdfMask | undefined) =>
+  !mask?.transfer ||
+  (mask.transfer.length === 256 &&
+    mask.transfer.every(n => typeof n === 'number' && n >= 0 && n <= 255));
 
 /** What a soft mask lets through at (x, y), 0 to 1. */
 function maskAt(mask: PdfMask, x: number, y: number): number {
   const sample = composeAt(mask.paints, x, y);
-  if (!mask.luminosity) return sample?.[1] ?? 0;
-  const [color] = over([rgb(mask.backdrop), 1], sample) ?? [0, 1];
-  return (
-    (0.3 * ((color >> 16) & 0xff) +
-      0.59 * ((color >> 8) & 0xff) +
-      0.11 * (color & 0xff)) /
-    255
-  );
+  let value = sample?.[1] ?? 0;
+  if (mask.luminosity) {
+    const [color] = over([rgb(mask.backdrop), 1], sample) ?? [0, 1];
+    value =
+      (0.3 * ((color >> 16) & 0xff) +
+        0.59 * ((color >> 8) & 0xff) +
+        0.11 * (color & 0xff)) /
+      255;
+  }
+  return mask.transfer
+    ? (mask.transfer[Math.round(value * 255)] ?? 0) / 255
+    : value;
 }
 
 /**
@@ -431,6 +456,7 @@ export function measureInk(
       color:
         paint.color !== undefined && !paint.mask ? rgb(paint.color) : undefined,
       background: isBackground(paint),
+      hidden: paint.unmeasured === true || !readableMask(paint.mask),
     }));
   const inkCols = new Uint8Array(cols);
   const inkRows = new Uint8Array(rows);
@@ -452,9 +478,9 @@ export function measureInk(
     };
     const n = cols * grid.rows;
     const clipSpans = new Map<PdfShape, Spans>();
-    // Samples under a tiling pattern: never ink (its colour isn't known).
+    // Samples under paint whose colour can't be measured: never ink.
     const tiles = new Uint8Array(n);
-    const spansOf = relevant.map(({ paint }) => {
+    const spansOf = relevant.map(({ paint, hidden }) => {
       let spans = shapeSpans(paint, grid);
       for (const clip of paint.clips) {
         let clipped = clipSpans.get(clip);
@@ -467,7 +493,7 @@ export function measureInk(
           row.length === 0 ? row : intersectSpans(row, cut[r] ?? []),
         );
       }
-      if (paint.unmeasured) {
+      if (hidden) {
         spans.forEach((row, r) => {
           for (let j = 0; j < row.length; j += 2) {
             tiles.fill(
@@ -506,8 +532,8 @@ export function measureInk(
           }
         }
       };
-      relevant.forEach(({ paint, color, background }, k) => {
-        if ((backgroundOnly && !background) || paint.unmeasured) return;
+      relevant.forEach(({ paint, color, background, hidden }, k) => {
+        if ((backgroundOnly && !background) || hidden) return;
         const groups = paint.groups ?? [];
         let common = 0;
         while (

@@ -16,6 +16,9 @@ const sources = {
   ),
   nonzero: svg('<path d="M10 20h60v40H10z M20 30h40v20H20z"/>'),
   white: svg(`${rect} fill="white"/>`),
+  maskTransfer: svg(
+    '<defs><mask id="transfer-mask"><g opacity="0.5"><rect width="100" height="100" fill="white"/><rect width="100" height="100" fill="black"/></g></mask></defs><rect width="100" height="100" mask="url(#transfer-mask)"/>',
+  ),
   pattern: svg(
     `<defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></pattern></defs>${rect} fill="url(#p)"/>`,
   ),
@@ -356,6 +359,97 @@ test('a repeating CSS PNG background contains an image paint inside its tile', (
   expect(paint.tile).toBeDefined();
   expect(paint.tile?.paints.some(p => p.image !== undefined)).toBe(true);
   expect(paint.unmeasured).toBeUndefined();
+});
+
+test('a Chromium soft-mask transfer map survives readPdf as 256 numeric bytes', () => {
+  const masked = paints('maskTransfer').find(paint => paint.mask);
+  expect(masked, 'fixture must exercise a real soft mask').toBeDefined();
+  const transfer = masked?.mask?.transfer;
+  expect(transfer).toHaveLength(256);
+  expect(
+    transfer?.every(
+      value => Number.isInteger(value) && value >= 0 && value <= 255,
+    ),
+  ).toBe(true);
+  // Chromium's inversion must survive too, not merely an invented identity map.
+  expect(transfer?.[0]).toBe(255);
+  expect(transfer?.[255]).toBe(0);
+});
+
+async function largePngDocument(different: boolean) {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<style>
+      @page { size: 200px 200px; margin: 0; }
+      body { margin: 0; }
+      section { height: 200px; break-after: page; }
+      section:last-child { break-after: auto; }
+      img { display: block; width: 100px; height: 100px; }
+    </style>${'<section><img alt=""></section>'.repeat(3)}`);
+    await page.evaluate(`(async () => {
+      const different = ${different};
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 1500;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('missing canvas context');
+      const colors = ['#ff0000', '#00ff00', '#0000ff'];
+      let shared;
+      for (const [i, image] of [...document.images].entries()) {
+        ctx.fillStyle = colors[different ? i : 0] ?? '#000000';
+        ctx.fillRect(0, 0, 1500, 1500);
+        // An identical data URL lets Chromium reuse the same PDF image ref.
+        image.src = shared ?? canvas.toDataURL('image/png');
+        if (!different) shared = image.src;
+        await image.decode();
+      }
+    })()`);
+    return await page.pdf({ preferCSSPageSize: true, printBackground: true });
+  } finally {
+    await browser.close();
+  }
+}
+
+test('one large PNG reused on three pages is decoded once and shares RGBA without exhausting the document budget', async () => {
+  const document = await readPdf(await largePngDocument(false));
+  expect(document.pages).toHaveLength(3);
+  const images = document.pages.map(page => {
+    expect(page.paints).toHaveLength(1);
+    const paint = page.paints[0];
+    expect(paint?.unmeasured).toBeUndefined();
+    expect(paint?.image).toBeDefined();
+    return paint?.image;
+  });
+  for (const image of images) {
+    expect([image?.width, image?.height]).toEqual([1500, 1500]);
+    // Compare identity as a boolean: failed assertions must not dump 9 MB.
+    expect(
+      image?.rgba === images[0]?.rgba,
+      'shared image must reuse its RGBA object',
+    ).toBe(true);
+  }
+});
+
+test('different large PNGs on separate pages share one document decoding budget instead of resetting it per page', async () => {
+  const document = await readPdf(await largePngDocument(true));
+  expect(document.pages).toHaveLength(3);
+  for (const [i, page] of document.pages.entries()) {
+    expect(page.paints).toHaveLength(1);
+    const paint = page.paints[0];
+    if (i === 0) {
+      expect(paint?.unmeasured).toBeUndefined();
+      expect([paint?.image?.width, paint?.image?.height]).toEqual([1500, 1500]);
+      expect(paint?.image?.rgba[0]).toBe(255);
+      expect(paint?.image?.rgba[1]).toBe(0);
+    } else {
+      // 2 * 1500^2 > 2^22, even though each individual page fits.
+      expect(
+        paint?.unmeasured,
+        `page ${i + 1} exceeds the document budget`,
+      ).toBe(true);
+      expect(paint?.image === undefined).toBe(true);
+    }
+  }
 });
 
 test('page paints reset their geometry and colour at each page instead of leaking page-one state', () => {

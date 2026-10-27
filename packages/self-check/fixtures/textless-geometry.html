@@ -31,4 +31,9 @@ img { display: block; width: 100px; height: 100px; }
 <section style="padding:0;height:100px;margin-bottom:0"><svg aria-hidden="true" id="black-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="black-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="black"/></pattern></defs><rect width="100" height="100" fill="url(#black-pattern-fill)"/></svg></section>
 <section><img id="transparent-image" data-gt="image" alt=""/></section>
 <section><div id="repeating-bars" data-gt="image" style="width:100px;height:100px;background:repeating-linear-gradient(to right,black 0px,black 2px,white 2px,white 4px)"></div></section>
+<!-- Review repros: Chromium emits an inverted soft-mask transfer table. -->
+<section><svg aria-hidden="true" id="mask-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="mask-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="black"/></pattern><mask id="pattern-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="url(#mask-pattern-fill)"/></mask></defs><rect width="100" height="100" mask="url(#pattern-mask)"/></svg></section>
+<!-- Crisp mask edges avoid Chromium rasterising a partial-alpha hairline frame;
+     the printed block must be blank, including its border, for this regression. -->
+<section><svg aria-hidden="true" id="mask-group" data-gt="image" viewBox="0 0 100 100"><defs><mask id="group-mask"><g opacity="0.5" shape-rendering="crispEdges"><rect width="100" height="100" fill="white"/><rect width="100" height="100" fill="black"/></g></mask></defs><rect width="100" height="100" mask="url(#group-mask)"/></svg></section>
 </body></html>

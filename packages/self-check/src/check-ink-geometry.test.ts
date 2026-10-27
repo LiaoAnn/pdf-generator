@@ -61,7 +61,7 @@ beforeAll(async () => {
       pages: [{ width: 595.28, height: 841.89 }],
       blocks,
     });
-    expect(reference.blocks).toHaveLength(16);
+    expect(reference.blocks).toHaveLength(18);
     pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     expect((await readPdf(pdf)).pages.flatMap(page => page.items)).toEqual([]);
     // One large solid PNG compresses small; retain only PDFs, not pixel buffers.
@@ -104,6 +104,17 @@ test('CSS repeating-gradient barcode bars are visible measurable ink', async () 
     ok: true,
     differences: [],
   });
+});
+
+test.each([
+  ['mask-pattern', 'a black pattern in a luminosity mask'],
+  ['mask-group', 'white then black in a half-opacity mask group'],
+])('%s refuses %s hidden by a soft-mask transfer', async (id, _regression) => {
+  const report = await checkPdf(pdf, gt(id));
+  expect(report.ok).toBe(false);
+  expect(report.differences).toEqual([
+    expect.objectContaining({ kind: 'ink', blockId: id }),
+  ]);
 });
 
 test('readPdf marks a 2100-by-2100 PNG exceeding the per-page pixel budget unmeasured', async () => {

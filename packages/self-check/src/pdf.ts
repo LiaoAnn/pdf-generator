@@ -109,6 +109,11 @@ export interface PdfMask {
   paints: PdfPaint[];
   luminosity: boolean;
   backdrop: string;
+  /**
+   * The mask's transfer function as 256 bytes: a mask value v (0 to 1)
+   * becomes `transfer[round(v * 255)] / 255`; left out: unchanged.
+   */
+  transfer?: number[];
 }
 
 /** A decoded raster image. */
@@ -216,6 +221,18 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
     isImageDecoderSupported: false,
   });
   const { OPS } = await getResolvedPDFJS();
+  // Decoded pixels stay with the pages' paints: one budget for the document,
+  // and an image used again (the same PDF object) is decoded once.
+  let budget = maxPixels;
+  const byRef = new Map<string, ImagePixels | undefined>();
+  const decode = (image: unknown) => {
+    const ref = (image as { ref?: unknown } | undefined)?.ref;
+    if (typeof ref === 'string' && byRef.has(ref)) return byRef.get(ref);
+    const pixels = decodeImage(image, budget);
+    if (pixels) budget -= pixels.width * pixels.height;
+    if (typeof ref === 'string') byRef.set(ref, pixels);
+    return pixels;
+  };
   try {
     const pages: PdfPage[] = [];
     for (let n = 1; n <= document.numPages; n++) {
@@ -270,12 +287,6 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
         return objects.has(id) ? objects.get(id) : undefined;
       };
       const images = await pageImages(operators, OPS, page);
-      let budget = maxPagePixels;
-      const decode = (image: unknown) => {
-        const pixels = decodeImage(image, budget);
-        if (pixels) budget -= pixels.width * pixels.height;
-        return pixels;
-      };
       const decoded = new Map<string, ImagePixels | undefined>();
       const paints = readPaints(operators, OPS, {
         frame: [1, 0, 0, -1, -left, top],
@@ -305,10 +316,10 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
 }
 
 /**
- * The most image pixels decoded per page (16 MB of RGBA): images past it
- * aren't measured, so the blocks they alone draw are refused, not passed.
+ * The most image pixels decoded per document (16 MB of RGBA): images past
+ * it aren't measured, so the blocks they alone draw are refused, not passed.
  */
-const maxPagePixels = 1 << 22;
+const maxPixels = 1 << 22;
 
 /**
  * The image XObjects a page's operators paint, also inside tiling patterns,
