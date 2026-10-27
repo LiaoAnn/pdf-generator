@@ -26,6 +26,44 @@ const polyfill = fileURLToPath(
   new URL('../dist/paged.polyfill.js', import.meta.resolve('pagedjs')),
 );
 
+test.each(['paragraph', 'table cell'])(
+  'round 6 preserves printed case when generated content swaps in a %s',
+  async context => {
+    const content =
+      '<span class="copy katex-mathml"><math><mtext>AaA</mtext></math></span><div class="first">a</div><div class="second">a</div>';
+    await withPrintedPage(
+      context === 'paragraph'
+        ? `<div data-gt="paragraph">${content}</div>`
+        : `<table data-gt="table"><tbody><tr><td>${content}</td></tr></tbody></table>`,
+      async page => {
+        const block = page.locator('.pagedjs_page [data-gt]');
+        // Generated X consumes ::first-letter on the first div. Moving it to
+        // the second div swaps aA to Aa without changing either div's style.
+        expect((await block.innerText()).replace(/\s/g, '')).toBe('AaAaA');
+        const result = await readGroundTruth(page, source);
+        const text = result.blocks[0]?.text.replace(/\s/g, '');
+        expect(text?.slice(-2)).toBe('aA');
+        if (context === 'table cell') {
+          const table = result.blocks[0];
+          if (table?.type !== 'table') throw new Error('Expected table');
+          expect(table.table.cells[0]?.text.replace(/\s/g, '').slice(-2)).toBe(
+            'aA',
+          );
+        }
+        // The temporary reader edit must also restore the printed state.
+        expect((await block.innerText()).replace(/\s/g, '')).toBe('AaAaA');
+      },
+      `.copy { position:absolute;display:block;width:1px;height:1px;left:100px;top:100px;overflow:hidden;overflow-clip-margin:0px;clip:rect(1px,1px,1px,1px);padding:0;border:0 }
+       .first::first-letter,.second::first-letter { text-transform:uppercase }
+       .first::before { content:"X" }
+       .second::before { content:none }
+       .katex-mathml[style]~.first::before { content:none }
+       .katex-mathml[style]~.second::before { content:"X" }`,
+    );
+  },
+  30_000,
+);
+
 const paintRegressions = [
   {
     name: 'text-shadow paints an offscreen MathML copy inside the clip',

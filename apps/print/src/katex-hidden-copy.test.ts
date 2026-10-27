@@ -95,6 +95,43 @@ test.each([
   },
 );
 
+test.each([
+  {
+    name: 'the sealed wrapper itself',
+    markup:
+      '<span data-gt="paragraph" class="copy katex-mathml"><math><mtext style="opacity:0">REQUIRED</mtext></math></span>',
+  },
+  {
+    name: 'an element inside the sealed wrapper',
+    markup:
+      '<span class="copy katex-mathml"><span data-gt="paragraph"><math><mtext style="opacity:0">REQUIRED</mtext></math></span></span>',
+  },
+])(
+  'round 6 requires missing text when $name has data-gt',
+  async ({ markup }) => {
+    const response = await print(
+      document(
+        `${markup}<p data-gt="paragraph">VISIBLE</p>`,
+        `<style>
+          .copy { position:absolute;display:block;width:1px;height:1px;left:100px;top:100px;overflow:hidden;overflow-clip-margin:0px;padding:0;border:0 }
+          math,mtext { display:block;width:1px;height:1px;margin:0;padding:0 }
+        </style>`,
+      ),
+    );
+    expect(
+      response.status,
+      response.status === 200
+        ? 'unexpected PDF success: data-gt text inside a sealed wrapper was skipped'
+        : await response.clone().text(),
+    ).toBe(422);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('text_missing');
+    expect(error.details?.map(detail => detail.message)).toContain(
+      'page 1: REQUIRED',
+    );
+  },
+);
+
 const paintRegressions = [
   {
     name: 'text-shadow paints an offscreen MathML copy inside the clip',

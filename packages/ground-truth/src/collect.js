@@ -382,9 +382,9 @@ export function collect() {
   // element) once everything is measured, and put back. Pack CSS can react to
   // that edit (a [style] selector, :has()), so the new text is taken only if
   // no computed style changed meanwhile (every property of the block, its
-  // ancestors and the elements in it outside the copies, and the text
-  // properties of their ::first-letter and ::first-line) and it is the text
-  // read before with exactly the copies' text taken out, in order
+  // ancestors and the elements in it outside the copies, and of their
+  // ::before, ::after, ::marker, ::first-letter and ::first-line) and it is
+  // the text read before with exactly the copies' text taken out, in order
   // (whitespace aside). Otherwise the text read before stays, copy and all,
   // for the self-check to report.
   const owners = textOwners.filter(([owner]) =>
@@ -430,13 +430,17 @@ export function collect() {
                 const style = getComputedStyle(element);
                 return [
                   ...Array.from(style, name => style.getPropertyValue(name)),
-                  ...['::first-letter', '::first-line'].flatMap(pseudo => {
-                    const text = getComputedStyle(element, pseudo);
-                    return [
-                      text.textTransform,
-                      text.getPropertyValue('-webkit-locale'),
-                      text.visibility,
-                    ];
+                  ...[
+                    '::before',
+                    '::after',
+                    '::marker',
+                    '::first-letter',
+                    '::first-line',
+                  ].flatMap(pseudo => {
+                    const generated = getComputedStyle(element, pseudo);
+                    return Array.from(generated, name =>
+                      generated.getPropertyValue(name),
+                    );
                   }),
                 ].join(';');
               })

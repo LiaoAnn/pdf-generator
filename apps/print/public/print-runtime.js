@@ -865,7 +865,15 @@
     for (const wrapper of document.querySelectorAll(
       '.pagedjs_page .katex-mathml',
     )) {
-      if (!sealed(wrapper)) continue;
+      // A data-gt block that is or holds the wrapper is read with its text,
+      // as the ground truth does.
+      if (
+        !sealed(wrapper) ||
+        wrapper.matches('[data-gt]') ||
+        wrapper.querySelector('[data-gt]') !== null
+      ) {
+        continue;
+      }
       const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT);
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const parent = node.parentElement;
