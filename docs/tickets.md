@@ -994,3 +994,12 @@
 - **驗收測試**：VM 滿載時連跑 5 次都通過；各測試對慢的版本（worktree 外的副本）仍會失敗
 - **不做**：改被測的程式
 - **來源**：PR #83（T06-5）
+
+### T07-29 印 PDF：Paged.js 讀 `@import` 時加上已讀清單或抓取上限
+- **目標**：T06-4 在上傳時拒絕 `@import` 循環，但刻意利用 Paged.js 0.4.3 解析怪癖（加上誘餌檔案）的樣板包仍能繞過，讓 `Polisher.convertViaSheet` 一直抓檔案，最後回 `pagination_timeout`（只影響那個樣板包自己的列印）。在 print Worker 這邊包住 Paged.js 讀 import 的遞迴：記錄已讀過的網址，或限制每次列印抓樣式表的次數，超過就回明確的錯誤代碼與中文說明，一次關掉所有變形
+- **Blocked by**：T06-4
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime 與 Paged.js 載入方式；與 T07-9、T07-26、T07-28 不要同時派
+- **驗收測試**：PR #84 Security 第 4 輪的 5 種繞過寫法都在數秒內被拒絕，不再等 60 秒逾時；巢狀但無循環的 import 照常列印；6 個樣板各 10 份 gt.json 與 main 相同
+- **不做**：改 Paged.js 原始碼或升級版本（T07-9）
+- **來源**：PR #84（T06-4）
