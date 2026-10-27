@@ -145,22 +145,32 @@
       .split(',')
       .every(query => /^\s*(only\s+)?(screen|speech)\b/i.test(query));
 
-  // A sheet @import-ed with a print media list applies to the print as a whole
-  // sheet, cascade and inheritance included, which its text alone can't show
-  // (a family on body, bold on strong). Read computed styles once with those
-  // imports applied on screen as well, then restore their media.
-  function findUsedInPrintImports() {
-    /** @type {[CSSImportRule, string][]} */
-    const imports = [];
+  // Print-only rules apply to the print with the cascade and inheritance,
+  // which their text alone can't show (a family set on html by @media print,
+  // bold set on h1 by a plain rule): @media print rules, and sheets @import-ed
+  // with a print media list, which apply as whole sheets. Read computed styles
+  // once with their media set to all, then restore it before anything else
+  // reads the page.
+  function findUsedInPrintStyles() {
+    /** @type {[MediaList, string][]} */
+    const flipped = [];
     /** @param {CSSRuleList} rules */
     const collect = rules => {
       for (const rule of rules) {
-        if (!(rule instanceof CSSImportRule) || !rule.styleSheet) continue;
-        const media = rule.media.mediaText;
-        if (media !== '' && printsWith(media)) imports.push([rule, media]);
-        try {
-          collect(rule.styleSheet.cssRules);
-        } catch {}
+        if (rule instanceof CSSImportRule) {
+          const media = rule.media.mediaText;
+          if (media !== '' && printsWith(media))
+            flipped.push([rule.media, media]);
+          try {
+            if (rule.styleSheet) collect(rule.styleSheet.cssRules);
+          } catch {}
+        } else if (rule instanceof CSSMediaRule) {
+          const media = rule.media.mediaText;
+          if (/\bprint\b/i.test(media)) flipped.push([rule.media, media]);
+        }
+        if ('cssRules' in rule && rule.cssRules instanceof CSSRuleList) {
+          collect(rule.cssRules);
+        }
       }
     };
     for (const sheet of document.styleSheets) {
@@ -168,12 +178,12 @@
         collect(sheet.cssRules);
       } catch {}
     }
-    if (imports.length === 0) return;
-    for (const [rule] of imports) rule.media.mediaText = 'all';
+    if (flipped.length === 0) return;
     try {
+      for (const [media] of flipped) media.mediaText = 'all';
       findUsedInDocument();
     } finally {
-      for (const [rule, media] of imports) rule.media.mediaText = media;
+      for (const [media, text] of flipped) media.mediaText = text;
     }
   }
 
@@ -255,7 +265,7 @@
   async function loadUsedFaces() {
     await stylesheetsSettled();
     findUsedInDocument();
-    findUsedInPrintImports();
+    findUsedInPrintStyles();
     await findUsedInAtRules();
     const faces = [...used].sort().map(entry => {
       const [key = '', variant] = entry.split('|');
