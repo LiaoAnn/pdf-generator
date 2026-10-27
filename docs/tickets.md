@@ -942,10 +942,10 @@
 - **來源**：PR #78（T07-25）
 
 ### T07-27 印 PDF：整理 PDF 結構時跳過字串內容
-- **目標**：T07-2 的 `stable-pdf.ts` 在 PDF 裡找 `/IDTree`、`/ID` 等結構時，沒有跳過字串常值；樣板包的 `<title>` 寫成「Report /IDTree 31 0 R」這類文字會被當成結構，印出來的 PDF 可能讀不了。改成只在字串常值以外找結構
+- **目標**：T07-2 的 `stable-pdf.ts` 在 PDF 裡找 `/IDTree`、`/ID` 等結構時，沒有跳過字串常值；樣板包的 `<title>` 寫成「Report /IDTree 31 0 R」這類文字會被當成結構，印出來的 PDF 可能讀不了（`/IDTree 31 0 R` 指到 catalog 時 pdf.js 回「Invalid Root reference」；`/IDTree 1 0 R` 指到 Info 時兩處修改重疊，輸出從 21,337 變 21,580 bytes，破壞長度不變）。改成只在字串常值以外、只從真正的 StructTreeRoot 找結構；物件只建一次索引（目前每個偽造的 `/IDTree n 0 R` 都整檔搜尋一次：3,000 個約 57 KB 的標題在 78 KB 的 PDF 上同步花 160 ms）；修改範圍重疊時拒絕列印而不是照改
 - **Blocked by**：T07-2
 - **Blocks**：—
 - **撞車風險**：`apps/print/src/stable-pdf.ts`
-- **驗收測試**：`<title>` 含 `/IDTree 31 0 R`、`/ID (node1)` 等字樣的文件印兩次 sha256 相同，PDF 可被 pdf.js 讀取，標題文字不變；6 個樣板各 10 份 gt.json 與 main 相同
+- **驗收測試**：`<title>` 含 `/IDTree 31 0 R`、`/ID (node1)` 等字樣的文件印兩次 sha256 相同，PDF 可被 pdf.js 讀取、長度與未整理前相同，標題文字不變；3,000 個偽造參照的標題整理時間與沒有偽造參照時同一量級（同一次執行內比較）；6 個樣板各 10 份 gt.json 與 main 相同
 - **不做**：關掉 tagged PDF
 - **來源**：PR #79（T07-2）
