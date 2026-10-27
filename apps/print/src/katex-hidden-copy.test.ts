@@ -106,43 +106,73 @@ const paintRegressions = [
     text: 'VERTICAL',
     css: '.clip { display:block; height:100px; overflow:hidden } math { display:block; width:180px; height:20px } mtext { display:block; width:180px; height:1px; position:relative; top:-10px; font:30px/100px sans-serif }',
   },
-  ...[
-    { name: 'CSS height alone cannot prove hidden ink', css: 'height:1px' },
-    {
-      name: 'block display alone cannot prove hidden ink',
-      css: 'display:block',
-    },
-    {
-      name: 'text stroke escapes the token box',
-      css: '-webkit-text-stroke:4px black',
-    },
-    {
-      name: 'text emphasis escapes the token box',
-      css: 'text-emphasis:filled dot',
-    },
-    {
-      name: 'token drop shadow escapes the token box',
-      css: 'filter:drop-shadow(10px 0 black)',
-    },
-    {
-      name: 'token reflection escapes the token box',
-      css: '-webkit-box-reflect:below',
-    },
-  ].map(({ name, css }) => ({
-    name,
-    text: 'PAINTED',
-    css: `.clip { position:absolute; clip:rect(1px,1px,1px,1px); padding:0; border:0; height:1px; width:1px; overflow:hidden } mtext { ${css} }`,
-  })),
-  {
-    name: 'ancestor drop shadow escapes the token box',
-    text: 'ANCESTOR',
-    css: '.clip { position:absolute; clip:rect(1px,1px,1px,1px); height:1px; width:1px; overflow:hidden; filter:drop-shadow(10px 0 black) }',
-  },
   {
     name: 'first-line shadow escapes the token box',
     text: 'FIRSTLINE',
     css: '.clip { display:block; width:200px; height:60px; overflow:hidden } math { display:block; position:relative; left:-200px; width:180px } p::first-line { text-shadow:210px 0 black }',
   },
+  {
+    name: 'italic glyph overhang paints inside a large clip despite an outside MathML box',
+    text: 'f',
+    css: '.clip { display:block; position:relative; width:200px; height:180px; overflow:hidden } math { position:relative; left:-35px } mtext { font:italic 100px serif }',
+  },
+  ...[
+    {
+      name: 'static wrapper does not seal overflowing MathML',
+      css: 'position:static',
+    },
+    {
+      name: 'relative wrapper does not seal overflowing MathML',
+      css: 'position:relative',
+    },
+    {
+      name: 'visible horizontal overflow does not seal the wrapper',
+      css: 'overflow-x:visible',
+    },
+    {
+      name: 'visible vertical overflow does not seal the wrapper',
+      css: 'overflow-y:visible',
+    },
+    {
+      name: 'overflow clip margin permits ink beyond the wrapper',
+      css: 'overflow:clip;overflow-clip-margin:20px',
+    },
+    {
+      name: 'two-pixel wrapper exceeds the hidden-copy limit',
+      css: 'width:2px',
+    },
+    {
+      name: 'wrapper transform enlarges its one-pixel clip',
+      css: 'transform:scale(50);transform-origin:top left',
+    },
+    {
+      name: 'ancestor transform enlarges the one-pixel clip',
+      css: '',
+      ancestor:
+        '.ancestor { transform:scale(50);transform-origin:top left;display:inline-block;width:1px;height:1px }',
+    },
+    {
+      name: 'display contents has no sealing wrapper box',
+      css: 'display:contents',
+    },
+    {
+      name: 'inline wrapper does not seal its content',
+      css: 'position:static;display:inline',
+    },
+    {
+      name: 'fixed-position descendant prevents the wrapper exemption',
+      css: '',
+      descendant:
+        '.pagedjs_page { --desc-position:fixed } .fixed { position:var(--desc-position,static) }',
+    },
+    // Keep token boxes tiny while their text overflows: this isolates the text
+    // guard from the independent element-clipping check. An axis set to visible
+    // computes to auto when the other axis is hidden; it still is not sealed.
+  ].map(({ name, css, ancestor = '', descendant = '' }) => ({
+    name,
+    text: 'UNSEALED',
+    css: `.clip { display:block;position:absolute;width:1px;height:1px;overflow:hidden;overflow-clip-margin:0px;padding:0;border:0;${css} } ${ancestor} .fixed { display:contents } math, mtext { display:block;width:1px;height:1px } ${descendant}`,
+  })),
 ];
 
 test.each(paintRegressions)(
@@ -150,7 +180,7 @@ test.each(paintRegressions)(
   async ({ css, text }) => {
     const response = await print(
       document(
-        `<p data-gt="paragraph"><span class="clip katex-mathml"><math><mtext>${text}</mtext></math></span></p>`,
+        `<p data-gt="paragraph"><span class="ancestor"><span class="clip katex-mathml"><span class="fixed"><math><mtext>${text}</mtext></math></span></span></span></p>`,
         `<style>${css} mtext { visibility:hidden }</style>`,
       ),
     );
@@ -165,6 +195,42 @@ test.each(paintRegressions)(
     expect(error.details?.map(detail => detail.message)).toContain(
       `page 1: ${text}`,
     );
+  },
+);
+
+const sealedPaintRegressions = [
+  { name: 'CSS height', css: 'mtext { height:1px }' },
+  { name: 'block display', css: 'mtext { display:block }' },
+  { name: 'negative letter spacing', css: 'mtext { letter-spacing:-100px }' },
+  { name: 'text stroke', css: 'mtext { -webkit-text-stroke:4px black }' },
+  { name: 'text emphasis', css: 'mtext { text-emphasis:filled dot }' },
+  {
+    name: 'token drop shadow',
+    css: 'mtext { filter:drop-shadow(10px 0 black) }',
+  },
+  { name: 'token reflection', css: 'mtext { -webkit-box-reflect:below }' },
+  {
+    name: 'ancestor drop shadow',
+    css: '.clip { filter:drop-shadow(10px 0 black) }',
+  },
+];
+const sealingCss =
+  '.clip { display:block;position:absolute;clip:rect(1px,1px,1px,1px);padding:0;border:0;height:1px;width:1px;overflow:hidden }';
+
+test.each(sealedPaintRegressions)(
+  'exempts a sealed copy despite $name on its content',
+  async ({ css }) => {
+    const response = await print(
+      document(
+        '<p data-gt="paragraph">PRINTED<span class="clip katex-mathml"><math><mtext>SEALED</mtext></math></span></p>',
+        `<style>${sealingCss} ${css} mtext { visibility:hidden }</style>`,
+      ),
+    );
+    expect(
+      response.status,
+      response.status === 200 ? '' : await response.clone().text(),
+    ).toBe(200);
+    await response.arrayBuffer();
   },
 );
 

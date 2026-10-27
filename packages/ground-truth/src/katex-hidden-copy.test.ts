@@ -1,8 +1,20 @@
+import { readFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { GroundTruth } from '@pdf-generator/contract';
 import { type Browser, chromium, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { readGroundTruth } from './read.ts';
+
+// Exercise the installed renderer and stylesheet without adding a dependency
+// to this package: KaTeX belongs to the print app.
+const printRequire = createRequire(
+  new URL('../../../apps/print/package.json', import.meta.url),
+);
+const realKatex: {
+  renderToString: (latex: string, options: { displayMode: boolean }) => string;
+} = printRequire('katex');
 
 const source: GroundTruth['source'] = {
   templateId: 'katex-hidden-copy',
@@ -25,57 +37,175 @@ const paintRegressions = [
     text: 'VERTICAL',
     css: '.clip { display:block; height:100px; overflow:hidden } math { display:block; width:180px; height:20px } mtext { display:block; width:180px; height:1px; position:relative; top:-10px; font:30px/100px sans-serif }',
   },
-  ...[
-    { name: 'CSS height alone cannot prove hidden ink', css: 'height:1px' },
-    {
-      name: 'block display alone cannot prove hidden ink',
-      css: 'display:block',
-    },
-    {
-      name: 'negative letter spacing collapses rects without hiding ink',
-      css: 'letter-spacing:-100px',
-    },
-    {
-      name: 'text stroke escapes the token box',
-      css: '-webkit-text-stroke:4px black',
-    },
-    {
-      name: 'text emphasis escapes the token box',
-      css: 'text-emphasis:filled dot',
-    },
-    {
-      name: 'token drop shadow escapes the token box',
-      css: 'filter:drop-shadow(10px 0 black)',
-    },
-    {
-      name: 'token reflection escapes the token box',
-      css: '-webkit-box-reflect:below',
-    },
-  ].map(({ name, css }) => ({
-    name,
-    text: 'PAINTED',
-    css: `.clip { position:absolute; clip:rect(1px,1px,1px,1px); padding:0; border:0; height:1px; width:1px; overflow:hidden } mtext { ${css} }`,
-  })),
-  {
-    name: 'ancestor drop shadow escapes the token box',
-    text: 'ANCESTOR',
-    css: '.clip { position:absolute; clip:rect(1px,1px,1px,1px); height:1px; width:1px; overflow:hidden; filter:drop-shadow(10px 0 black) }',
-  },
   {
     name: 'first-line shadow escapes the token box',
     text: 'FIRSTLINE',
     css: '.clip { display:block; width:200px; height:60px; overflow:hidden } math { display:block; position:relative; left:-200px; width:180px } p::first-line { text-shadow:210px 0 black }',
   },
+  {
+    name: 'italic glyph overhang paints inside a large clip despite an outside MathML box',
+    text: 'f',
+    css: '.clip { display:block; position:relative; width:200px; height:180px; overflow:hidden } math { position:relative; left:-35px } mtext { font:italic 100px serif }',
+  },
+  ...[
+    {
+      name: 'static wrapper does not seal overflowing MathML',
+      css: 'position:static',
+    },
+    {
+      name: 'relative wrapper does not seal overflowing MathML',
+      css: 'position:relative',
+    },
+    {
+      name: 'visible horizontal overflow does not seal the wrapper',
+      css: 'overflow-x:visible',
+    },
+    {
+      name: 'visible vertical overflow does not seal the wrapper',
+      css: 'overflow-y:visible',
+    },
+    {
+      name: 'overflow clip margin permits ink beyond the wrapper',
+      css: 'overflow:clip;overflow-clip-margin:20px',
+    },
+    {
+      name: 'two-pixel wrapper exceeds the hidden-copy limit',
+      css: 'width:2px',
+    },
+    {
+      name: 'wrapper transform enlarges its one-pixel clip',
+      css: 'transform:scale(50);transform-origin:top left',
+    },
+    {
+      name: 'ancestor transform enlarges the one-pixel clip',
+      css: '',
+      ancestor:
+        '.ancestor { transform:scale(50);transform-origin:top left;display:inline-block;width:1px;height:1px }',
+    },
+    {
+      name: 'display contents has no sealing wrapper box',
+      css: 'display:contents',
+    },
+    {
+      name: 'inline wrapper does not seal its content',
+      css: 'position:static;display:inline',
+    },
+    {
+      name: 'fixed-position descendant prevents the wrapper exemption',
+      css: '',
+      descendant:
+        '.pagedjs_page { --desc-position:fixed } .fixed { position:var(--desc-position,static) }',
+    },
+    // Keep token boxes tiny while their text overflows: this isolates the text
+    // guard from the independent element-clipping check. An axis set to visible
+    // computes to auto when the other axis is hidden; it still is not sealed.
+  ].map(({ name, css, ancestor = '', descendant = '' }) => ({
+    name,
+    text: 'UNSEALED',
+    css: `.clip { display:block;position:absolute;width:1px;height:1px;overflow:hidden;overflow-clip-margin:0px;padding:0;border:0;${css} } ${ancestor} .fixed { display:contents } math, mtext { display:block;width:1px;height:1px } ${descendant}`,
+  })),
 ];
 
 test.each(paintRegressions)(
   'retains paragraph text when $name',
-  async ({ css, text }) => {
+  async ({ name, css, text }) => {
     await withPrintedPage(
-      `<p data-gt="paragraph"><span class="clip katex-mathml"><math><mtext>${text}</mtext></math></span></p>`,
+      `<p data-gt="paragraph"><span class="ancestor"><span class="clip katex-mathml"><span class="fixed"><math><mtext>${text}</mtext></math></span></span></span></p>`,
       async page => {
+        if (name.startsWith('fixed-position')) {
+          expect(
+            await page
+              .locator('.pagedjs_page .fixed')
+              .evaluate(element => getComputedStyle(element).position),
+          ).toBe('fixed');
+        }
+        if (name.startsWith('italic glyph')) {
+          const math = await page.locator('.pagedjs_page math').boundingBox();
+          const clip = await page.locator('.pagedjs_page .clip').boundingBox();
+          expect(math).not.toBeNull();
+          expect(clip).not.toBeNull();
+          if (!math || !clip)
+            throw new Error('Expected laid-out overhang fixture');
+          expect(math.x + math.width).toBeLessThanOrEqual(clip.x);
+        }
         const result = await readGroundTruth(page, source);
         expect(result.blocks[0]?.text).toContain(text);
+      },
+      css,
+    );
+  },
+  30_000,
+);
+
+const sealedPaintRegressions = [
+  { name: 'CSS height', css: 'mtext { height:1px }' },
+  { name: 'block display', css: 'mtext { display:block }' },
+  { name: 'negative letter spacing', css: 'mtext { letter-spacing:-100px }' },
+  { name: 'text stroke', css: 'mtext { -webkit-text-stroke:4px black }' },
+  { name: 'text emphasis', css: 'mtext { text-emphasis:filled dot }' },
+  {
+    name: 'token drop shadow',
+    css: 'mtext { filter:drop-shadow(10px 0 black) }',
+  },
+  { name: 'token reflection', css: 'mtext { -webkit-box-reflect:below }' },
+  {
+    name: 'ancestor drop shadow',
+    css: '.clip { filter:drop-shadow(10px 0 black) }',
+  },
+];
+const sealingCss =
+  '.clip { display:block;position:absolute;clip:rect(1px,1px,1px,1px);padding:0;border:0;height:1px;width:1px;overflow:hidden }';
+
+test.each(sealedPaintRegressions)(
+  'excludes a sealed copy despite $name on its content',
+  async ({ css }) => {
+    await withPrintedPage(
+      '<p data-gt="paragraph">PRINTED<span class="clip katex-mathml"><math><mtext>SEALED</mtext></math></span></p>',
+      async page => {
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks[0]?.text.replace(/\s/g, '')).toBe('PRINTED');
+      },
+      `${sealingCss} ${css}`,
+    );
+  },
+  30_000,
+);
+
+test.each([false, true])(
+  'real KaTeX CSS removes the MathML copy (displayMode=%s)',
+  async displayMode => {
+    const cssPath = printRequire.resolve('katex/dist/katex.min.css');
+    let css = await readFile(cssPath, 'utf8');
+    for (const url of new Set(
+      [...css.matchAll(/url\(([^)]+)\)/g)].map(match => match[1]),
+    )) {
+      if (!url) continue;
+      const bytes = await readFile(join(dirname(cssPath), url));
+      css = css.replaceAll(
+        `url(${url})`,
+        `url(data:font/woff2;base64,${bytes.toString('base64')})`,
+      );
+    }
+    const formula = realKatex.renderToString(String.raw`\frac{a}{b}+x^2`, {
+      displayMode,
+    });
+    await withPrintedPage(
+      `<div data-gt="${displayMode ? 'formula' : 'paragraph'}">${formula}</div>`,
+      async page => {
+        expect(
+          await page.locator('.pagedjs_page [data-gt]').innerText(),
+        ).toContain('𝑎');
+        const visible = await page
+          .locator('.pagedjs_page .katex-html')
+          .innerText();
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks[0]?.text.replace(/\s/g, '')).toBe(
+          displayMode
+            ? visible.replace(/[\s\u200b]/g, '')
+            : visible.replace(/\s/g, ''),
+        );
+        expect(result.blocks[0]?.text).not.toContain('𝑎');
+        expect(result.blocks[0]?.text).not.toContain('frac');
       },
       css,
     );
@@ -112,6 +242,22 @@ test.each([
   },
   30_000,
 );
+
+test('ABA copy removal cannot disguise a CSS swap from printed BA to AB', async () => {
+  await withPrintedPage(
+    `<p data-gt="paragraph">${hiddenCopy.replace('COPY', 'ABA')}<span class="before">BA</span><span class="after">AB</span></p>`,
+    async page => {
+      expect(await page.locator('.pagedjs_page .before').innerText()).toBe(
+        'BA',
+      );
+      const result = await readGroundTruth(page, source);
+      const text = result.blocks[0]?.text.replace(/\s/g, '');
+      expect(text).toContain('BA');
+      expect(text).not.toBe('AB');
+    },
+    '.after { display:none } .katex-mathml[style*="none"] ~ .before { display:none } .katex-mathml[style*="none"] ~ .after { display:inline }',
+  );
+}, 30_000);
 
 test('CSS transitions reacting to reader mutations cannot corrupt the printed paragraph box', async () => {
   await withPrintedPage(
@@ -237,6 +383,18 @@ describe('T07-26 readGroundTruth excludes only the hidden KaTeX MathML copy', ()
             text: '前文ba\u200b+x2後文',
           },
         ]);
+      },
+    );
+  }, 30_000);
+
+  test('removes two inline copies in order without deleting surrounding paragraph text', async () => {
+    await withPrintedPage(
+      `<p data-gt="paragraph">前文${inlineKatex}中間${inlineKatex}後文</p>`,
+      async page => {
+        const result = await readGroundTruth(page, source);
+        expect(result.blocks[0]?.text).toBe(
+          '前文ba\u200b+x2中間ba\u200b+x2後文',
+        );
       },
     );
   }, 30_000);
