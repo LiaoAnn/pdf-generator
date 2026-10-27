@@ -115,6 +115,8 @@ const packIssues: Record<string, string> = {
 const printIssues: Record<string, string> = {
   css_animation:
     '樣板會隨時間變動：用了 CSS 動畫（animation）或轉場（transition）、SVG 動畫（animate、set 等元素）或 marquee。印 PDF 和量測標準答案時抓到的是不同時刻的畫面，PDF 會和標準答案對不上。請移除這些動畫與轉場，直接寫出最後要印的樣式。',
+  css_import_loop:
+    'CSS 檔案用 @import 繞成一圈，或引用的樣式表太多（例如同一個檔案被 @import 上百次）。Paged.js 會一直重複載入，平台因此停止列印。原始訊息列出引用的順序；請拿掉其中一個 @import 打斷循環，或減少重複的 @import。',
   font_not_loaded:
     '列印時有字型載入失敗：可能是字型檔損壞或路徑錯誤，或列印服務還不支援樣板包自帶的字型。請先改用平台內建的中文字型試試。',
   page_count_mismatch:

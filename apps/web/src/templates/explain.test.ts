@@ -175,6 +175,7 @@ describe('template author error explanations', () => {
     'font-unused',
   ];
   const printCodes = [
+    'css_import_loop',
     'page_count_mismatch',
     'page_box_moved',
     'viewport_dependent',
@@ -593,7 +594,32 @@ describe('template author error explanations', () => {
 });
 
 describe('stored fixture print errors', () => {
+  test('import-loop guidance explains loops and excessive sheets and tells authors to remove an @import in previews and stored fixtures', async () => {
+    const { explainFixtureError } = await import('./explain.ts');
+    const guidance = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [
+        {
+          code: 'css_import_loop',
+          message: 'styles/a.css → styles/b.css → styles/a.css',
+        },
+      ],
+    }).issues[0]?.explanation;
+    expect(guidance).toBeDefined();
+    expect(guidance).not.toBe(fallback());
+    expect(guidance).toMatch(cjk);
+    expect(guidance).toContain('@import');
+    expect(guidance).toMatch(/循環|繞.*圈/);
+    expect(guidance).toMatch(/太多|過多|過量|超過/);
+    expect(guidance).toMatch(/移除|刪除|拿掉/);
+    expect(explainFixtureError('print 422 css_import_loop: styles/a.css')).toBe(
+      guidance,
+    );
+  });
+
   test.each([
+    'css_import_loop',
     'page_count_mismatch',
     'page_box_moved',
     'viewport_dependent',
