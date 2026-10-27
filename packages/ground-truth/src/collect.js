@@ -306,16 +306,24 @@ export function collect() {
           rect: { x, y, width, height },
           // Chrome paints these on whole px of the page; build moves the box
           // onto them (T08-2).
-          replaced: [element, ...Array.from(element.querySelectorAll('img'))]
+          // An <svg> inside another one is drawn as part of the outer one.
+          replaced: [
+            element,
+            ...Array.from(element.querySelectorAll('img, svg')),
+          ]
             .filter(
               inner =>
-                inner instanceof HTMLImageElement &&
+                (inner instanceof HTMLImageElement ||
+                  (inner instanceof SVGSVGElement &&
+                    inner.parentElement?.closest('svg') == null)) &&
                 inner.getClientRects().length > 0,
             )
             .map(inner => {
               const box = inner.getBoundingClientRect();
               return {
-                kind: /** @type {const} */ ('img'),
+                kind: /** @type {'img' | 'svg'} */ (
+                  inner instanceof HTMLImageElement ? 'img' : 'svg'
+                ),
                 rect: {
                   x: box.x,
                   y: box.y,
