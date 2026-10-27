@@ -238,11 +238,14 @@ function painted(rect: Rect, replaced: ReplacedBox[], page: Rect): Rect {
   if (inside.length === 0) return rect;
   const side = (i: 0 | 1 | 2 | 3): number => {
     const outer = i < 2 ? Math.min : Math.max;
-    const shared = inside
-      .filter(({ layout }) => Math.abs(layout[i] - box[i]) <= flush)
-      .map(({ paint }) => paint[i]);
-    const at = shared.length > 0 ? outer(...shared) : box[i];
-    return outer(at, ...inside.map(({ paint }) => paint[i]));
+    // A shared side is wherever they paint; any other side only grows.
+    const shared = inside.some(
+      ({ layout }) => Math.abs(layout[i] - box[i]) <= flush,
+    );
+    return inside.reduce(
+      (at, { paint }) => outer(at, paint[i]),
+      shared ? (i < 2 ? Infinity : -Infinity) : box[i],
+    );
   };
   const [x0, y0, x1, y1] = [side(0), side(1), side(2), side(3)];
   return { x: x0 + page.x, y: y0 + page.y, width: x1 - x0, height: y1 - y0 };
