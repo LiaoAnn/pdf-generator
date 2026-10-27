@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Textless ink geometry</title>
+<style>
+@page { size: A4; margin: 20mm; }
+html, body { margin: 0; padding: 0; }
+body { width: 510px; font-size: 0; }
+section { display: inline-block; vertical-align: top; box-sizing: border-box;
+  width: 140px; height: 120px; padding: 10px; margin: 0 24px 24px 0;
+  break-inside: avoid; }
+svg { display: block; width: 100px; height: 100px; }
+img { display: block; width: 100px; height: 100px; }
+.band { background: #234567; }
+.gradient-band { background: linear-gradient(to right, red, blue); }
+</style></head><body>
+<section><svg aria-hidden="true" id="corner-path" data-gt="image" viewBox="0 0 100 100"><path d="M0 0h1v1h-1z M99 99h1v1h-1z"/></svg></section>
+<section><svg aria-hidden="true" id="cancelled-path" data-gt="image" viewBox="0 0 100 100"><path fill-rule="evenodd" d="M0 0h100v100h-100z M0 0h100v100h-100z"/></svg></section>
+<section><svg aria-hidden="true" id="white-path" data-gt="image" viewBox="0 0 100 100"><rect width="100" height="100" fill="white"/></svg></section>
+<section><svg aria-hidden="true" id="erased-path" data-gt="image" viewBox="0 0 100 100"><rect width="100" height="100"/><rect width="100" height="100" fill="white"/></svg></section>
+<section><svg aria-hidden="true" id="empty-clip" data-gt="image" viewBox="0 0 100 100"><defs><clipPath id="empty"><path clip-rule="evenodd" d="M0 0h100v100h-100z M0 0h100v100h-100z"/></clipPath></defs><rect width="100" height="100" clip-path="url(#empty)"/></svg></section>
+<!-- Real ink covers 60% on x, but is off-centre on both axes. The cancelled
+     full-box path must not supply anchoring (nor may the SVG viewport clip). -->
+<section><svg aria-hidden="true" id="unanchored-path" data-gt="image" viewBox="0 0 100 100"><path fill-rule="evenodd" d="M0 0h100v100h-100z M0 0h100v100h-100z"/><rect x="10" y="20" width="60" height="10"/></svg></section>
+<section class="band"><svg aria-hidden="true" id="band-logo" data-gt="image" viewBox="0 0 100 100"><path fill="white" d="M10 10h80v80h-80z M30 30v40h40v-40z" fill-rule="evenodd"/></svg></section>
+<section class="band"><svg aria-hidden="true" id="band-hidden" data-gt="image" viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="#234567"/></svg></section>
+<section><svg aria-hidden="true" id="group-erased" data-gt="image" viewBox="0 0 100 100"><g opacity="0.5"><rect width="100" height="100" fill="black"/><rect width="100" height="100" fill="white"/></g></svg></section>
+<section><svg aria-hidden="true" id="white-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="white-gradient-fill"><stop stop-color="white"/><stop offset="1" stop-color="white"/></linearGradient></defs><rect width="100" height="100" fill="url(#white-gradient-fill)"/></svg></section>
+<section><svg aria-hidden="true" id="visible-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="visible-gradient-fill"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><rect width="100" height="100" fill="url(#visible-gradient-fill)"/></svg></section>
+<section class="gradient-band"><img id="gradient-image" data-gt="image" alt=""/></section>
+<section style="padding:0;height:100px;margin-bottom:0"><svg aria-hidden="true" id="white-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="white-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></pattern></defs><rect width="100" height="100" fill="url(#white-pattern-fill)"/></svg></section>
+<section style="padding:0;height:100px;margin-bottom:0"><svg aria-hidden="true" id="black-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="black-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="black"/></pattern></defs><rect width="100" height="100" fill="url(#black-pattern-fill)"/></svg></section>
+<section><img id="transparent-image" data-gt="image" alt=""/></section>
+<section><div id="repeating-bars" data-gt="image" style="width:100px;height:100px;background:repeating-linear-gradient(to right,black 0px,black 2px,white 2px,white 4px)"></div></section>
+<!-- Review repros: Chromium emits an inverted soft-mask transfer table. -->
+<section><svg aria-hidden="true" id="mask-pattern" data-gt="image" viewBox="0 0 100 100"><defs><pattern id="mask-pattern-fill" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="black"/></pattern><mask id="pattern-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="url(#mask-pattern-fill)"/></mask></defs><rect width="100" height="100" mask="url(#pattern-mask)"/></svg></section>
+<!-- Crisp mask edges avoid Chromium rasterising a partial-alpha hairline frame;
+     the printed block must be blank, including its border, for this regression. -->
+<section><svg aria-hidden="true" id="mask-group" data-gt="image" viewBox="0 0 100 100"><defs><mask id="group-mask"><g opacity="0.5" shape-rendering="crispEdges"><rect width="100" height="100" fill="white"/><rect width="100" height="100" fill="black"/></g></mask></defs><rect width="100" height="100" mask="url(#group-mask)"/></svg></section>
+</body></html>

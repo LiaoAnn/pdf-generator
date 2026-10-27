@@ -35,6 +35,7 @@ test('a repetitive formula with a missing character reports a text difference in
         width: 600,
         height: 800,
         marks: [],
+        paints: [],
         items: items.map(text => ({
           text,
           x0: 60,

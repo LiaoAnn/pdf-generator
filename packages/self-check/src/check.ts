@@ -1,10 +1,6 @@
 import type { GroundTruth, GtBlock } from '@pdf-generator/contract';
-import {
-  type PdfMark,
-  type PdfPage,
-  type PdfTextItem,
-  readPdf,
-} from './pdf.ts';
+import { type InkBudget, maxInkWork, measureInk } from './ink.ts';
+import { type PdfPage, type PdfTextItem, readPdf } from './pdf.ts';
 import { normaliseText } from './text.ts';
 
 /** `[x0, y0, x1, y1]` in PDF points from the page's top-left corner. */
@@ -439,6 +435,8 @@ export async function checkPdf(
   const { pages } = await readPdf(pdf);
   const allowedFonts = options.fonts ? new Set(options.fonts) : undefined;
   const differences: Difference[] = [];
+  // One work budget for every textless block of the document.
+  const inkBudget: InkBudget = { left: maxInkWork };
 
   if (pages.length !== gt.pages.length) {
     differences.push({
@@ -543,7 +541,7 @@ export async function checkPdf(
       // Without printed text, its box is checked against what is drawn.
       const ink =
         own.length === 0
-          ? inkDifference(block, pages[block.page - 1])
+          ? inkDifference(block, pages[block.page - 1], inkBudget)
           : undefined;
       if (ink) report(block.page, ink);
       for (const difference of details(block, own))
@@ -553,7 +551,7 @@ export async function checkPdf(
     // The PDF can't show an image's text unless it is printed as text; its
     // drawing is still checked.
     if (block.type === 'image' && own.length === 0) {
-      const difference = inkDifference(block, pages[block.page - 1]);
+      const difference = inkDifference(block, pages[block.page - 1], inkBudget);
       if (difference) report(block.page, difference);
       continue;
     }
@@ -716,76 +714,46 @@ const unionOf = (boxes: readonly Box[]): Box => [
 /**
  * Whether a drawing spanning `[a0, a1]` sits in `[b0, b1]` as a box's
  * content does on one axis: on one of its edges, or centred (a barcode's
- * quiet zone, an inset icon).
+ * quiet zone, an inset icon): its centre at most the tolerance off the box's
+ * (bank-statement's barcode is 0.57 pt off, T14-9).
  */
 const anchored = (a0: number, a1: number, b0: number, b1: number) =>
   Math.abs(a0 - b0) <= inkTolerancePt ||
   Math.abs(a1 - b1) <= inkTolerancePt ||
-  Math.abs(a0 - b0 - (b1 - a1)) <= inkTolerancePt;
+  Math.abs(a0 + a1 - (b0 + b1)) / 2 <= inkTolerancePt;
 
 /**
- * The share of `[b0, b1]` that the boxes cover on one axis (0: x, 1: y),
- * overlaps counted once.
- */
-function coverage(
-  boxes: readonly Box[],
-  axis: 0 | 1,
-  b0: number,
-  b1: number,
-): number {
-  const spans = boxes
-    .map((box): [number, number] => [
-      Math.max(axis === 0 ? box[0] : box[1], b0),
-      Math.min(axis === 0 ? box[2] : box[3], b1),
-    ])
-    .filter(([a0, a1]) => a1 > a0)
-    .sort((a, b) => a[0] - b[0]);
-  let covered = 0;
-  let end = b0;
-  for (const [a0, a1] of spans) {
-    if (a1 <= end) continue;
-    covered += a1 - Math.max(a0, end);
-    end = a1;
-  }
-  return covered / (b1 - b0);
-}
-
-/**
- * Compares a block with no printed text with the marks its page draws. Marks
- * covering its whole box (the page clip, a section background) say nothing
- * about it; the rest overlapping it must lie inside it, and on each axis sit
- * on an edge or in the middle. A block that draws nothing can't be checked
- * and is reported too.
+ * Compares a block with no printed text with the ink its page leaves in its
+ * box (T14-9): what its paints show there once paints covering the whole box
+ * (the page, a section background) are left out. Marks overlapping the box
+ * that aren't inside it or covering it spill out of it; the ink must sit, on
+ * each axis, on an edge or in the middle, and cover half of the box on one
+ * axis. A block with no ink can't be checked and is reported too.
  */
 function inkDifference(
   block: GtBlock,
   page: PdfPage | undefined,
+  budget: InkBudget,
 ): Difference | undefined {
   const t = inkTolerancePt;
   const [x0, y0, x1, y1] = block.bbox;
-  const inside: Box[] = [];
-  const paintedInside: Box[] = [];
-  const spilling: Box[] = [];
-  // A clip places a drawing but paints nothing: something must be painted.
-  let painted = false;
-  for (const { kind, box } of page?.marks ?? ([] as PdfMark[])) {
-    const [m0, n0, m1, n1] = box;
-    if (m0 >= x0 - t && n0 >= y0 - t && m1 <= x1 + t && n1 <= y1 + t) {
-      inside.push(box);
-      if (kind !== 'clip') paintedInside.push(box);
-      painted ||= kind !== 'clip';
-    } else if (
-      // Overlapping it, but not covering all of it.
-      m0 < x1 - t &&
-      m1 > x0 + t &&
-      n0 < y1 - t &&
-      n1 > y0 + t &&
-      !(m0 <= x0 + t && n0 <= y0 + t && m1 >= x1 - t && n1 >= y1 - t)
-    ) {
-      spilling.push(box);
-      painted ||= kind !== 'clip';
-    }
-  }
+  const inside = ([m0, n0, m1, n1]: Box) =>
+    m0 >= x0 - t && n0 >= y0 - t && m1 <= x1 + t && n1 <= y1 + t;
+  const overlapping = ([m0, n0, m1, n1]: Box) =>
+    m0 < x1 - t && m1 > x0 + t && n0 < y1 - t && n1 > y0 + t;
+  const covering = ([m0, n0, m1, n1]: Box) =>
+    m0 <= x0 + t && n0 <= y0 + t && m1 >= x1 - t && n1 >= y1 - t;
+  const spilling = (page?.marks ?? []).filter(
+    ({ box }) => !inside(box) && overlapping(box) && !covering(box),
+  );
+  // Paints only near the box, in its tolerance, are another block's.
+  const ink = measureInk(
+    (page?.paints ?? []).filter(({ box }) => inside(box) || overlapping(box)),
+    block.bbox,
+    t,
+    ({ box }) => !inside(box) && covering(box),
+    budget,
+  );
   const at = `Block ${block.id} on page ${block.page}`;
   const where = {
     kind: 'ink' as const,
@@ -793,30 +761,30 @@ function inkDifference(
     blockId: block.id,
     bbox: block.bbox,
   };
-  if (!painted) {
+  // A clip places a drawing but paints nothing.
+  if (!ink.box && spilling.every(({ kind }) => kind === 'clip')) {
     return {
       ...where,
-      message: `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
+      message: ink.unmeasured
+        ? `${at} has no text and the PDF paints only a pattern fill in its box [${block.bbox.join(', ')}], which the self-check can't measure yet, so its box can't be checked`
+        : `${at} has no text and the PDF paints nothing in its box [${block.bbox.join(', ')}], so its box can't be checked`,
     };
   }
-  const inkBox = unionOf([...inside, ...spilling]);
+  const inkBox = unionOf([
+    ...spilling.map(({ box }) => box),
+    ...(ink.box ? [ink.box] : []),
+  ]);
   const [u0, v0, u1, v1] = inkBox;
   if (
     spilling.length === 0 &&
     anchored(u0, u1, x0, x1) &&
     anchored(v0, v1, y0, y1)
   ) {
-    if (
-      coverage(paintedInside, 0, x0, x1) >= minInkCoverage ||
-      coverage(paintedInside, 1, y0, y1) >= minInkCoverage
-    ) {
-      return undefined;
-    }
-    const paintBox = unionOf(paintedInside);
+    if (ink.coverage.some(share => share >= minInkCoverage)) return undefined;
     return {
       ...where,
-      inkBox: paintBox,
-      message: `${at}: the PDF paints only [${paintBox.join(', ')}], less than half of its box [${block.bbox.join(', ')}] on either axis, so its box can't be checked`,
+      inkBox,
+      message: `${at}: the PDF paints only [${inkBox.join(', ')}], less than half of its box [${block.bbox.join(', ')}] on either axis, so its box can't be checked`,
     };
   }
   return {

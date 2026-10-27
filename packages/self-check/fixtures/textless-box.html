@@ -1,7 +1,8 @@
 <!doctype html>
 <!-- Ground truth is measured ONLY from the unshifted Paged.js DOM in the test.
 40px = 30pt; the 20mm page margin reproduces the T08-1 page-frame attack.
-The checkbox has no label or glyph. Everything is local, including the PNG. -->
+The checkbox has no label or glyph. Everything is local, including the PNG.
+The PNG is one opaque dark pixel (#111), stretched to fill the image box. -->
 <html lang="en">
 <head><meta charset="utf-8"><title>Text-free geometry</title>
 <style>
@@ -27,7 +28,7 @@ html, body { margin: 0; padding: 0; }
 #corner-dots i:last-child { right: 0; bottom: 0; background: #111; }
 /* VARIANT */
 </style></head><body>
-<img id="image" data-gt="image" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=">
+<img id="image" data-gt="image" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGMQFBT8DwABnQEzlaSNGgAAAABJRU5ErkJggg==">
 <span id="checkbox" data-gt="checkbox"></span>
 <div id="bordered" data-gt="field"></div>
 <div id="underline" data-gt="field"></div>

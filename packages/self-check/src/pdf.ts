@@ -1,4 +1,21 @@
 import { getDocumentProxy, getResolvedPDFJS } from 'unpdf';
+import {
+  asMatrix,
+  asRect,
+  identity,
+  intersect,
+  type Matrix,
+  mapRect,
+  multiply,
+  type Rect,
+} from './geometry.ts';
+import {
+  type ImagePixels,
+  maxPaintPoints,
+  maxPaints,
+  maxStructures,
+  readPaints,
+} from './paints.ts';
 
 /** One run of text in a PDF page's text layer. */
 export interface PdfTextItem {
@@ -35,6 +52,150 @@ export interface PdfMark {
   box: [number, number, number, number];
 }
 
+/**
+ * A region bounded by closed polygons, each a flat `[x0, y0, x1, y1, …]` list
+ * of points in PDF points from the page's top-left corner (y down), curves
+ * flattened. A point is inside by the nonzero or the even-odd rule.
+ */
+export interface PdfShape {
+  polygons: number[][];
+  rule: 'nonzero' | 'evenodd';
+}
+
+/** One transparency group: `id` tells two groups with the same alpha apart. */
+export interface PdfGroup {
+  id: number;
+  alpha: number;
+  /**
+   * The soft mask in force when the group is painted: it applies to the
+   * composited group, once, not to each of its paints (inside the group no
+   * mask is in force until one is set there).
+   */
+  mask?: PdfMask;
+}
+
+/**
+ * An axial or radial gradient (PDF shading types 2 and 3, extended at both
+ * ends). Axial: the colour at a point is the stop colour at its projection's
+ * position from `from` to `to`. Radial: at the largest `s` in [0, 1] whose
+ * circle (centre from `from` to `to`, radius from `r0` to `r1`) passes
+ * through the point; no such circle: the point isn't painted.
+ */
+export interface PdfShading {
+  kind: 'axial' | 'radial';
+  /** Offsets from 0 to 1, in order, each with a `#rrggbb` colour. */
+  stops: [offset: number, color: string][];
+  from: [number, number];
+  to: [number, number];
+  r0: number;
+  r1: number;
+  /** `[a, b, c, d, e, f]` taking a page-frame point to shading space. */
+  toShading: PdfMatrix;
+}
+
+/** `[a, b, c, d, e, f]`: (x, y) to (a x + c y + e, b x + d y + f). */
+export type PdfMatrix = [number, number, number, number, number, number];
+
+/**
+ * A free-form gradient as triangles (PDF shading types 4 to 7, as pdf.js
+ * splits them): the colour at a point is the colour of the last triangle
+ * containing it, interpolated between its corners; outside every triangle,
+ * the point isn't painted.
+ */
+export interface PdfMesh {
+  /** x, y per vertex in shading space, 3 vertices a triangle. */
+  positions: Float32Array;
+  /** R, G, B and an unused byte per vertex. */
+  colors: Uint8Array;
+  /** Vertices: 3 per triangle. */
+  count: number;
+  toShading: PdfMatrix;
+}
+
+/**
+ * A soft mask: what a paint shows is multiplied, at each point, by the
+ * mask's paints composited there (in the same frame): their luminosity over
+ * `backdrop` when `luminosity`, else their alpha.
+ */
+export interface PdfMask {
+  paints: PdfPaint[];
+  luminosity: boolean;
+  backdrop: string;
+  /**
+   * The mask's transfer function as 256 bytes: a mask value v (0 to 1)
+   * becomes `transfer[round(v * 255)] / 255`; left out: unchanged.
+   */
+  transfer?: number[];
+}
+
+/** A decoded raster image. */
+export interface PdfImage {
+  width: number;
+  height: number;
+  /** Row-major RGBA, 4 bytes a pixel, row 0 at the image's top. */
+  rgba: Uint8Array;
+  /**
+   * Page frame to image space, the unit square: the pixel at (u, v) is
+   * column floor(u * width), row floor((1 - v) * height); outside it, none.
+   */
+  toImage: PdfMatrix;
+}
+
+/**
+ * A tiling pattern: its tile's paints repeat every `step` in pattern space.
+ * The colour at a page point is that of the tile's paints at the point
+ * `toPattern` takes it to, moved by whole steps into `[bbox x0, x0 + step x)`
+ * and `[bbox y0, y0 + step y)`; where no tile paint shows, nothing is painted.
+ */
+export interface PdfTile {
+  /** In pattern space (y up), as page paints are in the page frame. */
+  paints: PdfPaint[];
+  bbox: [number, number, number, number];
+  step: [number, number];
+  toPattern: PdfMatrix;
+}
+
+/**
+ * One thing a page paints besides text, as the printed page shows it: a fill,
+ * a stroke (as the shape its outline covers), an image or a shading. It shows
+ * only where every clip in force contains the point.
+ */
+export interface PdfPaint extends PdfShape {
+  /**
+   * `#rrggbb`; left out when the colour isn't one (an image, a shading, a
+   * pattern), which counts as differing from every colour.
+   */
+  color?: string;
+  /** Constant opacity, 0 to 1, inside its groups. */
+  alpha: number;
+  /**
+   * The transparency groups it is drawn in, outermost first; left out when
+   * none. A group's paints are composited together, then onto what is under
+   * the group at the group's alpha.
+   */
+  groups?: PdfGroup[];
+  /** A gradient giving its colour at each point; `color` is then left out. */
+  shading?: PdfShading;
+  /** A mesh gradient giving its colour at each point. */
+  mesh?: PdfMesh;
+  /** The soft mask in force. */
+  mask?: PdfMask;
+  /** A raster image giving its colour and alpha at each point. */
+  image?: PdfImage;
+  /** A tiling pattern (an SVG `<pattern>`, a CSS background image or repeating gradient) giving its colour and alpha at each point. */
+  tile?: PdfTile;
+  /**
+   * Its colour can't be measured (an image over the decoding budget, an
+   * image mask, another kind of shading or pattern): it adds no ink and
+   * hides the ink under it.
+   */
+  unmeasured?: true;
+  /** The clipping paths in force, outermost first. */
+  clips: PdfShape[];
+  /** The bounds of `polygons` inside the clips' bounds, as a mark's box. */
+  box: [number, number, number, number];
+}
+
 export interface PdfPage {
   /** MediaBox size in PDF points. */
   width: number;
@@ -43,6 +204,8 @@ export interface PdfPage {
   items: PdfTextItem[];
   /** What the page draws besides text, in content-stream order. */
   marks: PdfMark[];
+  /** The same as paints with their geometry and colour, in content-stream order. */
+  paints: PdfPaint[];
 }
 
 export interface PdfDocument {
@@ -63,11 +226,29 @@ interface TextContentItem {
 export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   // A plain Uint8Array copy: pdf.js refuses Buffers (what puppeteer returns)
   // and may detach the array it is given. fontExtraProperties keeps each
-  // font's name.
+  // font's name; images come as decoded pixels, not bitmaps.
   const document = await getDocumentProxy(new Uint8Array(pdf), {
     fontExtraProperties: true,
+    isOffscreenCanvasSupported: false,
+    isImageDecoderSupported: false,
   });
   const { OPS } = await getResolvedPDFJS();
+  // Decoded pixels stay with the pages' paints: one budget for the document,
+  // and an image used again (the same PDF object) is decoded once.
+  let budget = maxPixels;
+  // Polygon points the document's paints may keep, across its pages.
+  const pointBudget = { left: maxPaintPoints };
+  const paintBudget = { left: maxPaints, dropped: 0 };
+  const structureBudget = { left: maxStructures };
+  const byRef = new Map<string, ImagePixels | undefined>();
+  const decode = (image: unknown) => {
+    const ref = (image as { ref?: unknown } | undefined)?.ref;
+    if (typeof ref === 'string' && byRef.has(ref)) return byRef.get(ref);
+    const pixels = decodeImage(image, budget);
+    if (pixels) budget -= pixels.width * pixels.height;
+    if (typeof ref === 'string') byRef.set(ref, pixels);
+    return pixels;
+  };
   try {
     const pages: PdfPage[] = [];
     for (let n = 1; n <= document.numPages; n++) {
@@ -117,7 +298,47 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
         });
       }
       const marks = readMarks(operators, OPS, [left, bottom, right, top]);
-      pages.push({ width: right - left, height: top - bottom, items, marks });
+      const objectOf = (id: string): unknown => {
+        const objects = id.startsWith('g_') ? page.commonObjs : page.objs;
+        return objects.has(id) ? objects.get(id) : undefined;
+      };
+      const images = await pageImages(operators, OPS, page);
+      const decoded = new Map<string, ImagePixels | undefined>();
+      paintBudget.dropped = 0;
+      const paints = readPaints(operators, OPS, {
+        frame: [1, 0, 0, -1, -left, top],
+        clip: [left, bottom, right, top],
+        pointBudget,
+        paintBudget,
+        structureBudget,
+        sources: {
+          objectOf,
+          imageOf: id => {
+            if (!decoded.has(id)) decoded.set(id, decode(images.get(id)));
+            return decoded.get(id);
+          },
+          decode,
+        },
+      });
+      if (paintBudget.dropped > 0) {
+        // Paints were dropped: nothing on this page can be measured.
+        const [width, height] = [right - left, top - bottom];
+        paints.push({
+          polygons: [[0, 0, width, 0, width, height, 0, height]],
+          rule: 'nonzero',
+          unmeasured: true,
+          alpha: 1,
+          clips: [],
+          box: [0, 0, width, height],
+        });
+      }
+      pages.push({
+        width: right - left,
+        height: top - bottom,
+        items,
+        marks,
+        paints,
+      });
       page.cleanup();
     }
     return { pages };
@@ -126,63 +347,108 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   }
 }
 
-type Matrix = [number, number, number, number, number, number];
-/** `[x0, y0, x1, y1]` in PDF user space (y up). */
-type Rect = [number, number, number, number];
+/**
+ * The most image pixels decoded per document (16 MB of RGBA): images past
+ * it aren't measured, so the blocks they alone draw are refused, not passed.
+ */
+const maxPixels = 1 << 22;
 
-const identity: Matrix = [1, 0, 0, 1, 0, 0];
-
-const multiply = (m: Matrix, n: Matrix): Matrix => [
-  m[0] * n[0] + m[2] * n[1],
-  m[1] * n[0] + m[3] * n[1],
-  m[0] * n[2] + m[2] * n[3],
-  m[1] * n[2] + m[3] * n[3],
-  m[0] * n[4] + m[2] * n[5] + m[4],
-  m[1] * n[4] + m[3] * n[5] + m[5],
-];
-
-/** The axis-aligned bounds of `rect` mapped through `m`. */
-function mapRect(m: Matrix, [x0, y0, x1, y1]: Rect): Rect {
-  const xs: number[] = [];
-  const ys: number[] = [];
-  for (const [x, y] of [
-    [x0, y0],
-    [x1, y0],
-    [x0, y1],
-    [x1, y1],
-  ] as const) {
-    xs.push(m[0] * x + m[2] * y + m[4]);
-    ys.push(m[1] * x + m[3] * y + m[5]);
-  }
-  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+/**
+ * The image XObjects a page's operators paint, also inside tiling patterns,
+ * by id, once pdf.js has resolved them.
+ */
+async function pageImages(
+  operators: { fnArray: number[]; argsArray: unknown[] },
+  OPS: Record<string, number>,
+  page: {
+    objs: { get(id: string, callback: (value: unknown) => void): unknown };
+    commonObjs: {
+      get(id: string, callback: (value: unknown) => void): unknown;
+    };
+  },
+): Promise<Map<string, unknown>> {
+  const ids = new Set<string>();
+  const scan = (list: { fnArray: number[]; argsArray: unknown[] }) => {
+    list.fnArray.forEach((fn, i) => {
+      const args = (list.argsArray[i] ?? []) as unknown[];
+      if (fn === OPS.paintImageXObject && typeof args[0] === 'string') {
+        ids.add(args[0]);
+      } else if (
+        (fn === OPS.setFillColorN || fn === OPS.setStrokeColorN) &&
+        args[0] === 'TilingPattern'
+      ) {
+        const inner = args[2] as { fnArray?: unknown; argsArray?: unknown };
+        if (Array.isArray(inner?.fnArray) && Array.isArray(inner.argsArray)) {
+          scan({ fnArray: inner.fnArray, argsArray: inner.argsArray });
+        }
+      }
+    });
+  };
+  scan(operators);
+  const images = new Map<string, unknown>();
+  await Promise.all(
+    [...ids].map(
+      id =>
+        new Promise<void>(resolve => {
+          const objects = id.startsWith('g_') ? page.commonObjs : page.objs;
+          objects.get(id, value => {
+            images.set(id, value);
+            resolve();
+          });
+        }),
+    ),
+  );
+  return images;
 }
 
-const intersect = (a: Rect, b: Rect): Rect => [
-  Math.max(a[0], b[0]),
-  Math.max(a[1], b[1]),
-  Math.min(a[2], b[2]),
-  Math.min(a[3], b[3]),
-];
-
-const asMatrix = (value: unknown): Matrix | undefined =>
-  Array.isArray(value) &&
-  value.length === 6 &&
-  value.every(n => typeof n === 'number')
-    ? (value as Matrix)
-    : undefined;
-
-const asRect = (value: unknown): Rect | undefined => {
-  const values = ArrayBuffer.isView(value)
-    ? Array.from(value as Float32Array)
-    : value;
-  return Array.isArray(values) &&
-    values.length === 4 &&
-    values.every(n => typeof n === 'number' && Number.isFinite(n)) &&
-    values[0] <= values[2] &&
-    values[1] <= values[3]
-    ? (values as Rect)
-    : undefined;
-};
+/**
+ * pdf.js's decoded image (`kind` 1: 1 bit grey, 2: RGB, 3: RGBA; rows top
+ * first) as RGBA, if it has at most `budget` pixels.
+ */
+function decodeImage(image: unknown, budget: number): ImagePixels | undefined {
+  const { width, height, kind, data } = (image ?? {}) as {
+    width?: unknown;
+    height?: unknown;
+    kind?: unknown;
+    data?: unknown;
+  };
+  if (
+    typeof width !== 'number' ||
+    typeof height !== 'number' ||
+    !(width > 0 && height > 0) ||
+    width * height > budget ||
+    !(data instanceof Uint8ClampedArray || data instanceof Uint8Array)
+  ) {
+    return undefined;
+  }
+  const rgba = new Uint8Array(width * height * 4);
+  if (kind === 3 && data.length >= rgba.length)
+    rgba.set(data.subarray(0, rgba.length));
+  else if (kind === 2 && data.length >= width * height * 3) {
+    for (let p = 0; p < width * height; p++) {
+      rgba[4 * p] = data[3 * p] ?? 0;
+      rgba[4 * p + 1] = data[3 * p + 1] ?? 0;
+      rgba[4 * p + 2] = data[3 * p + 2] ?? 0;
+      rgba[4 * p + 3] = 255;
+    }
+  } else if (kind === 1) {
+    // A set bit is white, as pdf.js draws it.
+    const row = Math.ceil(width / 8);
+    if (data.length < row * height) return undefined;
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const bit = ((data[y * row + (x >> 3)] ?? 0) >> (7 - (x & 7))) & 1;
+        rgba.fill(bit ? 255 : 0, 4 * (y * width + x), 4 * (y * width + x) + 3);
+        rgba[4 * (y * width + x) + 3] = 255;
+      }
+    }
+  } else return undefined;
+  // A transparent pixel's colour is meaningless; pdf.js leaves some there.
+  for (let p = 3; p < rgba.length; p += 4) {
+    if (rgba[p] === 0) rgba.fill(0, p - 3, p);
+  }
+  return { width, height, rgba };
+}
 
 interface GraphicsState {
   ctm: Matrix;

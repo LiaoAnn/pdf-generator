@@ -163,6 +163,18 @@ test.each(['page-frame', 'body-padding'])(
     expected.blocks.reverse(); // Diagnostic order follows order, not storage.
     const result = await checkPdf(pdf(name), expected);
     expect(result.ok).toBe(false);
+    // Guard the failure reason: the shifted image paints visible ink,
+    // but that ink does not fit the reference box.
+    expect(result.differences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'ink',
+          blockId: 'image',
+          message: expect.stringContaining("doesn't fit"),
+          inkBox: expect.any(Array),
+        }),
+      ]),
+    );
     expect(result.differences.map(diagnostic)).toMatchObject(
       [...expected.blocks]
         .sort((a, b) => a.order - b.order)

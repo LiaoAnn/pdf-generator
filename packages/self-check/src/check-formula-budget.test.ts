@@ -20,6 +20,7 @@ function fixture(type: 'formula' | 'paragraph') {
         width: 600,
         height: 800,
         marks: [],
+        paints: [],
         items: items.map(text => ({
           text,
           x0: 60,

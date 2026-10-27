@@ -9,9 +9,18 @@ export {
 } from './check.ts';
 export {
   type PdfDocument,
+  type PdfGroup,
+  type PdfImage,
   type PdfMark,
+  type PdfMask,
+  type PdfMatrix,
+  type PdfMesh,
   type PdfPage,
+  type PdfPaint,
+  type PdfShading,
+  type PdfShape,
   type PdfTextItem,
+  type PdfTile,
   readPdf,
 } from './pdf.ts';
 export { type ExpectedBlock, missingText, normaliseText } from './text.ts';
