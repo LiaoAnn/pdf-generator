@@ -36,6 +36,65 @@ export function collect() {
     ['.pagedjs_margin-left', 'left'],
     ['.pagedjs_margin-right', 'right'],
   ];
+  // KaTeX's MathML copy of a formula that the browser hides (T07-26), as the
+  // print runtime's hiddenCopies() decides: a .katex-mathml span or div that
+  // clips all of its content to at most 1x1 px (absolutely positioned, one
+  // block box no larger than 1x1 px as shown, overflow hidden or clip on both
+  // axes with no clip margin, nothing in it fixed-positioned), all of whose
+  // rendered text is in MathML elements not marked data-gt. The PDF doesn't
+  // print it, so block and cell texts leave it out (at the end). Not one
+  // marked data-gt or holding a data-gt element or a table cell: their own
+  // text is read.
+  const copyWrappers = Array.from(document.querySelectorAll('.katex-mathml'))
+    .filter(wrapper => {
+      const style = getComputedStyle(wrapper);
+      const box = wrapper.getBoundingClientRect();
+      if (
+        !(wrapper instanceof HTMLElement) ||
+        !['span', 'div'].includes(wrapper.localName) ||
+        wrapper.matches('[data-gt]') ||
+        wrapper.querySelector('[data-gt], td, th') !== null ||
+        style.position !== 'absolute' ||
+        !(style.display === 'block' || style.display === 'flow-root') ||
+        !['hidden', 'clip'].includes(style.overflowX) ||
+        !['hidden', 'clip'].includes(style.overflowY) ||
+        style.getPropertyValue('overflow-clip-margin') !== '0px' ||
+        wrapper.getClientRects().length !== 1 ||
+        box.width > 1 ||
+        box.height > 1 ||
+        Array.from(wrapper.querySelectorAll('*')).some(
+          inner => getComputedStyle(inner).position === 'fixed',
+        )
+      ) {
+        return false;
+      }
+      const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT);
+      let copy = false;
+      for (
+        let node = walker.nextNode();
+        node !== null;
+        node = walker.nextNode()
+      ) {
+        const parent = node.parentElement;
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        if (
+          parent?.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
+          !parent.hasAttribute('data-gt')
+        ) {
+          copy = true;
+        } else if (
+          (node.textContent ?? '').trim() !== '' &&
+          range.getClientRects().length > 0
+        ) {
+          return false;
+        }
+      }
+      return copy;
+    })
+    .map(wrapper => /** @type {HTMLElement} */ (wrapper));
+  /** Measured blocks and cells, with the element whose text they hold. @type {[Element, { text: string }][]} */
+  const textOwners = [];
   const elements = Array.from(document.querySelectorAll('[data-gt]'))
     // Not laid out (display: none), e.g. the original of a running element.
     .filter(element => element.getClientRects().length > 0)
@@ -126,6 +185,14 @@ export function collect() {
                                 node !== null;
                                 node = walker.nextNode()
                               ) {
+                                // KaTeX's hidden MathML copy, as above.
+                                if (
+                                  copyWrappers.some(wrapper =>
+                                    wrapper.contains(node),
+                                  )
+                                ) {
+                                  continue;
+                                }
                                 if (node instanceof Element) {
                                   const display =
                                     getComputedStyle(node).display;
@@ -198,7 +265,7 @@ export function collect() {
                                   },
                                 };
                               });
-                              return {
+                              const measuredCell = {
                                 ...(checkboxes.length > 0 && { checkboxes }),
                                 rowSpan: cell.rowSpan,
                                 colSpan: cell.colSpan,
@@ -220,12 +287,14 @@ export function collect() {
                                   box.right <= origin.right + 0.5 &&
                                   box.bottom <= origin.bottom + 0.5,
                               };
+                              textOwners.push([cell, measuredCell]);
+                              return measuredCell;
                             }),
                         })),
                     },
                   }
                 : undefined;
-        return {
+        const measured = {
           type,
           id: element.getAttribute('data-gt-id'),
           ref: element.getAttribute('data-ref'),
@@ -272,6 +341,8 @@ export function collect() {
           ),
           ...(details && { details }),
         };
+        textOwners.push([element, measured]);
+        return measured;
       },
     );
   // Paged.js puts the declared page size on :root as `--pagedjs-width` and
@@ -302,11 +373,143 @@ export function collect() {
     declaredWidth && declaredHeight
       ? { width: declaredWidth, height: declaredHeight }
       : undefined;
+  const measuredPages = pages.map(page => {
+    const { x, y, width, height } = page.getBoundingClientRect();
+    return { x, y, width, height, ...(size && { size }) };
+  });
+  // The text of blocks and cells with KaTeX's hidden copy in them, read again
+  // with the copy left out (an inline display: none on its .katex-mathml
+  // element) once everything is measured, and put back. Pack CSS can react to
+  // that edit (a [style] selector, :has()), so the new text is taken only if
+  // no computed style changed meanwhile (every property of the block, its
+  // ancestors and the elements in it outside the copies, and of their
+  // ::before, ::after, ::marker, ::first-letter and ::first-line) and it is
+  // the text read before with exactly the copies' text taken out, in order
+  // (whitespace aside). Otherwise the text read before stays, copy and all,
+  // for the self-check to report.
+  const owners = textOwners.filter(([owner]) =>
+    copyWrappers.some(wrapper => owner.contains(wrapper)),
+  );
+  if (owners.length > 0) {
+    const copies = copyWrappers.map(wrapper =>
+      wrapper.innerText.replace(/\s/g, ''),
+    );
+    const read = owners.map(([owner]) => {
+      /** @type {Element[]} */
+      const ancestors = [];
+      for (let at = owner.parentElement; at !== null; at = at.parentElement) {
+        ancestors.push(at);
+      }
+      return [
+        ...ancestors,
+        owner,
+        ...Array.from(owner.querySelectorAll('*')).filter(
+          element => !copyWrappers.some(wrapper => wrapper.contains(element)),
+        ),
+      ];
+    });
+    const styles = copyWrappers.map(wrapper => wrapper.getAttribute('style'));
+    /** @type {string[][]} */
+    const looks = [];
+    /** @type {string[]} */
+    let reread = [];
+    try {
+      for (const phase of ['before', 'during']) {
+        if (phase === 'during') {
+          for (const wrapper of copyWrappers) {
+            wrapper.style.setProperty('display', 'none', 'important');
+          }
+          reread = owners.map(([owner]) =>
+            owner instanceof HTMLElement ? owner.innerText : '',
+          );
+        }
+        looks.push(
+          read.map(elements =>
+            elements
+              .map(element => {
+                const style = getComputedStyle(element);
+                return [
+                  ...Array.from(style, name => style.getPropertyValue(name)),
+                  ...[
+                    '::before',
+                    '::after',
+                    '::marker',
+                    '::first-letter',
+                    '::first-line',
+                  ].flatMap(pseudo => {
+                    const generated = getComputedStyle(element, pseudo);
+                    return Array.from(generated, name =>
+                      generated.getPropertyValue(name),
+                    );
+                  }),
+                ].join(';');
+              })
+              .join('\n'),
+          ),
+        );
+      }
+    } finally {
+      copyWrappers.forEach((wrapper, index) => {
+        const style = styles[index];
+        if (style === null || style === undefined) {
+          wrapper.removeAttribute('style');
+        } else {
+          wrapper.setAttribute('style', style);
+        }
+      });
+    }
+    owners.forEach(([owner, measured], index) => {
+      if (looks[0]?.[index] !== looks[1]?.[index]) return;
+      const text = reread[index] ?? '';
+      const without = text.replace(/\s/g, '');
+      const full = measured.text.replace(/\s/g, '');
+      const blocks = copyWrappers.flatMap((wrapper, k) =>
+        owner.contains(wrapper) ? [copies[k] ?? ''] : [],
+      );
+      // Where the k-th copy starts in the text read before, after j
+      // characters of the new text.
+      const before = [0];
+      for (const block of blocks) {
+        before.push((before.at(-1) ?? 0) + block.length);
+      }
+      // States [j, k]: j characters of the new text and k copies make up the
+      // start of the text read before.
+      let states = [[0, 0]];
+      const visited = new Set(['0,0']);
+      let matched = false;
+      while (!matched && states.length > 0) {
+        /** @type {number[][]} */
+        const next = [];
+        for (const [j = 0, k = 0] of states) {
+          const at = j + (before[k] ?? 0);
+          if (j === without.length && k === blocks.length) {
+            matched = at === full.length;
+            if (matched) break;
+            continue;
+          }
+          const steps = [
+            ...(j < without.length && full[at] === without[j]
+              ? [[j + 1, k]]
+              : []),
+            ...(k < blocks.length && full.startsWith(blocks[k] ?? '', at)
+              ? [[j, k + 1]]
+              : []),
+          ];
+          for (const step of steps) {
+            const key = step.join(',');
+            if (!visited.has(key)) {
+              visited.add(key);
+              next.push(step);
+            }
+          }
+        }
+        states = next;
+      }
+      if (matched) measured.text = text;
+    });
+  }
   return {
-    pages: pages.map(page => {
-      const { x, y, width, height } = page.getBoundingClientRect();
-      return { x, y, width, height, ...(size && { size }) };
-    }),
+    pages: measuredPages,
     elements,
   };
 }

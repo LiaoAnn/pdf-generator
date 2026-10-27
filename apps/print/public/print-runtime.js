@@ -848,8 +848,71 @@
     return rows;
   }
 
+  // The text nodes of KaTeX's MathML copy of a formula that the browser hides
+  // (T07-26), which the PDF doesn't print: text in a MathML element, not
+  // itself marked data-gt, inside a .katex-mathml span or div that clips all of
+  // its content to at most 1×1 px, as KaTeX's CSS makes it: absolutely
+  // positioned, one block box no larger than 1×1 px as shown (transforms
+  // included), overflow hidden or clip on both axes with no clip margin, and
+  // nothing in it fixed-positioned (which would escape the clip). The clip
+  // holds whatever paints the text (a shadow, a glyph wider than its advance,
+  // a pack font), which a measure of the text's own boxes can't vouch for.
+  // A pack can name any element katex-mathml; only one that hides its
+  // content counts.
+  function hiddenCopies() {
+    /** @type {Set<Node>} */
+    const hidden = new Set();
+    for (const wrapper of document.querySelectorAll(
+      '.pagedjs_page .katex-mathml',
+    )) {
+      // A data-gt block that is or holds the wrapper is read with its text,
+      // as the ground truth does.
+      if (
+        !sealed(wrapper) ||
+        wrapper.matches('[data-gt]') ||
+        wrapper.querySelector('[data-gt]') !== null
+      ) {
+        continue;
+      }
+      const walker = document.createTreeWalker(wrapper, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (
+          parent?.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
+          !parent.hasAttribute('data-gt')
+        ) {
+          hidden.add(node);
+        }
+      }
+    }
+    return hidden;
+  }
+
+  // Whether an element clips all of its content to at most 1×1 px, as
+  // hiddenCopies() describes.
+  /** @param {Element} element */
+  function sealed(element) {
+    const style = getComputedStyle(element);
+    const box = element.getBoundingClientRect();
+    return (
+      element instanceof HTMLElement &&
+      ['span', 'div'].includes(element.localName) &&
+      style.position === 'absolute' &&
+      (style.display === 'block' || style.display === 'flow-root') &&
+      ['hidden', 'clip'].includes(style.overflowX) &&
+      ['hidden', 'clip'].includes(style.overflowY) &&
+      style.getPropertyValue('overflow-clip-margin') === '0px' &&
+      element.getClientRects().length === 1 &&
+      box.width <= 1 &&
+      box.height <= 1 &&
+      [...element.querySelectorAll('*')].every(
+        inner => getComputedStyle(inner).position !== 'fixed',
+      )
+    );
+  }
+
   // Per page, each [data-gt] element's visible text nodes outside KaTeX's
-  // MathML copy, each with its client rects (PDF points from the page's top
+  // hidden MathML copy (hiddenCopies()), each with its client rects (PDF points from the page's top
   // left), as the PDF's text layer should contain them there (T03 Must 4, PDF
   // part). A text is matched only within its own rects, so a formula's single
   // letters (T07-6) or a neighbouring table cell (T07-12) can't lend it
@@ -858,6 +921,7 @@
   // is the self-check's to report (T14), not this guard's.
   function expectedText() {
     const ptPerPx = 0.75;
+    const hidden = hiddenCopies();
     return pagedPages().map(page => {
       const origin = page.getBoundingClientRect();
       /** @type {Map<Element, { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[]>} */
@@ -866,9 +930,9 @@
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const element = node.parentElement?.closest('[data-gt]');
         if (!element) continue;
-        // KaTeX's MathML copy is clipped to 1px for screen readers; only its
-        // visible .katex-html is printed, which is also what T13 reads.
-        if (node.parentElement?.closest('.katex-mathml')) continue;
+        // KaTeX's hidden MathML copy is for screen readers; only its visible
+        // .katex-html is printed, which is also what T13 reads.
+        if (hidden.has(node)) continue;
         const text = (node.textContent ?? '')
           .normalize('NFKC')
           .replace(/\s/g, '');
