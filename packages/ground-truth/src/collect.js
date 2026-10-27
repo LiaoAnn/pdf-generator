@@ -37,11 +37,11 @@ export async function collect() {
     ['.pagedjs_margin-right', 'right'],
   ];
   // KaTeX's MathML copy of a formula that the browser hides (T07-26), as the
-  // print runtime's hiddenCopies() decides: text in a MathML element inside
-  // a .katex-mathml element, not itself marked data-gt, of which at most 1px
-  // shows (IntersectionObserver rooted at <html>), and that lies across
-  // within the element's box. The PDF doesn't print it, so the text below
-  // leaves it out.
+  // print runtime's hiddenCopies() and inkInBox() decide: text in a MathML
+  // element inside a .katex-mathml element, not itself marked data-gt, of
+  // which at most 1px shows (IntersectionObserver rooted at <html>), whose
+  // ink stays within that box, and that lies across within the box. The PDF
+  // doesn't print it, so block and cell texts leave it out (at the end).
   /** @type {Map<Element, Text[]>} */
   const copyTexts = new Map();
   /** Every text node in each .katex-mathml element. @type {Map<Element, Text[]>} */
@@ -96,16 +96,62 @@ export async function collect() {
       }, 2000);
     });
   }
+  /** Ancestors already checked for paint that leaves the box. @type {Map<Element, boolean>} */
+  const plain = new Map();
   const hiddenTexts = new Set(
     Array.from(copyTexts).flatMap(([element, nodes]) => {
       const entry = shown.get(element);
+      const style = getComputedStyle(element);
+      const sizes = element.computedStyleMap();
       if (
         !entry ||
         (entry.isIntersecting &&
           (entry.intersectionRect.width > 1 ||
-            entry.intersectionRect.height > 1))
+            entry.intersectionRect.height > 1)) ||
+        // Laid out as MathML (token boxes as tall as their ink), with no
+        // CSS size, negative spacing or vertical writing.
+        !style.display.endsWith('math') ||
+        ['width', 'height', 'min-width', 'min-height'].some(
+          name => String(sizes.get(name)) !== 'auto',
+        ) ||
+        ['max-width', 'max-height'].some(
+          name => String(sizes.get(name)) !== 'none',
+        ) ||
+        style.writingMode !== 'horizontal-tb' ||
+        Number.parseFloat(style.letterSpacing) < 0 ||
+        Number.parseFloat(style.wordSpacing) < 0
       ) {
         return [];
+      }
+      // Drawn nowhere else: no shadow, stroke or emphasis mark (also from
+      // ::first-line or ::first-letter), no filter or reflection on it or an
+      // ancestor.
+      for (
+        let at = /** @type {Element | null} */ (element);
+        at !== null;
+        at = at.parentElement
+      ) {
+        let ok = plain.get(at);
+        if (ok === undefined) {
+          const own = getComputedStyle(at);
+          const ancestor = at;
+          ok =
+            own.filter === 'none' &&
+            own.getPropertyValue('-webkit-box-reflect') === 'none' &&
+            [
+              own,
+              ...['::first-line', '::first-letter'].map(pseudo =>
+                getComputedStyle(ancestor, pseudo),
+              ),
+            ].every(
+              text =>
+                text.textShadow === 'none' &&
+                text.getPropertyValue('-webkit-text-stroke-width') === '0px' &&
+                text.getPropertyValue('text-emphasis-style') === 'none',
+            );
+          plain.set(at, ok);
+        }
+        if (!ok) return [];
       }
       const box = entry.boundingClientRect;
       return nodes.filter(node => {
@@ -121,61 +167,30 @@ export async function collect() {
       });
     }),
   );
-  // A .katex-mathml element whose rendered text is all hidden is left out
-  // whole, so that its box adds no line break to innerText either; other
-  // hidden text nodes are left out one by one.
-  const hiddenWrappers = Array.from(wrapperTexts)
+  // The HTML .katex-mathml elements whose rendered text is all hidden copy,
+  // left out of block and cell texts whole (so that their box adds no line
+  // break to innerText either). Not one marked data-gt or holding a data-gt
+  // element or a table cell: their own text is read.
+  const copyWrappers = Array.from(wrapperTexts)
     .filter(
-      ([, nodes]) =>
+      ([wrapper, nodes]) =>
+        wrapper instanceof HTMLElement &&
+        !wrapper.matches('[data-gt]') &&
+        wrapper.querySelector('[data-gt], td, th') === null &&
         nodes.some(node => hiddenTexts.has(node)) &&
         nodes.every(node => {
           const range = document.createRange();
           range.selectNodeContents(node);
-          return hiddenTexts.has(node) || range.getClientRects().length === 0;
+          return (
+            hiddenTexts.has(node) ||
+            node.data.trim() === '' ||
+            range.getClientRects().length === 0
+          );
         }),
     )
-    .map(([wrapper]) => wrapper);
-  const hiddenLoose = Array.from(hiddenTexts).filter(
-    node => !hiddenWrappers.some(wrapper => wrapper.contains(node)),
-  );
-  // innerText of each data-gt element and table cell, read with the hidden
-  // copy left out (an inline display: none, blanked text) before anything is
-  // measured, and put back right after.
-  /** @type {Map<Element, string>} */
-  const innerTexts = new Map();
-  if (hiddenTexts.size > 0) {
-    const styles = hiddenWrappers.map(wrapper => wrapper.getAttribute('style'));
-    const data = hiddenLoose.map(node => node.data);
-    try {
-      for (const wrapper of hiddenWrappers) {
-        /** @type {HTMLElement} */ (wrapper).style.setProperty(
-          'display',
-          'none',
-          'important',
-        );
-      }
-      for (const node of hiddenLoose) node.data = '';
-      for (const element of document.querySelectorAll(
-        '[data-gt], [data-gt] td, [data-gt] th',
-      )) {
-        if (element instanceof HTMLElement) {
-          innerTexts.set(element, element.innerText);
-        }
-      }
-    } finally {
-      hiddenWrappers.forEach((wrapper, index) => {
-        const style = styles[index];
-        if (style === null || style === undefined) {
-          wrapper.removeAttribute('style');
-        } else {
-          wrapper.setAttribute('style', style);
-        }
-      });
-      hiddenLoose.forEach((node, index) => {
-        node.data = data[index] ?? '';
-      });
-    }
-  }
+    .map(([wrapper]) => /** @type {HTMLElement} */ (wrapper));
+  /** Measured blocks and cells, with the element whose text they hold. @type {[Element, { text: string }][]} */
+  const textOwners = [];
   const elements = Array.from(document.querySelectorAll('[data-gt]'))
     // Not laid out (display: none), e.g. the original of a running element.
     .filter(element => element.getClientRects().length > 0)
@@ -268,8 +283,7 @@ export async function collect() {
                               ) {
                                 // KaTeX's hidden MathML copy, as above.
                                 if (
-                                  hiddenTexts.has(/** @type {Text} */ (node)) ||
-                                  hiddenWrappers.some(wrapper =>
+                                  copyWrappers.some(wrapper =>
                                     wrapper.contains(node),
                                   )
                                 ) {
@@ -347,14 +361,14 @@ export async function collect() {
                                   },
                                 };
                               });
-                              return {
+                              const measuredCell = {
                                 ...(checkboxes.length > 0 && { checkboxes }),
                                 rowSpan: cell.rowSpan,
                                 colSpan: cell.colSpan,
                                 header:
                                   cell.tagName === 'TH' ||
                                   row.parentElement?.tagName === 'THEAD',
-                                text: innerTexts.get(cell) ?? cell.innerText,
+                                text: cell.innerText,
                                 rect: {
                                   x: box.x - origin.x,
                                   y: box.y - origin.y,
@@ -369,12 +383,14 @@ export async function collect() {
                                   box.right <= origin.right + 0.5 &&
                                   box.bottom <= origin.bottom + 0.5,
                               };
+                              textOwners.push([cell, measuredCell]);
+                              return measuredCell;
                             }),
                         })),
                     },
                   }
                 : undefined;
-        return {
+        const measured = {
           type,
           id: element.getAttribute('data-gt-id'),
           ref: element.getAttribute('data-ref'),
@@ -384,9 +400,7 @@ export async function collect() {
             regions.find(([selector]) => element.closest(selector))?.[1] ??
             'area',
           rect: { x, y, width, height },
-          text:
-            innerTexts.get(element) ??
-            (element instanceof HTMLElement ? element.innerText : ''),
+          text: element instanceof HTMLElement ? element.innerText : '',
           nested: element.parentElement?.closest('[data-gt]') != null,
           attributes: Object.fromEntries(
             Array.from(element.attributes)
@@ -423,6 +437,8 @@ export async function collect() {
           ),
           ...(details && { details }),
         };
+        textOwners.push([element, measured]);
+        return measured;
       },
     );
   // Paged.js puts the declared page size on :root as `--pagedjs-width` and
@@ -453,11 +469,94 @@ export async function collect() {
     declaredWidth && declaredHeight
       ? { width: declaredWidth, height: declaredHeight }
       : undefined;
+  const measuredPages = pages.map(page => {
+    const { x, y, width, height } = page.getBoundingClientRect();
+    return { x, y, width, height, ...(size && { size }) };
+  });
+  // The text of blocks and cells with KaTeX's hidden copy in them, read again
+  // with it left out (an inline display: none on its .katex-mathml element)
+  // once everything is measured, and put back. Pack CSS can react to that
+  // edit (a [style] selector, :has()), so the new text is taken only if it is
+  // the text read before with exactly the copies' text taken out, in order
+  // (whitespace aside). Otherwise the text read before stays, copy and all,
+  // for the self-check to report.
+  const owners = textOwners.filter(([owner]) =>
+    copyWrappers.some(wrapper => owner.contains(wrapper)),
+  );
+  if (owners.length > 0) {
+    const copies = copyWrappers.map(wrapper =>
+      wrapper.innerText.replace(/\s/g, ''),
+    );
+    const styles = copyWrappers.map(wrapper => wrapper.getAttribute('style'));
+    /** @type {string[]} */
+    let reread = [];
+    try {
+      for (const wrapper of copyWrappers) {
+        wrapper.style.setProperty('display', 'none', 'important');
+      }
+      reread = owners.map(([owner]) =>
+        owner instanceof HTMLElement ? owner.innerText : '',
+      );
+    } finally {
+      copyWrappers.forEach((wrapper, index) => {
+        const style = styles[index];
+        if (style === null || style === undefined) {
+          wrapper.removeAttribute('style');
+        } else {
+          wrapper.setAttribute('style', style);
+        }
+      });
+    }
+    owners.forEach(([owner, measured], index) => {
+      const text = reread[index] ?? '';
+      const without = text.replace(/\s/g, '');
+      const full = measured.text.replace(/\s/g, '');
+      const blocks = copyWrappers.flatMap((wrapper, k) =>
+        owner.contains(wrapper) ? [copies[k] ?? ''] : [],
+      );
+      // Where the k-th copy starts if j characters of the new text came first.
+      const before = [0];
+      for (const block of blocks) {
+        before.push((before.at(-1) ?? 0) + block.length);
+      }
+      // States [j, k]: j characters of the new text and k copies make up the
+      // start of the text read before.
+      let states = [[0, 0]];
+      const visited = new Set(['0,0']);
+      let matched = false;
+      while (!matched && states.length > 0) {
+        /** @type {number[][]} */
+        const next = [];
+        for (const [j = 0, k = 0] of states) {
+          const at = j + (before[k] ?? 0);
+          if (j === without.length && k === blocks.length) {
+            matched = at === full.length;
+            if (matched) break;
+            continue;
+          }
+          const steps = [
+            ...(j < without.length && full[at] === without[j]
+              ? [[j + 1, k]]
+              : []),
+            ...(k < blocks.length && full.startsWith(blocks[k] ?? '', at)
+              ? [[j, k + 1]]
+              : []),
+          ];
+          for (const step of steps) {
+            const key = step.join(',');
+            if (!visited.has(key)) {
+              visited.add(key);
+              next.push(step);
+            }
+          }
+        }
+        states = next;
+      }
+      if (matched) measured.text = text;
+    });
+  }
   return {
-    pages: pages.map(page => {
-      const { x, y, width, height } = page.getBoundingClientRect();
-      return { x, y, width, height, ...(size && { size }) };
-    }),
+    pages: measuredPages,
     elements,
   };
 }

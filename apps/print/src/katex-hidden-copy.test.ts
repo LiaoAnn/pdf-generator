@@ -95,6 +95,79 @@ test.each([
   },
 );
 
+const paintRegressions = [
+  {
+    name: 'text-shadow paints an offscreen MathML copy inside the clip',
+    text: 'SHADOW',
+    css: '.clip { display:block; width:200px; height:60px; overflow:hidden } math { display:block; position:relative; left:-200px; width:180px } mtext { text-shadow:210px 0 black; font:24px sans-serif }',
+  },
+  {
+    name: 'vertical ink overflows a CSS-sized one-pixel token',
+    text: 'VERTICAL',
+    css: '.clip { display:block; height:100px; overflow:hidden } math { display:block; width:180px; height:20px } mtext { display:block; width:180px; height:1px; position:relative; top:-10px; font:30px/100px sans-serif }',
+  },
+  ...[
+    { name: 'CSS height alone cannot prove hidden ink', css: 'height:1px' },
+    {
+      name: 'block display alone cannot prove hidden ink',
+      css: 'display:block',
+    },
+    {
+      name: 'text stroke escapes the token box',
+      css: '-webkit-text-stroke:4px black',
+    },
+    {
+      name: 'text emphasis escapes the token box',
+      css: 'text-emphasis:filled dot',
+    },
+    {
+      name: 'token drop shadow escapes the token box',
+      css: 'filter:drop-shadow(10px 0 black)',
+    },
+    {
+      name: 'token reflection escapes the token box',
+      css: '-webkit-box-reflect:below',
+    },
+  ].map(({ name, css }) => ({
+    name,
+    text: 'PAINTED',
+    css: `.clip { position:absolute; clip:rect(1px,1px,1px,1px); padding:0; border:0; height:1px; width:1px; overflow:hidden } mtext { ${css} }`,
+  })),
+  {
+    name: 'ancestor drop shadow escapes the token box',
+    text: 'ANCESTOR',
+    css: '.clip { position:absolute; clip:rect(1px,1px,1px,1px); height:1px; width:1px; overflow:hidden; filter:drop-shadow(10px 0 black) }',
+  },
+  {
+    name: 'first-line shadow escapes the token box',
+    text: 'FIRSTLINE',
+    css: '.clip { display:block; width:200px; height:60px; overflow:hidden } math { display:block; position:relative; left:-200px; width:180px } p::first-line { text-shadow:210px 0 black }',
+  },
+];
+
+test.each(paintRegressions)(
+  'requires missing text when $name',
+  async ({ css, text }) => {
+    const response = await print(
+      document(
+        `<p data-gt="paragraph"><span class="clip katex-mathml"><math><mtext>${text}</mtext></math></span></p>`,
+        `<style>${css} mtext { visibility:hidden }</style>`,
+      ),
+    );
+    expect(
+      response.status,
+      response.status === 200
+        ? 'unexpected PDF success: painted-copy text was exempted'
+        : await response.clone().text(),
+    ).toBe(422);
+    const { error } = apiErrorSchema.parse(await response.json());
+    expect(error.code).toBe('text_missing');
+    expect(error.details?.map(detail => detail.message)).toContain(
+      `page 1: ${text}`,
+    );
+  },
+);
+
 // Narrowing the exemption must retain KaTeX's real clipped MathML copy,
 // including its LaTeX annotation, for both formula layouts.
 test.each([

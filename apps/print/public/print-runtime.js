@@ -858,14 +858,67 @@
     return rows;
   }
 
+  // Whether an element's text paints only within its box, which is all the
+  // browser's measurement covers (T07-26): laid out as MathML, whose token
+  // boxes are as tall as their glyphs' ink whatever the line height (CSS
+  // display other than math lays it out as a CSS box), with no CSS size,
+  // negative spacing or vertical writing, and drawn nowhere else by a
+  // shadow, stroke or emphasis mark (also from ::first-line or
+  // ::first-letter), or by a filter or reflection on it or an ancestor.
+  // `plain` caches the ancestors already checked.
+  /**
+   * @param {Element} element
+   * @param {Map<Element, boolean>} plain
+   */
+  function inkInBox(element, plain) {
+    const style = getComputedStyle(element);
+    const sizes = element.computedStyleMap();
+    if (
+      !style.display.endsWith('math') ||
+      ['width', 'height', 'min-width', 'min-height'].some(
+        name => String(sizes.get(name)) !== 'auto',
+      ) ||
+      ['max-width', 'max-height'].some(
+        name => String(sizes.get(name)) !== 'none',
+      ) ||
+      style.writingMode !== 'horizontal-tb' ||
+      Number.parseFloat(style.letterSpacing) < 0 ||
+      Number.parseFloat(style.wordSpacing) < 0
+    ) {
+      return false;
+    }
+    for (let at = /** @type {Element | null} */ (element); at; ) {
+      let ok = plain.get(at);
+      if (ok === undefined) {
+        const own = getComputedStyle(at);
+        ok =
+          own.filter === 'none' &&
+          own.getPropertyValue('-webkit-box-reflect') === 'none' &&
+          [
+            own,
+            ...['::first-line', '::first-letter'].map(pseudo =>
+              getComputedStyle(/** @type {Element} */ (at), pseudo),
+            ),
+          ].every(
+            text =>
+              text.textShadow === 'none' &&
+              text.getPropertyValue('-webkit-text-stroke-width') === '0px' &&
+              text.getPropertyValue('text-emphasis-style') === 'none',
+          );
+        plain.set(at, ok);
+      }
+      if (!ok) return false;
+      at = at.parentElement;
+    }
+    return true;
+  }
+
   // The text nodes of KaTeX's MathML copy of a formula that the browser hides
   // (T07-26), which the PDF doesn't print: text in a MathML element inside a
   // .katex-mathml element, not itself marked data-gt, of which at most 1px
-  // shows (as clippedContent() decides), and that lies across within the
-  // element's box: CSS can size a MathML element down to 1px while its text
-  // paints beyond it. Only the horizontal extent is compared, as a MathML
-  // box is as tall as its glyphs' ink and the text's rects as tall as the
-  // font. What the browser shows decides, not the class or the CSS.
+  // shows (as clippedContent() decides), whose ink stays within that box
+  // (inkInBox()), and that lies across within the box. What the browser
+  // shows decides, not the class or the CSS.
   async function hiddenCopies() {
     /** @type {Map<Element, Text[]>} */
     const texts = new Map();
@@ -886,11 +939,13 @@
       }
     }
     const seen = await shownParts([...texts.keys()]);
+    /** @type {Map<Element, boolean>} */
+    const plain = new Map();
     /** @type {Set<Node>} */
     const hidden = new Set();
     for (const [element, nodes] of texts) {
       const entry = seen.get(element);
-      if (!entry) continue;
+      if (!entry || !inkInBox(element, plain)) continue;
       const shown = entry.intersectionRect;
       if (entry.isIntersecting && (shown.width > 1 || shown.height > 1)) {
         continue;
