@@ -34,10 +34,10 @@ const integer = /^\d+$/;
 /** A PDF's tokens, and its indirect objects by `<number> <generation>`. */
 class Pdf {
   readonly tokens: Token[] = [];
-  /** Each object's body: its tokens [from, to) and bytes [start, end). */
+  /** Each object's body: its first token and its bytes [start, end). */
   readonly objects = new Map<
     string,
-    { from: number; to: number; start: number; end: number }
+    { from: number; start: number; end: number }
   >();
 
   readonly text: string;
@@ -150,7 +150,7 @@ class Pdf {
       const end = tokens[to]?.start ?? this.text.length;
       this.objects.set(
         `${this.word(tokens[at - 2])} ${this.word(tokens[at - 1])}`,
-        { from: at + 1, to, start: head.end, end },
+        { from: at + 1, start: head.end, end },
       );
       at = to;
     }
