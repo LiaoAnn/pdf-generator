@@ -43,6 +43,14 @@ interface PaintSources {
  */
 export const maxPaintPoints = 1 << 19;
 
+/**
+ * The most paint records readPdf keeps for one document, those inside masks
+ * and tiles included (the 6 packs have at most 1,293). Past it a page's
+ * further paints are dropped and the page gets one page-sized `unmeasured`
+ * paint, so its textless blocks are refused, not passed.
+ */
+export const maxPaints = 1 << 15;
+
 /** The most paints a tile may hold, and the most mesh vertices, to be measured. */
 const maxTilePaints = 256;
 const maxMeshVertices = 1 << 20;
@@ -338,6 +346,8 @@ export interface PaintOptions {
   depth?: number;
   /** Polygon points the document may still keep (`maxPaintPoints`). */
   pointBudget?: { left: number };
+  /** Paint records the document may still keep (`maxPaints`), and how many were dropped. */
+  paintBudget?: { left: number; dropped: number };
 }
 
 /**
@@ -353,6 +363,7 @@ export function readPaints(
     sources,
     depth = 0,
     pointBudget = { left: maxPaintPoints },
+    paintBudget = { left: maxPaints, dropped: 0 },
   }: PaintOptions,
 ): PdfPaint[] {
   const ops = (...names: string[]) => new Set(names.map(name => OPS[name]));
@@ -478,6 +489,11 @@ export function readPaints(
     else if (source && 'image' in source && source.image) {
       colour = { image: source.image };
     }
+    if (paintBudget.left <= 0) {
+      paintBudget.dropped++;
+      return;
+    }
+    paintBudget.left--;
     targets[targets.length - 1]?.push({
       polygons,
       rule,
@@ -528,7 +544,14 @@ export function readPaints(
     const paints = readPaints(
       { fnArray: list.fnArray, argsArray: list.argsArray },
       OPS,
-      { frame: identity, clip: bbox, sources, depth: depth + 1, pointBudget },
+      {
+        frame: identity,
+        clip: bbox,
+        sources,
+        depth: depth + 1,
+        pointBudget,
+        paintBudget,
+      },
     );
     // A tile is measured only if all of it is.
     if (paints.length > maxTilePaints || paints.some(p => p.unmeasured)) {

@@ -9,7 +9,12 @@ import {
   multiply,
   type Rect,
 } from './geometry.ts';
-import { type ImagePixels, maxPaintPoints, readPaints } from './paints.ts';
+import {
+  type ImagePixels,
+  maxPaintPoints,
+  maxPaints,
+  readPaints,
+} from './paints.ts';
 
 /** One run of text in a PDF page's text layer. */
 export interface PdfTextItem {
@@ -232,6 +237,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   let budget = maxPixels;
   // Polygon points the document's paints may keep, across its pages.
   const pointBudget = { left: maxPaintPoints };
+  const paintBudget = { left: maxPaints, dropped: 0 };
   const byRef = new Map<string, ImagePixels | undefined>();
   const decode = (image: unknown) => {
     const ref = (image as { ref?: unknown } | undefined)?.ref;
@@ -296,10 +302,12 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
       };
       const images = await pageImages(operators, OPS, page);
       const decoded = new Map<string, ImagePixels | undefined>();
+      paintBudget.dropped = 0;
       const paints = readPaints(operators, OPS, {
         frame: [1, 0, 0, -1, -left, top],
         clip: [left, bottom, right, top],
         pointBudget,
+        paintBudget,
         sources: {
           objectOf,
           imageOf: id => {
@@ -309,6 +317,18 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
           decode,
         },
       });
+      if (paintBudget.dropped > 0) {
+        // Paints were dropped: nothing on this page can be measured.
+        const [width, height] = [right - left, top - bottom];
+        paints.push({
+          polygons: [[0, 0, width, 0, width, height, 0, height]],
+          rule: 'nonzero',
+          unmeasured: true,
+          alpha: 1,
+          clips: [],
+          box: [0, 0, width, height],
+        });
+      }
       pages.push({
         width: right - left,
         height: top - bottom,
