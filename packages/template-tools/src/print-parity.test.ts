@@ -706,17 +706,42 @@ describe('print parity: round 6 image-set direct function allowlist', () => {
   }
 });
 
-it('round 6 checks 160,000 unquoted data URLs in under 1.5 seconds', () => {
-  checkPack(pack(undefined, 'p{background-image:url(data:,x)}'));
+it('round 6 checks 160,000 unquoted data URLs without super-linear scanning relative to a URL-free baseline', () => {
   const files = pack(
     undefined,
     `p{background-image:${'url(data:,x),'.repeat(159_999)}url(data:,x)}`,
   );
-  const start = performance.now();
-  const result = checkPack(files);
-  const elapsed = performance.now() - start;
-  expect(result).toMatchObject({ ok: true, issues: [] });
-  expect(elapsed).toBeLessThan(1_500);
+  // Almost identical CSS lengths (2,080,019 vs 2,080,009 characters) put
+  // both packs through the same public pipeline, but the reference never
+  // enters the unquoted url() branch whose super-linear regressions we catch.
+  const baseline = pack(
+    undefined,
+    `p{background-image:${'none,'.repeat(415_997)}none}`,
+  );
+  expect(checkPack(files)).toMatchObject({ ok: true, issues: [] });
+  expect(checkPack(baseline)).toMatchObject({ ok: true, issues: [] });
+  const times: number[] = [];
+  const reference: number[] = [];
+  // Warm both full inputs, then interleave so machine speed affects both.
+  for (let i = 0; i < 3; i++) {
+    let start = performance.now();
+    const result = checkPack(files);
+    times.push(performance.now() - start);
+    expect(result).toMatchObject({ ok: true, issues: [] });
+    start = performance.now();
+    const control = checkPack(baseline);
+    reference.push(performance.now() - start);
+    expect(control).toMatchObject({ ok: true, issues: [] });
+  }
+  console.info(
+    `Unquoted data URL timings (ms): ${times.join(', ')}; URL-free reference: ${reference.join(', ')}`,
+  );
+  const median = (values: number[]) =>
+    [...values].sort((a, b) => a - b)[1] ?? 0;
+  // Measured ratios are about 1 (353–539 ms vs 323–391 ms). A factor of 4
+  // preserves the old bound's roughly fourfold headroom without depending
+  // on machine speed; medians tolerate one scheduling outlier per series.
+  expect(median(times)).toBeLessThan(median(reference) * 4);
 }, 30_000);
 
 it('round 6 reports sample text conversion failure at the mustache without throwing', () => {
