@@ -86,6 +86,7 @@ function mockPrinted(text: string) {
     height: 841.89,
     items: [item],
     marks: [],
+    paints: [],
   };
   vi.spyOn(pdfReader, 'readPdf').mockResolvedValue({ pages: [page] });
 }

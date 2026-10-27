@@ -42,6 +42,7 @@ test.each([
           width: 600,
           height: 800,
           marks: [],
+          paints: [],
           items: [
             {
               text: raw,

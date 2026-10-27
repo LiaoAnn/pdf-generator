@@ -35,6 +35,35 @@ export interface PdfMark {
   box: [number, number, number, number];
 }
 
+/**
+ * A region bounded by closed polygons, each a flat `[x0, y0, x1, y1, …]` list
+ * of points in PDF points from the page's top-left corner (y down), curves
+ * flattened. A point is inside by the nonzero or the even-odd rule.
+ */
+export interface PdfShape {
+  polygons: number[][];
+  rule: 'nonzero' | 'evenodd';
+}
+
+/**
+ * One thing a page paints besides text, as the printed page shows it: a fill,
+ * a stroke (as the shape its outline covers), an image or a shading. It shows
+ * only where every clip in force contains the point.
+ */
+export interface PdfPaint extends PdfShape {
+  /**
+   * `#rrggbb`; left out when the colour isn't one (an image, a shading, a
+   * pattern), which counts as differing from every colour.
+   */
+  color?: string;
+  /** Constant opacity, 0 to 1. */
+  alpha: number;
+  /** The clipping paths in force, outermost first. */
+  clips: PdfShape[];
+  /** The bounds of `polygons` inside the clips' bounds, as a mark's box. */
+  box: [number, number, number, number];
+}
+
 export interface PdfPage {
   /** MediaBox size in PDF points. */
   width: number;
@@ -43,6 +72,8 @@ export interface PdfPage {
   items: PdfTextItem[];
   /** What the page draws besides text, in content-stream order. */
   marks: PdfMark[];
+  /** The same as paints with their geometry and colour, in content-stream order. */
+  paints: PdfPaint[];
 }
 
 export interface PdfDocument {
@@ -117,7 +148,13 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
         });
       }
       const marks = readMarks(operators, OPS, [left, bottom, right, top]);
-      pages.push({ width: right - left, height: top - bottom, items, marks });
+      pages.push({
+        width: right - left,
+        height: top - bottom,
+        items,
+        marks,
+        paints: [],
+      });
       page.cleanup();
     }
     return { pages };

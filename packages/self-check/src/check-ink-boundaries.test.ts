@@ -26,7 +26,7 @@ afterEach(() => vi.restoreAllMocks());
 
 async function check(marks: PdfMark[]) {
   vi.spyOn(pdfReader, 'readPdf').mockResolvedValue({
-    pages: [{ width: 600, height: 800, items: [], marks }],
+    pages: [{ width: 600, height: 800, items: [], marks, paints: [] }],
   });
   return checkPdf(new Uint8Array(), gt);
 }

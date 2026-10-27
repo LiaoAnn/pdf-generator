@@ -11,6 +11,8 @@ export {
   type PdfDocument,
   type PdfMark,
   type PdfPage,
+  type PdfPaint,
+  type PdfShape,
   type PdfTextItem,
   readPdf,
 } from './pdf.ts';
