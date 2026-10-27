@@ -119,6 +119,49 @@ const boldElements = new Set([
 ]);
 const slantedElements = new Set(['i', 'em', 'cite', 'var', 'dfn', 'address']);
 
+/** How many `@import` cycles are reported one by one. */
+const maxCycleIssues = 50;
+
+/**
+ * The `@import`s that lie on a cycle, each with the cycle it closes: the
+ * importing file, the files the import leads through, and that file again.
+ */
+function importCycles<T extends { source: Source; path: string }>(
+  imports: T[],
+): (T & { cycle: string[] })[] {
+  const targets = new Map<string, Set<string>>();
+  for (const { source, path } of imports) {
+    targets.set(source.file, (targets.get(source.file) ?? new Set()).add(path));
+  }
+  // Breadth first from each imported file, once (a sheet may import the same
+  // file thousands of times): each file reached, and the file importing it.
+  const trees = new Map<string, Map<string, string>>();
+  const tree = (start: string) => {
+    let via = trees.get(start);
+    if (via === undefined) {
+      via = new Map([[start, start]]);
+      for (const file of via.keys()) {
+        for (const path of targets.get(file) ?? []) {
+          if (!via.has(path)) via.set(path, file);
+        }
+      }
+      trees.set(start, via);
+    }
+    return via;
+  };
+  return imports.flatMap(edge => {
+    const from = edge.source.file;
+    const via = tree(edge.path);
+    if (!via.has(from)) return [];
+    const cycle = [from];
+    for (let at = from; at !== edge.path; ) {
+      at = via.get(at) ?? edge.path;
+      cycle.unshift(at);
+    }
+    return [{ ...edge, cycle: [from, ...cycle] }];
+  });
+}
+
 /** Asset, font and active-content issues of a pack's template and styles. */
 export function assetIssues(
   template: Source & { html: TemplateHtml },
@@ -139,6 +182,8 @@ export function assetIssues(
   /** Stylesheets checked or queued, so each is read once (imports cycle). */
   const sheets = new Set(styles.map(style => style.file));
   const reached: string[] = [];
+  /** `@import`s between stylesheets, where Paged.js follows them. */
+  const imports: { source: Source; at: number; path: string }[] = [];
 
   const issue = (
     code: string,
@@ -189,7 +234,21 @@ export function assetIssues(
       );
       return;
     }
-    const problem = resolve(source.file, trimmed.slice(0, urlEnd(trimmed)));
+    // Paged.js drops every quote from an @import's URL, then loads what is
+    // left in place of the @import.
+    const loaded =
+      kind === 'stylesheet' && context === 'css'
+        ? url.replace(/["']/g, '')
+        : url;
+    const start = loaded.slice(urlStart(loaded));
+    const target = start.slice(0, urlEnd(start));
+    const imported = kind === 'stylesheet' && source !== template;
+    if (imported && /^(?:[?#]|$)/.test(target)) {
+      // No path ("", "#x", "?v=2") is the importing stylesheet itself.
+      imports.push({ source, at, path: source.file });
+      return;
+    }
+    const problem = resolve(source.file, target);
     if (problem === undefined) return;
     if (!('path' in problem)) {
       issue(problem.code, source, at, problem.message);
@@ -200,10 +259,18 @@ export function assetIssues(
         at,
         `${url} points to ${problem.path}, which is not in the pack`,
       );
-    } else if (
-      (kind === 'stylesheet' || /\.css$/i.test(problem.path)) &&
-      !sheets.has(problem.path)
-    ) {
+    } else {
+      // Paged.js loads the template's own stylesheets once, but follows an
+      // @import from inside a stylesheet without remembering what it loaded.
+      if (kind === 'stylesheet' && source !== template) {
+        imports.push({ source, at, path: problem.path });
+      }
+      if (
+        (kind !== 'stylesheet' && !/\.css$/i.test(problem.path)) ||
+        sheets.has(problem.path)
+      ) {
+        return;
+      }
       sheets.add(problem.path);
       reached.push(problem.path);
     }
@@ -383,6 +450,26 @@ export function assetIssues(
         message: 'not valid UTF-8 text',
       });
     } else css({ file: path, text }, text, same, true);
+  }
+  // Each message names a whole cycle, up to every file in the pack: report
+  // the first ones, enough to fix, so a crafted pack can't make megabytes.
+  const cycles = importCycles(imports);
+  for (const { source, at, cycle } of cycles.slice(0, maxCycleIssues)) {
+    issue(
+      'css-import-cycle',
+      source,
+      at,
+      `this @import closes a cycle: ${cycle.join(' → ')}; Paged.js would fetch these stylesheets over and over until printing times out`,
+    );
+  }
+  const more = cycles[maxCycleIssues];
+  if (more !== undefined) {
+    issue(
+      'css-import-cycle',
+      more.source,
+      more.at,
+      `${cycles.length - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
+    );
   }
 
   // The weight and style combinations the pack prints: regular upright
