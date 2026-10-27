@@ -149,8 +149,8 @@ test('a print-media import embeds regular and bold faces from plain rules', asyn
   );
 });
 
-// A screen-applied face may be declared during the initial screen scan;
-// PDF embedding, rather than declaration or request count, tests print use.
+// Declaration exclusion is pinned by screen-media-imports-fonts.test.ts;
+// retain this check of the final PDF embedding as well.
 test('a screen-only import does not embed its face in the printed PDF', async () => {
   await expectFonts(
     await print(
