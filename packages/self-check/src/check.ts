@@ -1,5 +1,5 @@
 import type { GroundTruth, GtBlock } from '@pdf-generator/contract';
-import { measureInk } from './ink.ts';
+import { type InkBudget, maxInkWork, measureInk } from './ink.ts';
 import { type PdfPage, type PdfTextItem, readPdf } from './pdf.ts';
 import { normaliseText } from './text.ts';
 
@@ -435,6 +435,8 @@ export async function checkPdf(
   const { pages } = await readPdf(pdf);
   const allowedFonts = options.fonts ? new Set(options.fonts) : undefined;
   const differences: Difference[] = [];
+  // One work budget for every textless block of the document.
+  const inkBudget: InkBudget = { left: maxInkWork };
 
   if (pages.length !== gt.pages.length) {
     differences.push({
@@ -539,7 +541,7 @@ export async function checkPdf(
       // Without printed text, its box is checked against what is drawn.
       const ink =
         own.length === 0
-          ? inkDifference(block, pages[block.page - 1])
+          ? inkDifference(block, pages[block.page - 1], inkBudget)
           : undefined;
       if (ink) report(block.page, ink);
       for (const difference of details(block, own))
@@ -549,7 +551,7 @@ export async function checkPdf(
     // The PDF can't show an image's text unless it is printed as text; its
     // drawing is still checked.
     if (block.type === 'image' && own.length === 0) {
-      const difference = inkDifference(block, pages[block.page - 1]);
+      const difference = inkDifference(block, pages[block.page - 1], inkBudget);
       if (difference) report(block.page, difference);
       continue;
     }
@@ -731,6 +733,7 @@ const anchored = (a0: number, a1: number, b0: number, b1: number) =>
 function inkDifference(
   block: GtBlock,
   page: PdfPage | undefined,
+  budget: InkBudget,
 ): Difference | undefined {
   const t = inkTolerancePt;
   const [x0, y0, x1, y1] = block.bbox;
@@ -749,6 +752,7 @@ function inkDifference(
     block.bbox,
     t,
     ({ box }) => !inside(box) && covering(box),
+    budget,
   );
   const at = `Block ${block.id} on page ${block.page}`;
   const where = {

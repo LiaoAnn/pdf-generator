@@ -8,6 +8,63 @@ import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { chromium } from 'playwright-core';
 import { beforeAll, describe, expect, test } from 'vitest';
 import { checkPdf, readPdf } from './index.ts';
+import { maxInkWork } from './ink.ts';
+
+test('overlapping SVG use rectangles exceeding maxInkWork are refused with cannot-measure instead of passing textless ink checks', async () => {
+  // A 160 px square is 120 pt square: 230,400 quarter-point samples.
+  // A 50% margin over the two-render budget keeps PDF rounding irrelevant.
+  const count = Math.ceil((1.5 * maxInkWork) / (2 * ((120 * 120) / 0.0625)));
+  const html = `<style>@page{size:240px 240px;margin:0}body{margin:0}</style>
+    <svg data-gt="image" width="160" height="160"><defs>
+    <rect id="r" width="160" height="160" fill="black"/></defs>
+    ${'<use href="#r"/>'.repeat(count)}</svg>`;
+  expect(Buffer.byteLength(html)).toBeLessThan(10_000);
+  const browser = await chromium.launch({ headless: true });
+  let printed: Uint8Array;
+  try {
+    const page = await browser.newPage();
+    await page.setContent(html);
+    printed = await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+    });
+  } finally {
+    await browser.close();
+  }
+  const document = await readPdf(printed);
+  expect(document.pages).toHaveLength(1);
+  expect(document.pages[0]?.items).toEqual([]);
+  expect(document.pages[0]?.paints).toHaveLength(count);
+  const expected = gtSchema.parse({
+    schemaVersion: 1,
+    source: {
+      templateId: 'overlapping-use',
+      templateVersion: 1,
+      seed: 'T14-9-r12',
+      index: 0,
+    },
+    pages: [{ width: 180, height: 180 }],
+    blocks: [
+      {
+        id: 'overlapping-use',
+        type: 'image',
+        page: 1,
+        order: 0,
+        text: '',
+        bbox: [0, 0, 120, 120],
+      },
+    ],
+  });
+  const report = await checkPdf(printed, expected);
+  expect(report.ok).toBe(false);
+  expect(report.differences).toEqual([
+    expect.objectContaining({
+      kind: 'ink',
+      blockId: 'overlapping-use',
+      message: expect.stringContaining("can't measure"),
+    }),
+  ]);
+});
 
 test.each([
   { alpha: 0.5, overpaint: true },

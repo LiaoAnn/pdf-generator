@@ -17,8 +17,27 @@ export interface Ink {
   box: Box | undefined;
   /** The share of the box's width and of its height the ink spans. */
   coverage: [x: number, y: number];
-  /** Whether paint whose colour can't be measured covers part of the box or its margin. */
+  /**
+   * Whether paint whose colour can't be measured covers part of the box or
+   * its margin, or measuring it would take more than `maxInkWork`.
+   */
   unmeasured: boolean;
+}
+
+/**
+ * The most work one measurement may take: one unit per sample a paint
+ * covers in each of the two renders, and `pointTestWork` per paint tested
+ * at a point inside tiles and masks. Past it the box isn't measured (no
+ * ink, `unmeasured`).
+ */
+export const maxInkWork = 1 << 27;
+
+/** A point test (shape, clips, colour) costs about this many sample fills. */
+const pointTestWork = 8;
+
+/** Work left to spend, shared by measurements that pass the same one. */
+export interface InkBudget {
+  left: number;
 }
 
 /** Sample spacing in PDF points: a quarter of the 1 pt ink tolerance. */
@@ -34,6 +53,17 @@ const bandSamples = 1 << 18;
  */
 export const maxGroupDepth = 32;
 const white = 0xffffff;
+
+/** Thrown when a measurement passes `maxInkWork`. */
+class Overrun extends Error {}
+
+/** The work the current measurement may still spend. */
+let allowance: InkBudget = { left: maxInkWork };
+
+const spend = (units: number) => {
+  allowance.left -= units;
+  if (allowance.left < 0) throw new Overrun();
+};
 
 /** Per row, the sample columns a shape covers: `[c0, c1, c0, c1, …]`, c1 exclusive. */
 type Spans = number[][];
@@ -67,6 +97,7 @@ function shapeSpans({ polygons, rule }: PdfShape, grid: Grid): Spans {
       const r0 = Math.max(0, Math.ceil((top - oy) / step - 0.5));
       const r1 = Math.min(rows - 1, Math.ceil((bottom - oy) / step - 0.5) - 1);
       const winding = ya < yb ? 1 : -1;
+      spend(Math.max(0, r1 - r0 + 1));
       for (let r = r0; r <= r1; r++) {
         const y = oy + (r + 0.5) * step;
         crossings[r]?.push([xa + ((y - ya) * (xb - xa)) / (yb - ya), winding]);
@@ -329,6 +360,7 @@ function composeAt(paints: readonly PdfPaint[], x: number, y: number): Sample {
     ]);
   };
   for (const paint of paints) {
+    spend(pointTestWork);
     const groups = paint.groups ?? [];
     let common = 0;
     while (
@@ -459,6 +491,25 @@ export function measureInk(
   box: Box,
   margin: number,
   isBackground: (paint: PdfPaint) => boolean,
+  budget: InkBudget = { left: maxInkWork },
+): Ink {
+  allowance = budget;
+  try {
+    return measure(paints, box, margin, isBackground);
+  } catch (error) {
+    // Too much work to measure: not measured, never passed.
+    if (error instanceof Overrun) {
+      return { box: undefined, coverage: [0, 0], unmeasured: true };
+    }
+    throw error;
+  }
+}
+
+function measure(
+  paints: readonly PdfPaint[],
+  box: Box,
+  margin: number,
+  isBackground: (paint: PdfPaint) => boolean,
 ): Ink {
   const [x0, y0, x1, y1] = box;
   const region: Box = [x0 - margin, y0 - margin, x1 + margin, y1 + margin];
@@ -508,14 +559,15 @@ export function measureInk(
       rows: Math.min(bandRows, rows - r0),
     };
     const n = cols * grid.rows;
+    // Clips are shared by many paints; a few are kept, not all.
     const clipSpans = new Map<PdfShape, Spans>();
-    // Samples under paint whose colour can't be measured: never ink.
-    const tiles = new Uint8Array(n);
-    const spansOf = relevant.map(({ paint, hidden }) => {
+    /** A paint's spans in this band, inside its clips; made when drawn, not kept. */
+    const spansOf = (paint: PdfPaint) => {
       let spans = shapeSpans(paint, grid);
       for (const clip of paint.clips) {
         let clipped = clipSpans.get(clip);
         if (!clipped) {
+          if (clipSpans.size >= 64) clipSpans.clear();
           clipped = shapeSpans(clip, grid);
           clipSpans.set(clip, clipped);
         }
@@ -524,19 +576,18 @@ export function measureInk(
           row.length === 0 ? row : intersectSpans(row, cut[r] ?? []),
         );
       }
-      if (hidden) {
-        spans.forEach((row, r) => {
-          for (let j = 0; j < row.length; j += 2) {
-            tiles.fill(
-              1,
-              r * cols + (row[j] ?? 0),
-              r * cols + (row[j + 1] ?? 0),
-            );
-          }
-        });
-      }
       return spans;
-    });
+    };
+    // Samples under paint whose colour can't be measured: never ink.
+    const tiles = new Uint8Array(n);
+    for (const { paint, hidden } of relevant) {
+      if (!hidden) continue;
+      spansOf(paint).forEach((row, r) => {
+        for (let j = 0; j < row.length; j += 2) {
+          tiles.fill(1, r * cols + (row[j] ?? 0), r * cols + (row[j + 1] ?? 0));
+        }
+      });
+    }
     if (tiles.includes(1)) unmeasured = true;
     // Paints in order over a white page, each group composited on its own
     // layer, then onto the one under it at the group's alpha.
@@ -572,7 +623,7 @@ export function measureInk(
           );
         }
       };
-      relevant.forEach(({ paint, color, background, hidden }, k) => {
+      relevant.forEach(({ paint, color, background, hidden }) => {
         if ((backgroundOnly && !background) || hidden) return;
         const groups = paint.groups ?? [];
         let common = 0;
@@ -592,9 +643,11 @@ export function measureInk(
         }
         const top = stack[stack.length - 1];
         if (!top) return;
-        spansOf[k]?.forEach((row, r) => {
+        spansOf(paint).forEach((row, r) => {
           const y = grid.oy + (r + 0.5) * step;
           for (let j = 0; j < row.length; j += 2) {
+            // Charged for both renders when drawn in the first.
+            if (!backgroundOnly) spend(2 * ((row[j + 1] ?? 0) - (row[j] ?? 0)));
             for (let c = row[j] ?? 0; c < (row[j + 1] ?? 0); c++) {
               const at: Sample =
                 color === undefined

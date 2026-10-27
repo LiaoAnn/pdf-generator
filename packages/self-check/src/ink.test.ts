@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import type { Box } from './check.ts';
-import { type Ink, measureInk } from './ink.ts';
+import { type Ink, maxInkWork, measureInk } from './ink.ts';
 import type { PdfGroup, PdfPaint, PdfShading } from './pdf.ts';
 
 const box: Box = [0, 0, 100, 100];
@@ -23,6 +23,57 @@ const paint = (bounds: Box, overrides: Partial<PdfPaint> = {}): PdfPaint => ({
   alpha: 1,
   clips: [],
   ...overrides,
+});
+
+// 256 × 64 pt at quarter-point spacing: 262,144 samples per render.
+const workBox: Box = [0, 0, 256, 64];
+const workSamples = (256 * 64) / 0.0625;
+const paintsWithinWorkBudget = Math.floor(maxInkWork / (2 * workSamples));
+
+test('overlapping full-box black paints exceeding maxInkWork fail closed instead of certifying ink', () => {
+  const actual = measureInk(
+    Array.from({ length: paintsWithinWorkBudget + 1 }, () => paint(workBox)),
+    workBox,
+    0,
+    noBackground,
+  );
+  expect(actual.unmeasured).toBe(true);
+  expectNoInk(actual, workBox);
+});
+
+test('overlapping full-box black paints just below maxInkWork retain measurable ink instead of rejecting affordable work', () => {
+  const actual = measureInk(
+    Array.from({ length: paintsWithinWorkBudget - 1 }, () => paint(workBox)),
+    workBox,
+    0,
+    noBackground,
+  );
+  expect(actual.unmeasured).toBe(false);
+  expectInk(actual, workBox, [1, 1], workBox);
+});
+
+test('mask point evaluations exceeding maxInkWork fail closed even when the outer paint fits the budget', () => {
+  // The outer paint alone costs only two renders. Its opaque alpha mask
+  // reveals black, but testing every mask paint at every sample is over budget.
+  const actual = measureInk(
+    [
+      paint(workBox, {
+        mask: {
+          paints: Array.from(
+            { length: Math.ceil(maxInkWork / workSamples) + 1 },
+            () => paint(workBox),
+          ),
+          luminosity: false,
+          backdrop: '#000000',
+        },
+      }),
+    ],
+    workBox,
+    0,
+    noBackground,
+  );
+  expect(actual.unmeasured).toBe(true);
+  expectNoInk(actual, workBox);
 });
 
 const axial = (start: string, end: string): PdfShading => ({
