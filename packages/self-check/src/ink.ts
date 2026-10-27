@@ -1,5 +1,5 @@
 import type { Box } from './check.ts';
-import type { PdfPaint, PdfShape } from './pdf.ts';
+import type { PdfGroup, PdfPaint, PdfShading, PdfShape } from './pdf.ts';
 
 /** What a page's paints leave visible in one box (T14-9). */
 export interface Ink {
@@ -15,10 +15,8 @@ const step = 0.25;
  * Samples rendered at once. A larger box is rendered in bands of rows at the
  * same spacing, so its size changes the time it takes, not the answer.
  */
-const bandSamples = 1 << 20;
+const bandSamples = 1 << 18;
 const white = 0xffffff;
-/** A colour that differs from every colour: an image's, a shading's. */
-const unknown = -1;
 
 /** Per row, the sample columns a shape covers: `[c0, c1, c0, c1, …]`, c1 exclusive. */
 type Spans = number[][];
@@ -95,30 +93,101 @@ function intersectSpans(a: number[], b: number[]): number[] {
   return out;
 }
 
-const parseColor = (color: string | undefined): number => {
-  const value =
-    color === undefined ? Number.NaN : Number.parseInt(color.slice(1), 16);
-  return /^#[0-9a-f]{6}$/i.test(color ?? '') ? value : unknown;
-};
+const rgb = (color: string) => Number.parseInt(color.slice(1), 16);
 
-/** `color` at `alpha` over `under`, source-over. */
-function blend(under: number, color: number, alpha: number): number {
-  if (alpha >= 1 || color === unknown || under === unknown) {
-    return alpha >= 1 || color === unknown ? color : unknown;
+/** The colour of `stops` at `t`, linear between stops, flat past the ends. */
+function stopColor(stops: PdfShading['stops'], t: number): number {
+  const first = stops[0];
+  if (!first) return white;
+  if (t <= first[0]) return rgb(first[1]);
+  for (let k = 1; k < stops.length; k++) {
+    const [o1, c1] = stops[k] ?? first;
+    if (t > o1) continue;
+    const [o0, c0] = stops[k - 1] ?? first;
+    const f = o1 > o0 ? (t - o0) / (o1 - o0) : 1;
+    const [a, b] = [rgb(c0), rgb(c1)];
+    let out = 0;
+    for (const shift of [16, 8, 0]) {
+      const from = (a >> shift) & 0xff;
+      const to = (b >> shift) & 0xff;
+      out |= Math.round(from + (to - from) * f) << shift;
+    }
+    return out;
   }
-  let out = 0;
-  for (const shift of [16, 8, 0]) {
-    const top = (color >> shift) & 0xff;
-    const bottom = (under >> shift) & 0xff;
-    out |= Math.round(top * alpha + bottom * (1 - alpha)) << shift;
+  return rgb((stops[stops.length - 1] ?? first)[1]);
+}
+
+/** A gradient's colour at page-frame point (x, y); undefined: not painted. */
+function shadingColor(shading: PdfShading, x: number, y: number) {
+  const [a, b, c, d, e, f] = shading.toShading;
+  const u = a * x + c * y + e;
+  const v = b * x + d * y + f;
+  const [fx, fy] = shading.from;
+  const [dx, dy] = [shading.to[0] - fx, shading.to[1] - fy];
+  if (shading.kind === 'axial') {
+    const length = dx * dx + dy * dy;
+    const t = length > 0 ? ((u - fx) * dx + (v - fy) * dy) / length : 0;
+    return stopColor(shading.stops, Math.min(1, Math.max(0, t)));
   }
-  return out;
+  // The largest s whose circle, centre from + s (to - from) and radius
+  // r0 + s (r1 - r0) >= 0, passes through (u, v).
+  const { r0, r1 } = shading;
+  const dr = r1 - r0;
+  const [px, py] = [u - fx, v - fy];
+  const qa = dx * dx + dy * dy - dr * dr;
+  const qb = px * dx + py * dy + r0 * dr;
+  const qc = px * px + py * py - r0 * r0;
+  const roots: number[] = [];
+  if (Math.abs(qa) < 1e-12) {
+    if (qb !== 0) roots.push(qc / (2 * qb));
+  } else {
+    const disc = qb * qb - qa * qc;
+    if (disc >= 0) {
+      const root = Math.sqrt(disc);
+      roots.push((qb + root) / qa, (qb - root) / qa);
+    }
+  }
+  const s = Math.max(...roots.filter(s => r0 + s * dr >= 0));
+  return Number.isFinite(s)
+    ? stopColor(shading.stops, Math.min(1, Math.max(0, s)))
+    : undefined;
+}
+
+/** A layer of colours (negative: an unknown colour, one per paint) and alphas. */
+interface Layer {
+  group?: PdfGroup;
+  color: Int32Array;
+  alpha: Float32Array;
+}
+
+/** Composites `color` at `alpha` onto sample `i` of `layer`, source-over. */
+function composite(layer: Layer, i: number, color: number, alpha: number) {
+  const under = layer.alpha[i] ?? 0;
+  const out = alpha + under * (1 - alpha);
+  if (out <= 0) return;
+  const below = layer.color[i] ?? white;
+  let mixed = color;
+  if (alpha < 1 && under > 0 && color >= 0) {
+    if (below < 0) mixed = below;
+    else {
+      mixed = 0;
+      for (const shift of [16, 8, 0]) {
+        const top = (color >> shift) & 0xff;
+        const bottom = (below >> shift) & 0xff;
+        mixed |=
+          Math.round((top * alpha + bottom * under * (1 - alpha)) / out) <<
+          shift;
+      }
+    }
+  }
+  layer.color[i] = mixed;
+  layer.alpha[i] = out;
 }
 
 /** Whether two colours differ by more than rounding. */
 function differ(a: number, b: number): boolean {
   if (a === b) return false;
-  if (a === unknown || b === unknown) return true;
+  if (a < 0 || b < 0) return true;
   for (const shift of [16, 8, 0]) {
     if (Math.abs(((a >> shift) & 0xff) - ((b >> shift) & 0xff)) > 1) {
       return true;
@@ -146,10 +215,20 @@ export function measureInk(
   const cols = Math.max(1, Math.ceil((region[2] - region[0]) / step));
   const rows = Math.max(1, Math.ceil((region[3] - region[1]) / step));
   const relevant = paints
-    .filter(paint => paint.alpha > 0 && overlaps(paint.box, region))
-    .map(paint => ({
+    .filter(
+      paint =>
+        (paint.groups ?? []).reduce(
+          (a, group) => a * group.alpha,
+          paint.alpha,
+        ) > 0 && overlaps(paint.box, region),
+    )
+    .map((paint, k) => ({
       paint,
-      color: parseColor(paint.color),
+      // A paint of no colour (an image) differs from every other paint.
+      color:
+        paint.color && /^#[0-9a-f]{6}$/i.test(paint.color)
+          ? rgb(paint.color)
+          : -1 - k,
       background: isBackground(paint),
     }));
   const inkCols = new Uint8Array(cols);
@@ -169,10 +248,9 @@ export function measureInk(
       cols,
       rows: Math.min(bandRows, rows - r0),
     };
-    const all = new Int32Array(cols * grid.rows).fill(white);
-    const back = new Int32Array(cols * grid.rows).fill(white);
+    const n = cols * grid.rows;
     const clipSpans = new Map<PdfShape, Spans>();
-    for (const { paint, color, background } of relevant) {
+    const spansOf = relevant.map(({ paint }) => {
       let spans = shapeSpans(paint, grid);
       for (const clip of paint.clips) {
         let clipped = clipSpans.get(clip);
@@ -185,17 +263,71 @@ export function measureInk(
           row.length === 0 ? row : intersectSpans(row, cut[r] ?? []),
         );
       }
-      spans.forEach((row, r) => {
-        for (let k = 0; k < row.length; k += 2) {
-          for (let c = row[k] ?? 0; c < (row[k + 1] ?? 0); c++) {
-            const i = r * cols + c;
-            all[i] = blend(all[i] ?? white, color, paint.alpha);
-            if (background)
-              back[i] = blend(back[i] ?? white, color, paint.alpha);
+      return spans;
+    });
+    // Paints in order over a white page, each group composited on its own
+    // layer, then onto the one under it at the group's alpha.
+    const render = (backgroundOnly: boolean) => {
+      const stack: Layer[] = [
+        {
+          color: new Int32Array(n).fill(white),
+          alpha: new Float32Array(n).fill(1),
+        },
+      ];
+      const close = () => {
+        const layer = stack.pop();
+        const under = stack[stack.length - 1];
+        if (!layer?.group || !under) return;
+        for (let i = 0; i < n; i++) {
+          const alpha = layer.alpha[i] ?? 0;
+          if (alpha > 0) {
+            composite(
+              under,
+              i,
+              layer.color[i] ?? white,
+              alpha * layer.group.alpha,
+            );
           }
         }
+      };
+      relevant.forEach(({ paint, color, background }, k) => {
+        if (backgroundOnly && !background) return;
+        const groups = paint.groups ?? [];
+        let common = 0;
+        while (
+          common < groups.length &&
+          stack[common + 1]?.group?.id === groups[common]?.id
+        ) {
+          common++;
+        }
+        while (stack.length - 1 > common) close();
+        for (const group of groups.slice(common)) {
+          stack.push({
+            group,
+            color: new Int32Array(n),
+            alpha: new Float32Array(n),
+          });
+        }
+        const top = stack[stack.length - 1];
+        if (!top) return;
+        spansOf[k]?.forEach((row, r) => {
+          const y = grid.oy + (r + 0.5) * step;
+          for (let j = 0; j < row.length; j += 2) {
+            for (let c = row[j] ?? 0; c < (row[j + 1] ?? 0); c++) {
+              const at = paint.shading
+                ? shadingColor(paint.shading, grid.ox + (c + 0.5) * step, y)
+                : color;
+              if (at !== undefined)
+                composite(top, r * cols + c, at, paint.alpha);
+            }
+          }
+        });
       });
-    }
+      while (stack.length > 1) close();
+      return stack[0]?.color ?? new Int32Array(n);
+    };
+    const all = render(false);
+    const back = render(true);
     for (let r = 0; r < grid.rows; r++) {
       for (let c = 0; c < cols; c++) {
         const i = r * cols + c;

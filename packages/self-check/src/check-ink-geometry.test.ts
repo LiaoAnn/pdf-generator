@@ -17,6 +17,14 @@ beforeAll(async () => {
   try {
     const page = await browser.newPage();
     await page.setContent(html);
+    await page.evaluate(`(async () => {
+      const image = document.querySelector('#gradient-image');
+      const canvas = document.createElement('canvas');
+      canvas.width = canvas.height = 8;
+      canvas.getContext('2d').fillRect(0, 0, 8, 8);
+      image.src = canvas.toDataURL('image/png');
+      await image.decode();
+    })()`);
     await page.emulateMedia({ media: 'print' });
     await page.evaluate(`window.__pagedDone = false; window.PagedConfig = {
       auto: true, after: () => { window.__pagedDone = true; }
@@ -48,7 +56,7 @@ beforeAll(async () => {
       pages: [{ width: 595.28, height: 841.89 }],
       blocks,
     });
-    expect(reference.blocks).toHaveLength(8);
+    expect(reference.blocks).toHaveLength(12);
     pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true });
     expect((await readPdf(pdf)).pages.flatMap(page => page.items)).toEqual([]);
   } finally {
@@ -72,6 +80,11 @@ test.each([
   ['erased-path', 'a black rectangle erased by white'],
   ['empty-clip', 'a full-box rectangle under an empty even-odd clip'],
   ['band-hidden', 'content identical in colour to its enclosing band'],
+  [
+    'group-erased',
+    'black then white composited together in a half-opacity group',
+  ],
+  ['white-gradient', 'a white-to-white gradient'],
 ])('%s rejects %s as painting nothing', async (id, _regression) => {
   const expected = gt(id);
   const report = await checkPdf(pdf, expected);
@@ -127,6 +140,20 @@ test('a cancelled full-box path cannot anchor off-centre real ink', async () => 
 
 test('a contrasting logo on a coloured enclosing band remains verifiable', async () => {
   expect(await checkPdf(pdf, gt('band-logo'))).toEqual({
+    ok: true,
+    differences: [],
+  });
+});
+
+test('a visible red-to-blue gradient remains verifiable as ink', async () => {
+  expect(await checkPdf(pdf, gt('visible-gradient'))).toEqual({
+    ok: true,
+    differences: [],
+  });
+});
+
+test('an opaque raster image over a gradient band cannot cancel as the same unknown colour', async () => {
+  expect(await checkPdf(pdf, gt('gradient-image'))).toEqual({
     ok: true,
     differences: [],
   });

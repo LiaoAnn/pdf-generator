@@ -19,6 +19,13 @@ const sources = {
   overpaint: svg(`${rect} fill="black"/>${rect} fill="white"/>`),
   fillOpacity: svg(`${rect} fill-opacity="0.5"/>`),
   opacity: svg(`${rect} opacity="0.5"/>`),
+  nestedOpacity: svg(`<g opacity="0.5"><g opacity="0.5">${rect}/></g></g>`),
+  axial: svg(
+    `<defs><linearGradient id="linear"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs>${rect} fill="url(#linear)"/>`,
+  ),
+  radial: svg(
+    `<defs><radialGradient id="radial"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></radialGradient></defs>${rect} fill="url(#radial)"/>`,
+  ),
   clip: svg(
     '<defs><clipPath id="hole"><path clip-rule="evenodd" d="M10 20h60v40H10z M20 30h40v20H20z"/></clipPath></defs><rect width="100" height="100" clip-path="url(#hole)"/>',
   ),
@@ -181,12 +188,64 @@ test('black then white overpaint retains both colours in content-stream order in
     closeBox(paint.box, expected('overpaint', [10, 20, 70, 60]));
 });
 
-test.each(['fillOpacity', 'opacity'] as const)(
+test.each(['fillOpacity'] as const)(
   '%s preserves half-opacity instead of treating translucent paint as opaque',
   name => {
     expect(single(name).alpha).toBeCloseTo(0.5, 2);
+    expect(single(name).groups).toBeUndefined();
   },
 );
+
+test.each([
+  ['opacity', 1],
+  ['nestedOpacity', 2],
+] as const)(
+  '%s preserves transparency groups separately from the paint alpha',
+  (name, count) => {
+    const paint = single(name);
+    expect(paint.groups).toHaveLength(count);
+    expect(paint.alpha).toBe(1);
+    for (const group of paint.groups ?? [])
+      expect(group.alpha).toBeCloseTo(0.5, 2);
+    expect(new Set(paint.groups?.map(group => group.id)).size).toBe(count);
+  },
+);
+
+test('linear gradient retains axial colours and its page-to-shading geometry', () => {
+  const paint = single('axial');
+  expect(paint.color).toBeUndefined();
+  expect(paint.shading?.kind).toBe('axial');
+  const shading = paint.shading;
+  if (!shading) throw new Error('missing axial shading');
+  expect(shading.stops[0]).toEqual([0, '#ff0000']);
+  expect(shading.stops.at(-1)).toEqual([1, '#0000ff']);
+  const [a, b, c, d, e, f] = shading.toShading;
+  const [x0, y0, x1, y1] = expected('axial', [10, 20, 70, 60]);
+  const [dx, dy] = [
+    shading.to[0] - shading.from[0],
+    shading.to[1] - shading.from[1],
+  ];
+  for (const [x, offset] of [
+    [x0, 0],
+    [x1, 1],
+  ]) {
+    const y = (y0 + y1) / 2;
+    const sx = a * (x ?? NaN) + c * y + e - shading.from[0];
+    const sy = b * (x ?? NaN) + d * y + f - shading.from[1];
+    expect((sx * dx + sy * dy) / (dx * dx + dy * dy)).toBeCloseTo(
+      offset ?? NaN,
+      2,
+    );
+  }
+});
+
+test('radial gradient retains its radial shading instead of an unknown colour', () => {
+  const paint = single('radial');
+  expect(paint.color).toBeUndefined();
+  expect(paint.shading?.kind).toBe('radial');
+  expect(paint.shading?.stops[0]).toEqual([0, '#ff0000']);
+  expect(paint.shading?.stops.at(-1)).toEqual([1, '#0000ff']);
+});
 
 test('even-odd clip retains its hole geometry instead of just the clipping bounding rectangle', () => {
   const paint = single('clip');

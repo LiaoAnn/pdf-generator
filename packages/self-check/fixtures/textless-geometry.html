@@ -6,10 +6,12 @@
 html, body { margin: 0; padding: 0; }
 body { width: 340px; font-size: 0; }
 section { display: inline-block; vertical-align: top; box-sizing: border-box;
-  width: 140px; height: 140px; padding: 20px; margin: 0 24px 24px 0;
+  width: 140px; height: 120px; padding: 10px; margin: 0 24px 24px 0;
   break-inside: avoid; }
 svg { display: block; width: 100px; height: 100px; }
+img { display: block; width: 100px; height: 100px; }
 .band { background: #234567; }
+.gradient-band { background: linear-gradient(to right, red, blue); }
 </style></head><body>
 <section><svg aria-hidden="true" id="corner-path" data-gt="image" viewBox="0 0 100 100"><path d="M0 0h1v1h-1z M99 99h1v1h-1z"/></svg></section>
 <section><svg aria-hidden="true" id="cancelled-path" data-gt="image" viewBox="0 0 100 100"><path fill-rule="evenodd" d="M0 0h100v100h-100z M0 0h100v100h-100z"/></svg></section>
@@ -21,4 +23,8 @@ svg { display: block; width: 100px; height: 100px; }
 <section><svg aria-hidden="true" id="unanchored-path" data-gt="image" viewBox="0 0 100 100"><path fill-rule="evenodd" d="M0 0h100v100h-100z M0 0h100v100h-100z"/><rect x="10" y="20" width="60" height="10"/></svg></section>
 <section class="band"><svg aria-hidden="true" id="band-logo" data-gt="image" viewBox="0 0 100 100"><path fill="white" d="M10 10h80v80h-80z M30 30v40h40v-40z" fill-rule="evenodd"/></svg></section>
 <section class="band"><svg aria-hidden="true" id="band-hidden" data-gt="image" viewBox="0 0 100 100"><rect x="10" y="10" width="80" height="80" fill="#234567"/></svg></section>
+<section><svg aria-hidden="true" id="group-erased" data-gt="image" viewBox="0 0 100 100"><g opacity="0.5"><rect width="100" height="100" fill="black"/><rect width="100" height="100" fill="white"/></g></svg></section>
+<section><svg aria-hidden="true" id="white-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="white-gradient-fill"><stop stop-color="white"/><stop offset="1" stop-color="white"/></linearGradient></defs><rect width="100" height="100" fill="url(#white-gradient-fill)"/></svg></section>
+<section><svg aria-hidden="true" id="visible-gradient" data-gt="image" viewBox="0 0 100 100"><defs><linearGradient id="visible-gradient-fill"><stop stop-color="red"/><stop offset="1" stop-color="blue"/></linearGradient></defs><rect width="100" height="100" fill="url(#visible-gradient-fill)"/></svg></section>
+<section class="gradient-band"><img id="gradient-image" data-gt="image" alt=""/></section>
 </body></html>

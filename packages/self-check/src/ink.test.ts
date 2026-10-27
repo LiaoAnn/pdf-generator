@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Box } from './check.ts';
 import { type Ink, measureInk } from './ink.ts';
-import type { PdfPaint } from './pdf.ts';
+import type { PdfPaint, PdfShading } from './pdf.ts';
 
 const box: Box = [0, 0, 100, 100];
 const noBackground = () => false;
@@ -23,6 +23,120 @@ const paint = (bounds: Box, overrides: Partial<PdfPaint> = {}): PdfPaint => ({
   alpha: 1,
   clips: [],
   ...overrides,
+});
+
+const axial = (start: string, end: string): PdfShading => ({
+  kind: 'axial',
+  stops: [
+    [0, start],
+    [1, end],
+  ],
+  from: [0, 0],
+  to: [100, 0],
+  r0: 0,
+  r1: 0,
+  toShading: [1, 0, 0, 1, 0, 0],
+});
+
+test('group opacity composites black then white together before blending onto white', () => {
+  const groups = [{ id: 1, alpha: 0.5 }];
+  expectNoInk(
+    measureInk(
+      [paint(box, { groups }), paint(box, { groups, color: '#ffffff' })],
+      box,
+      0,
+      noBackground,
+    ),
+  );
+});
+
+test('a half-opacity group containing only black still leaves ink', () => {
+  expectInk(
+    measureInk(
+      [paint(box, { groups: [{ id: 1, alpha: 0.5 }] })],
+      box,
+      0,
+      noBackground,
+    ),
+    box,
+    [1, 1],
+  );
+});
+
+test('nested half-opacity groups blend black at one quarter opacity rather than one half', () => {
+  const background = paint(box, { color: '#bfbfbf' });
+  // Black at 0.5 × 0.5 over white rounds to 191 in every channel.
+  const paints = [
+    background,
+    paint(box, { color: '#ffffff' }),
+    paint(box, {
+      groups: [
+        { id: 1, alpha: 0.5 },
+        { id: 2, alpha: 0.5 },
+      ],
+    }),
+  ];
+  expectNoInk(measureInk(paints, box, 0, p => p === background));
+});
+
+test('a white-to-white axial gradient leaves no ink on white', () => {
+  expectNoInk(
+    measureInk(
+      [paint(box, { color: undefined, shading: axial('#ffffff', '#ffffff') })],
+      box,
+      0,
+      noBackground,
+    ),
+  );
+});
+
+test('an axial gradient counts only its left-half painted samples beyond colour rounding', () => {
+  const actual = measureInk(
+    [
+      paint([0, 0, 50, 100], {
+        color: undefined,
+        shading: axial('#ffffff', '#000000'),
+      }),
+    ],
+    box,
+    0,
+    noBackground,
+  );
+  expect(actual.box).toBeDefined();
+  expect(actual.box?.[0]).toBeGreaterThanOrEqual(0.25);
+  expect(actual.box?.[0]).toBeLessThan(1.5);
+  expect(actual.coverage[0]).toBeGreaterThan(0.48);
+  expect(actual.coverage[0]).toBeLessThan(0.5);
+  expect(actual.coverage[1]).toBe(1);
+});
+
+test('a solid matching its gradient background leaves no ink after background subtraction', () => {
+  const background = paint(box, {
+    color: undefined,
+    shading: axial('#123456', '#123456'),
+  });
+  expectNoInk(
+    measureInk(
+      [background, paint(box, { color: '#123456' })],
+      box,
+      0,
+      p => p === background,
+    ),
+  );
+});
+
+test('different unknown-colour paints cannot cancel foreground ink against its background', () => {
+  const background = paint(box, { color: undefined });
+  expectInk(
+    measureInk(
+      [background, paint(box, { color: undefined })],
+      box,
+      0,
+      p => p === background,
+    ),
+    box,
+    [1, 1],
+  );
 });
 
 function expectInk(
