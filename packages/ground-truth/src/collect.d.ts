@@ -2,4 +2,4 @@
 import type { Measurement } from './measurement.ts';
 
 /** Measures the paginated page; runs in the browser only (see collect.js). */
-export declare function collect(): Measurement;
+export declare function collect(): Promise<Measurement>;
