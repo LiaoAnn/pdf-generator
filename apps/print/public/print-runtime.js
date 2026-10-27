@@ -715,6 +715,38 @@
   /** Keys of `outsidePages()` on screen, once Paged.js has finished. */
   let outsideOnScreen = new Set();
 
+  // What the browser shows of each element, after every ancestor that clips
+  // it: an IntersectionObserver rooted at <html>. Every element is reported
+  // at the next rendering update; one that isn't within the time limit is
+  // missing from the map (not measured).
+  /** @param {Element[]} elements */
+  async function shownParts(elements) {
+    /** @type {Map<Element, IntersectionObserverEntry>} */
+    const seen = new Map();
+    const count = new Set(elements).size;
+    if (count === 0) return seen;
+    await new Promise(resolve => {
+      const observer = new IntersectionObserver(
+        entries => {
+          for (const entry of entries) seen.set(entry.target, entry);
+          if (seen.size >= count) {
+            observer.disconnect();
+            resolve(undefined);
+          }
+        },
+        // Without the margin, boxes on later pages read as clipped
+        // entirely (<html>'s box doesn't reach them in print media).
+        { root: document.documentElement, rootMargin: '1000000px' },
+      );
+      for (const element of elements) observer.observe(element);
+      setTimeout(() => {
+        observer.disconnect();
+        resolve(undefined);
+      }, 2000);
+    });
+    return seen;
+  }
+
   // The data-gt elements (and what is inside them) that an ancestor clips:
   // gt.json describes their whole box and text, the PDF shows only what the
   // clip leaves (T07-25). The browser says what it shows: an
@@ -758,29 +790,7 @@
       }
     });
     if (targets.length === 0) return [];
-    /** @type {Map<Element, IntersectionObserverEntry>} */
-    const seen = new Map();
-    // Every target is reported at the next rendering update; one that isn't
-    // within the time limit is reported as not measured.
-    await new Promise(resolve => {
-      const observer = new IntersectionObserver(
-        entries => {
-          for (const entry of entries) seen.set(entry.target, entry);
-          if (seen.size >= targets.length) {
-            observer.disconnect();
-            resolve(undefined);
-          }
-        },
-        // Without the margin, boxes on later pages read as clipped
-        // entirely (<html>'s box doesn't reach them in print media).
-        { root: document.documentElement, rootMargin: '1000000px' },
-      );
-      for (const { element } of targets) observer.observe(element);
-      setTimeout(() => {
-        observer.disconnect();
-        resolve(undefined);
-      }, 2000);
-    });
+    const seen = await shownParts(targets.map(({ element }) => element));
     /** @type {string[]} */
     const clipped = [];
     for (const { element, page, area, copy } of targets) {
@@ -848,16 +858,72 @@
     return rows;
   }
 
+  // The text nodes of KaTeX's MathML copy of a formula that the browser hides
+  // (T07-26), which the PDF doesn't print: text in a MathML element inside a
+  // .katex-mathml element, not itself marked data-gt, of which at most 1px
+  // shows (as clippedContent() decides), and that lies across within the
+  // element's box: CSS can size a MathML element down to 1px while its text
+  // paints beyond it. Only the horizontal extent is compared, as a MathML
+  // box is as tall as its glyphs' ink and the text's rects as tall as the
+  // font. What the browser shows decides, not the class or the CSS.
+  async function hiddenCopies() {
+    /** @type {Map<Element, Text[]>} */
+    const texts = new Map();
+    for (const page of pagedPages()) {
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const element = node.parentElement;
+        if (
+          element?.namespaceURI !== 'http://www.w3.org/1998/Math/MathML' ||
+          element.hasAttribute('data-gt') ||
+          !element.closest('.katex-mathml')
+        ) {
+          continue;
+        }
+        const inElement = texts.get(element) ?? [];
+        inElement.push(/** @type {Text} */ (node));
+        texts.set(element, inElement);
+      }
+    }
+    const seen = await shownParts([...texts.keys()]);
+    /** @type {Set<Node>} */
+    const hidden = new Set();
+    for (const [element, nodes] of texts) {
+      const entry = seen.get(element);
+      if (!entry) continue;
+      const shown = entry.intersectionRect;
+      if (entry.isIntersecting && (shown.width > 1 || shown.height > 1)) {
+        continue;
+      }
+      const box = entry.boundingClientRect;
+      for (const node of nodes) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        const rects = [...range.getClientRects()];
+        if (
+          rects.length > 0 &&
+          rects.every(
+            rect => rect.left >= box.left - 1 && rect.right <= box.right + 1,
+          )
+        ) {
+          hidden.add(node);
+        }
+      }
+    }
+    return hidden;
+  }
+
   // Per page, each [data-gt] element's visible text nodes outside KaTeX's
-  // MathML copy, each with its client rects (PDF points from the page's top
+  // hidden MathML copy (hiddenCopies()), each with its client rects (PDF points from the page's top
   // left), as the PDF's text layer should contain them there (T03 Must 4, PDF
   // part). A text is matched only within its own rects, so a formula's single
   // letters (T07-6) or a neighbouring table cell (T07-12) can't lend it
   // letters. The rects are where the text is, also where it overflows its
   // element or is positioned outside it: whether text lies in its block's box
   // is the self-check's to report (T14), not this guard's.
-  function expectedText() {
+  async function expectedText() {
     const ptPerPx = 0.75;
+    const hidden = await hiddenCopies();
     return pagedPages().map(page => {
       const origin = page.getBoundingClientRect();
       /** @type {Map<Element, { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[]>} */
@@ -866,9 +932,9 @@
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
         const element = node.parentElement?.closest('[data-gt]');
         if (!element) continue;
-        // KaTeX's MathML copy is clipped to 1px for screen readers; only its
-        // visible .katex-html is printed, which is also what T13 reads.
-        if (node.parentElement?.closest('.katex-mathml')) continue;
+        // KaTeX's hidden MathML copy is for screen readers; only its visible
+        // .katex-html is printed, which is also what T13 reads.
+        if (hidden.has(node)) continue;
         const text = (node.textContent ?? '')
           .normalize('NFKC')
           .replace(/\s/g, '');
@@ -1170,7 +1236,7 @@
         .slice(0, 50),
       clippedContent: await clippedContent(),
       plainInk: plainInk(),
-      expectedText: expectedText(),
+      expectedText: await expectedText(),
     };
   }
 
