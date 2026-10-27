@@ -19,6 +19,9 @@ const sources = {
   maskTransfer: svg(
     '<defs><mask id="transfer-mask"><g opacity="0.5"><rect width="100" height="100" fill="white"/><rect width="100" height="100" fill="black"/></g></mask></defs><rect width="100" height="100" mask="url(#transfer-mask)"/>',
   ),
+  maskedGroup: svg(
+    '<defs><mask id="group-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100"><rect width="100" height="100" fill="white" fill-opacity="0.5"/></mask></defs><g mask="url(#group-mask)"><rect width="100" height="100" fill="black"/><rect width="100" height="100" fill="white"/></g>',
+  ),
   pattern: svg(
     `<defs><pattern id="p" width="10" height="10" patternUnits="userSpaceOnUse"><rect width="10" height="10" fill="white"/></pattern></defs>${rect} fill="url(#p)"/>`,
   ),
@@ -362,9 +365,14 @@ test('a repeating CSS PNG background contains an image paint inside its tile', (
 });
 
 test('a Chromium soft-mask transfer map survives readPdf as 256 numeric bytes', () => {
-  const masked = paints('maskTransfer').find(paint => paint.mask);
+  const masked = paints('maskTransfer')
+    .flatMap(paint => [
+      paint.mask,
+      ...(paint.groups?.map(group => group.mask) ?? []),
+    ])
+    .find(mask => mask !== undefined);
   expect(masked, 'fixture must exercise a real soft mask').toBeDefined();
-  const transfer = masked?.mask?.transfer;
+  const transfer = masked?.transfer;
   expect(transfer).toHaveLength(256);
   expect(
     transfer?.every(
@@ -374,6 +382,23 @@ test('a Chromium soft-mask transfer map survives readPdf as 256 numeric bytes', 
   // Chromium's inversion must survive too, not merely an invented identity map.
   expect(transfer?.[0]).toBe(255);
   expect(transfer?.[255]).toBe(0);
+});
+
+test('a Chromium masked SVG group stores the inherited soft mask on the group, never on each child paint', () => {
+  const children = paints('maskedGroup');
+  expect(children.map(p => p.color)).toEqual(
+    expect.arrayContaining(['#000000', '#ffffff']),
+  );
+  for (const child of children) {
+    // Skia can split the SVG into more than one masked PDF group.
+    const group = child.groups?.find(group => group.mask);
+    expect(group, 'mask must belong to the composited group').toBeDefined();
+    expect(group?.mask?.paints.length).toBeGreaterThan(0);
+    expect(
+      child.mask,
+      'inherited mask must reset inside the group',
+    ).toBeUndefined();
+  }
 });
 
 async function largePngDocument(different: boolean) {

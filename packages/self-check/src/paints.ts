@@ -1,6 +1,7 @@
 // Reads what a page paints besides text, with its geometry and colour, from
 // pdf.js's operator list (T14-9): fills, strokes, images, gradients, meshes,
 // tiling patterns, transparency groups and soft masks.
+
 import {
   asMatrix,
   asRect,
@@ -12,6 +13,7 @@ import {
   multiply,
   type Rect,
 } from './geometry.ts';
+import { maxGroupDepth } from './ink.ts';
 import type {
   PdfGroup,
   PdfImage,
@@ -385,8 +387,9 @@ export function readPaints(
     );
     if (!(x0 <= x1 && y0 <= y1)) return;
     let colour: Partial<PdfPaint> = { unmeasured: true };
-    if (state.mask === 'unmeasured') colour = { unmeasured: true };
-    else if (typeof source === 'string') colour = { color: source };
+    if (state.mask === 'unmeasured' || state.groups.length > maxGroupDepth) {
+      colour = { unmeasured: true };
+    } else if (typeof source === 'string') colour = { color: source };
     else if (source && 'ir' in source) {
       colour = shadingOf(source.ir, multiply(frame, source.matrix)) ?? colour;
     } else if (source && 'tile' in source) colour = { tile: source.tile };
@@ -612,11 +615,19 @@ export function readPaints(
         } else {
           // A transparency group is composited, then painted at the alpha
           // in force when it starts, which inside it starts again at 1.
+          // The soft mask in force masks the composited group, once;
+          // inside it none is in force until one is set there.
+          const mask = state.mask;
           groupKinds.push(undefined);
           state.groups = [
             ...state.groups,
-            { id: groupCount++, alpha: state.fillAlpha },
+            {
+              id: groupCount++,
+              alpha: state.fillAlpha,
+              ...(mask && mask !== 'unmeasured' ? { mask } : {}),
+            },
           ];
+          state.mask = mask === 'unmeasured' ? mask : undefined;
         }
         state.fillAlpha = 1;
         state.strokeAlpha = 1;

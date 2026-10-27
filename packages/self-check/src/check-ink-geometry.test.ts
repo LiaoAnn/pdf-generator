@@ -1,9 +1,129 @@
-import { readFile } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { chromium } from 'playwright-core';
-import { beforeAll, expect, test } from 'vitest';
+import { beforeAll, describe, expect, test } from 'vitest';
 import { checkPdf, readPdf } from './index.ts';
+
+test.each([
+  { alpha: 0.5, overpaint: true },
+  { alpha: 0.25, overpaint: true },
+  { alpha: 0.5, overpaint: false },
+])(
+  'masked group at $alpha with white overpaint=$overpaint is judged after compositing, without a border frame',
+  async ({ alpha, overpaint }) => {
+    const html = (
+      await readFile(
+        new URL('../fixtures/masked-group.html', import.meta.url),
+        'utf8',
+      )
+    )
+      .replace('MASK_ALPHA', String(alpha))
+      .replace(
+        '<!-- OVERPAINT -->',
+        overpaint ? '<rect width="100" height="100" fill="white" />' : '',
+      );
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(html);
+      await page.emulateMedia({ media: 'print' });
+      await page.evaluate(`window.__pagedDone = false; window.PagedConfig = {
+      auto: true, after: () => { window.__pagedDone = true; }
+    };`);
+      await page.addScriptTag({
+        path: fileURLToPath(
+          new URL('../dist/paged.polyfill.js', import.meta.resolve('pagedjs')),
+        ),
+      });
+      await page.waitForFunction('window.__pagedDone === true');
+      await page.evaluate('document.fonts.ready');
+      expect(await page.locator('.pagedjs_page').count()).toBe(1);
+      const bbox = await page.evaluate(`(() => {
+      const el = document.querySelector('.pagedjs_pages [data-gt]');
+      const r = el.getBoundingClientRect();
+      const paper = el.closest('.pagedjs_page').getBoundingClientRect();
+      return [r.left - paper.left, r.top - paper.top, r.right - paper.left, r.bottom - paper.top].map(v => v * .75);
+    })()`);
+      expect(bbox).toEqual([30, 30, 105, 105]);
+      const expected = gtSchema.parse({
+        schemaVersion: 1,
+        source: {
+          templateId: 'masked-group',
+          templateVersion: 1,
+          seed: 'T14-9-r9',
+          index: 0,
+        },
+        pages: [{ width: 240, height: 300 }],
+        blocks: [
+          {
+            id: 'masked-group',
+            type: 'image',
+            page: 1,
+            order: 0,
+            text: '',
+            bbox,
+          },
+        ],
+      });
+      const printed = await page.pdf({
+        preferCSSPageSize: true,
+        printBackground: true,
+      });
+      const directory = await mkdtemp(join(tmpdir(), 'masked-group-r9-'));
+      const input = join(directory, 'group.pdf');
+      await writeFile(input, printed);
+      const rendered = await promisify(execFile)(process.execPath, [
+        fileURLToPath(new URL('../../dev-tools/src/cli.ts', import.meta.url)),
+        input,
+      ]);
+      expect(rendered.stdout.trim()).toBe(join(directory, 'group-p1.png'));
+      const png = await readFile(join(directory, 'group-p1.png'));
+      // Decode the actual pdf-to-png output, not a screenshot of the source SVG.
+      // Scan the whole page too: a one-pixel fringe outside the box must fail.
+      const pixels = await page.evaluate(`(async () => {
+      const image = new Image();
+      image.src = 'data:image/png;base64,${Buffer.from(png).toString('base64')}';
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(image, 0, 0);
+      const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let nonwhite = 0, inside = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        if (data[i] !== 255 || data[i + 1] !== 255 || data[i + 2] !== 255 || data[i + 3] !== 255) {
+          nonwhite++;
+          const x = (i / 4) % canvas.width, y = Math.floor(i / 4 / canvas.width);
+          if (x >= 60 && x < 210 && y >= 60 && y < 210) inside++;
+        }
+      }
+      return { width: canvas.width, height: canvas.height, nonwhite, inside };
+    })()`);
+      expect(pixels).toEqual({
+        width: 480,
+        height: 600,
+        nonwhite: overpaint ? 0 : 22500,
+        inside: overpaint ? 0 : 22500,
+      });
+      const report = await checkPdf(printed, expected);
+      if (overpaint) {
+        expect(report.ok).toBe(false);
+        expect(report.differences).toEqual([
+          expect.objectContaining({ kind: 'ink', blockId: 'masked-group' }),
+        ]);
+      } else {
+        expect(report).toEqual({ ok: true, differences: [] });
+      }
+    } finally {
+      await browser.close();
+    }
+  },
+);
 
 let pdf: Uint8Array;
 let reference: GroundTruth;
@@ -234,5 +354,89 @@ test('an opaque raster image over a gradient band cannot cancel as the same unkn
   expect(await checkPdf(pdf, gt('gradient-image'))).toEqual({
     ok: true,
     differences: [],
+  });
+});
+
+// Small real Chromium PDFs: only one black rectangle, no fonts or raster images.
+describe.each([3, 40])('%i nested SVG transparency groups', depth => {
+  let printed: Uint8Array;
+  const expected = gtSchema.parse({
+    schemaVersion: 1,
+    source: {
+      templateId: 'nested-groups',
+      templateVersion: 1,
+      seed: 'T14-9-r11',
+      index: 0,
+    },
+    pages: [{ width: 90, height: 90 }],
+    blocks: [
+      {
+        id: 'nested-rect',
+        type: 'image',
+        page: 1,
+        order: 0,
+        text: '',
+        // SVG rectangle at (20,20), 80 by 80 CSS pixels; 0.75 pt per px.
+        bbox: [15, 15, 75, 75],
+      },
+    ],
+  });
+
+  beforeAll(async () => {
+    const browser = await chromium.launch({ headless: true });
+    try {
+      const page = await browser.newPage();
+      await page.setContent(`
+        <style>@page { size: 120px 120px; margin: 0 } body { margin: 0 }</style>
+        <svg width="120" height="120" viewBox="0 0 120 120">
+          ${'<g opacity="0.99">'.repeat(depth)}
+          <rect x="20" y="20" width="80" height="80" fill="black"/>
+          ${'</g>'.repeat(depth)}
+        </svg>`);
+      printed = await page.pdf({
+        preferCSSPageSize: true,
+        printBackground: true,
+      });
+      expect(printed.byteLength).toBeLessThan(20_000);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test('readPdf retains the rectangle and rejects excessive group depth instead of trusting its black colour', async () => {
+    const document = await readPdf(printed);
+    expect(document.pages).toHaveLength(1);
+    const paints = document.pages[0]?.paints;
+    expect(paints).toHaveLength(1);
+    const rect = paints?.[0];
+    expect(rect?.box).toEqual([
+      expect.closeTo(15, 4),
+      expect.closeTo(15, 4),
+      expect.closeTo(75, 4),
+      expect.closeTo(75, 4),
+    ]);
+    if (depth > 32) {
+      expect(rect?.unmeasured).toBe(true);
+    } else {
+      expect(rect?.unmeasured).not.toBe(true);
+      expect(rect?.groups).toHaveLength(depth);
+      expect(rect?.color).toBe('#000000');
+    }
+  });
+
+  test('checkPdf reports cannot-measure for excessive depth while accepting shallow transparent ink', async () => {
+    const report = await checkPdf(printed, expected);
+    if (depth > 32) {
+      expect(report.ok).toBe(false);
+      expect(report.differences).toEqual([
+        expect.objectContaining({
+          kind: 'ink',
+          blockId: 'nested-rect',
+          message: expect.stringContaining("can't measure"),
+        }),
+      ]);
+    } else {
+      expect(report).toEqual({ ok: true, differences: [] });
+    }
   });
 });

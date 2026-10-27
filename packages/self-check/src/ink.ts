@@ -28,6 +28,11 @@ const step = 0.25;
  * same spacing, so its size changes the time it takes, not the answer.
  */
 const bandSamples = 1 << 18;
+/**
+ * The most transparency groups a paint may be nested in to be measured:
+ * each open group holds a layer, and the band shrinks so all of them fit.
+ */
+export const maxGroupDepth = 32;
 const white = 0xffffff;
 
 /** Per row, the sample columns a shape covers: `[c0, c1, c0, c1, …]`, c1 exclusive. */
@@ -317,7 +322,11 @@ function composeAt(paints: readonly PdfPaint[], x: number, y: number): Sample {
     const under = stack[stack.length - 1];
     if (!layer?.group || !under || !layer.sample) return;
     const [color, alpha] = layer.sample;
-    under.sample = over(under.sample, [color, alpha * layer.group.alpha]);
+    const { mask } = layer.group;
+    under.sample = over(under.sample, [
+      color,
+      alpha * layer.group.alpha * (mask ? maskAt(mask, x, y) : 1),
+    ]);
   };
   for (const paint of paints) {
     const groups = paint.groups ?? [];
@@ -350,6 +359,19 @@ const readableMask = (mask: PdfMask | undefined) =>
   !mask?.transfer ||
   (mask.transfer.length === 256 &&
     mask.transfer.every(n => typeof n === 'number' && n >= 0 && n <= 255));
+
+/**
+ * Whether every soft mask a paint is drawn through, its groups' included,
+ * also inside its tile and masks, is readable.
+ */
+function readable(paint: PdfPaint): boolean {
+  const masks = [paint.mask, ...(paint.groups ?? []).map(g => g.mask)];
+  return (
+    masks.every(
+      mask => readableMask(mask) && (mask?.paints ?? []).every(readable),
+    ) && (paint.tile?.paints ?? []).every(readable)
+  );
+}
 
 /** What a soft mask lets through at (x, y), 0 to 1. */
 function maskAt(mask: PdfMask, x: number, y: number): number {
@@ -456,7 +478,10 @@ export function measureInk(
       color:
         paint.color !== undefined && !paint.mask ? rgb(paint.color) : undefined,
       background: isBackground(paint),
-      hidden: paint.unmeasured === true || !readableMask(paint.mask),
+      hidden:
+        paint.unmeasured === true ||
+        (paint.groups?.length ?? 0) > maxGroupDepth ||
+        !readable(paint),
     }));
   const inkCols = new Uint8Array(cols);
   const inkRows = new Uint8Array(rows);
@@ -468,7 +493,13 @@ export function measureInk(
     return at >= b0 && at <= b1;
   };
   let unmeasured = false;
-  const bandRows = Math.max(1, Math.floor(bandSamples / cols));
+  // Every open group holds a layer of the band: the deepest nesting sizes it.
+  const depth = relevant.reduce(
+    (deepest, { paint, hidden }) =>
+      hidden ? deepest : Math.max(deepest, paint.groups?.length ?? 0),
+    0,
+  );
+  const bandRows = Math.max(1, Math.floor(bandSamples / (cols * (depth + 1))));
   for (let r0 = 0; r0 < rows; r0 += bandRows) {
     const grid: Grid = {
       ox: region[0],
@@ -520,16 +551,25 @@ export function measureInk(
         const layer = stack.pop();
         const under = stack[stack.length - 1];
         if (!layer?.group || !under) return;
+        const { alpha: groupAlpha, mask } = layer.group;
         for (let i = 0; i < n; i++) {
           const alpha = layer.alpha[i] ?? 0;
-          if (alpha > 0) {
-            composite(
-              under,
-              i,
-              layer.color[i] ?? white,
-              alpha * layer.group.alpha,
-            );
-          }
+          if (alpha <= 0) continue;
+          // The group's soft mask, at this sample's point.
+          const r = Math.floor(i / cols);
+          const masked = mask
+            ? maskAt(
+                mask,
+                grid.ox + (i - r * cols + 0.5) * step,
+                grid.oy + (r + 0.5) * step,
+              )
+            : 1;
+          composite(
+            under,
+            i,
+            layer.color[i] ?? white,
+            alpha * groupAlpha * masked,
+          );
         }
       };
       relevant.forEach(({ paint, color, background, hidden }, k) => {

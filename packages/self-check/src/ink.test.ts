@@ -1,7 +1,7 @@
 import { expect, test } from 'vitest';
 import type { Box } from './check.ts';
 import { type Ink, measureInk } from './ink.ts';
-import type { PdfPaint, PdfShading } from './pdf.ts';
+import type { PdfGroup, PdfPaint, PdfShading } from './pdf.ts';
 
 const box: Box = [0, 0, 100, 100];
 const noBackground = () => false;
@@ -140,6 +140,138 @@ const tilePaint = (paints: PdfPaint[]) =>
     },
   });
 
+// These paths exercise both the page compositor and composeAt (tiles/masks).
+for (const context of ['page', 'tile', 'mask'] as const) {
+  for (const luminosity of [true, false]) {
+    const grouped = (overpaint: boolean, transfer?: number[]) => {
+      const bounds: Box = context === 'tile' ? [0, 0, 4, 4] : box;
+      const groups: PdfGroup[] = [
+        {
+          id: 91,
+          alpha: 1,
+          mask: {
+            paints: [paint(bounds, { color: '#ffffff', alpha: 0.5 })],
+            luminosity,
+            backdrop: '#000000',
+            ...(transfer ? { transfer } : {}),
+          },
+        },
+      ];
+      return [
+        paint(bounds, { groups }),
+        ...(overpaint ? [paint(bounds, { groups, color: '#ffffff' })] : []),
+      ];
+    };
+    const wrap = (paints: PdfPaint[]): PdfPaint[] =>
+      context === 'tile'
+        ? [tilePaint(paints)]
+        : context === 'mask'
+          ? [
+              paint(box, {
+                mask: { paints, luminosity: true, backdrop: '#000000' },
+              }),
+            ]
+          : paints;
+
+    test(`group mask composites black then white once in ${context} (luminosity=${luminosity})`, () => {
+      const actual = measureInk(wrap(grouped(true)), box, 0, noBackground);
+      // In a luminosity mask, the composited white group reveals black.
+      if (context === 'mask') expectInk(actual, box, [1, 1]);
+      else expectNoInk(actual);
+    });
+
+    test(`group mask preserves black-only ink in ${context} (luminosity=${luminosity})`, () => {
+      const actual = measureInk(wrap(grouped(false)), box, 0, noBackground);
+      if (context === 'mask') expectNoInk(actual);
+      else expectInk(actual, box, [1, 1]);
+    });
+
+    test(`malformed group-mask transfer fails closed in ${context} (luminosity=${luminosity})`, () => {
+      const actual = measureInk(
+        wrap(grouped(false, [255])),
+        box,
+        0,
+        noBackground,
+      );
+      expect(actual.unmeasured).toBe(true);
+      expectNoInk(actual);
+    });
+  }
+}
+
+test.each(['page', 'tile'] as const)(
+  'group mask multiplies paint alpha and group alpha exactly once in %s',
+  context => {
+    const bounds: Box = context === 'tile' ? [0, 0, 4, 4] : box;
+    const background = paint(box, { color: '#dfdfdf' });
+    const inner = paint(bounds, {
+      alpha: 0.5,
+      groups: [
+        {
+          id: 92,
+          alpha: 0.5,
+          mask: {
+            paints: [paint(bounds, { color: '#ffffff', alpha: 0.5 })],
+            luminosity: false,
+            backdrop: '#000000',
+          },
+        },
+      ],
+    });
+    // Black at .5 × .5 × .5 over white rounds to #dfdfdf.
+    expectNoInk(
+      measureInk(
+        [
+          background,
+          paint(box, { color: '#ffffff' }),
+          context === 'tile' ? tilePaint([inner]) : inner,
+        ],
+        box,
+        0,
+        p => p === background,
+      ),
+    );
+  },
+);
+
+test.each([true, false])(
+  'group mask inside a luminosity mask attenuates the composited white exactly once (luminosity=%s)',
+  luminosity => {
+    const background = paint(box, { color: '#808080' });
+    const groups: PdfGroup[] = [
+      {
+        id: 93,
+        alpha: 1,
+        mask: {
+          paints: [paint(box, { color: '#ffffff', alpha: 0.5 })],
+          luminosity,
+          backdrop: '#000000',
+        },
+      },
+    ];
+    const foreground = paint(box, {
+      mask: {
+        paints: [
+          paint(box, { groups }),
+          paint(box, { groups, color: '#ffffff' }),
+        ],
+        luminosity: true,
+        backdrop: '#000000',
+      },
+    });
+    // The group's final white at half opacity yields a half-strength mask;
+    // black through it over white matches #808080 (within byte rounding).
+    expectNoInk(
+      measureInk(
+        [background, paint(box, { color: '#ffffff' }), foreground],
+        box,
+        0,
+        p => p === background,
+      ),
+    );
+  },
+);
+
 test('a tile of only white rectangles adds no ink', () => {
   expectNoInk(
     measureInk(
@@ -265,6 +397,53 @@ test.each(['absent', 'outside', 'clipped-out'] as const)(
     expect(actual.unmeasured).toBe(false);
   },
 );
+
+const nestedGroups = (depth: number, alpha: number): PdfGroup[] =>
+  Array.from({ length: depth }, (_, id) => ({ id: id + 1, alpha }));
+
+test.each([1, 0.99])(
+  '32 nested transparency groups at alpha %s retain full-box ink instead of rejecting the allowed boundary',
+  alpha => {
+    const actual = measureInk(
+      [paint(box, { groups: nestedGroups(32, alpha) })],
+      box,
+      0,
+      noBackground,
+    );
+    expectInk(actual, box, [1, 1]);
+    expect(actual.unmeasured).toBe(false);
+  },
+);
+
+test.each([false, true])(
+  '33 nested transparency groups fail closed instead of certifying ink or exposing black underneath (underpaint=%s)',
+  underpaint => {
+    const actual = measureInk(
+      [
+        ...(underpaint ? [paint(box)] : []),
+        paint(box, { groups: nestedGroups(33, 1) }),
+      ],
+      box,
+      0,
+      noBackground,
+    );
+    expect(actual.unmeasured).toBe(true);
+    expectNoInk(actual);
+  },
+);
+
+test('32 nested groups in a 600 by 800 box preserve a small square at quarter-point precision instead of coarsening samples', () => {
+  const largeBox: Box = [0, 0, 600, 800];
+  const dot: Box = [321.25, 456.5, 322.25, 457.5];
+  const actual = measureInk(
+    [paint(dot, { groups: nestedGroups(32, 1) })],
+    largeBox,
+    0,
+    noBackground,
+  );
+  expectInk(actual, dot, [1 / 600, 1 / 800], largeBox);
+  expect(actual.unmeasured).toBe(false);
+});
 
 test('group opacity composites black then white together before blending onto white', () => {
   const groups = [{ id: 1, alpha: 0.5 }];

@@ -60,6 +60,12 @@ export interface PdfShape {
 export interface PdfGroup {
   id: number;
   alpha: number;
+  /**
+   * The soft mask in force when the group is painted: it applies to the
+   * composited group, once, not to each of its paints (inside the group no
+   * mask is in force until one is set there).
+   */
+  mask?: PdfMask;
 }
 
 /**
