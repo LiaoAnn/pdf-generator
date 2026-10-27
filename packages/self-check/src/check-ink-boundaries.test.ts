@@ -31,6 +31,75 @@ async function check(marks: PdfMark[]) {
   return checkPdf(new Uint8Array(), gt);
 }
 
+test.each<{
+  why: string;
+  marks: PdfMark[];
+  inkBox: Box;
+}>([
+  {
+    why: '49.9% on x and less than half on y',
+    marks: [mark([50, 69, 99.9, 71])],
+    inkBox: [50, 69, 99.9, 71],
+  },
+  {
+    why: '49.9% on y and less than half on x',
+    marks: [mark([99, 50, 101, 69.96])],
+    inkBox: [99, 50, 101, 69.96],
+  },
+  {
+    why: 'overlapping projections sum past half but their union covers only 40%',
+    marks: [mark([50, 69, 80, 71]), mark([70, 69, 90, 71])],
+    inkBox: [50, 69, 90, 71],
+  },
+  {
+    why: 'a full-box clip cannot inflate a tiny painted image',
+    marks: [
+      { kind: 'clip', box: bbox },
+      { kind: 'image', box: [99, 69, 101, 71] },
+    ],
+    inkBox: [99, 69, 101, 71],
+  },
+  {
+    why: 'the 1pt containment tolerance cannot count paint outside the box toward half',
+    marks: [mark([49.1, 69, 99.2, 71])],
+    inkBox: [49.1, 69, 99.2, 71],
+  },
+])('$why reports insufficient ink coverage', async ({ marks, inkBox }) => {
+  expect(await check([...context, ...marks])).toEqual({
+    ok: false,
+    differences: [
+      {
+        kind: 'ink',
+        page: 1,
+        blockId: 'blank',
+        bbox,
+        inkBox,
+        message: expect.any(String),
+      },
+    ],
+  });
+});
+
+test.each<{ why: string; marks: PdfMark[] }>([
+  {
+    why: 'exactly half of x with a thin path',
+    marks: [mark([50, 69, 100, 71])],
+  },
+  {
+    why: 'exactly half of y with a narrow image',
+    marks: [{ kind: 'image', box: [99, 50, 101, 70] }],
+  },
+  {
+    why: 'disconnected projections whose union covers exactly half of x',
+    marks: [mark([120, 69, 150, 71]), mark([50, 69, 70, 71])],
+  },
+])('$why is enough to verify a textless box', async ({ marks }) => {
+  expect(await check([...context, ...marks])).toEqual({
+    ok: true,
+    differences: [],
+  });
+});
+
 test('page clip and enclosing background alone cannot verify an invisible field', async () => {
   const result = await check(context);
   expect(result.ok).toBe(false);

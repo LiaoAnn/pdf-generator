@@ -113,6 +113,49 @@ function closeBox(actual: Box, expected: Box) {
 }
 
 // Acceptance first: public checkPdf with real Paged.js/Chromium PDFs.
+test.each(['centred-dot', 'corner-dots'])(
+  '%s cannot verify a large textless image with negligible projected ink coverage',
+  async id => {
+    const expected = gt([id]);
+    const block = expected.blocks[0];
+    if (!block) throw new Error('missing block');
+    const marks = (await readPdf(pdf('normal'))).pages[0]?.marks.filter(
+      mark =>
+        mark.kind !== 'clip' &&
+        mark.box[0] >= block.bbox[0] - 1 &&
+        mark.box[1] >= block.bbox[1] - 1 &&
+        mark.box[2] <= block.bbox[2] + 1 &&
+        mark.box[3] <= block.bbox[3] + 1,
+    );
+    // Guard the attack: two separate tiny marks, not one full-box path.
+    expect(marks).toHaveLength(id === 'centred-dot' ? 1 : 2);
+    for (const mark of marks ?? []) {
+      expect(mark.box[2] - mark.box[0]).toBeLessThanOrEqual(1);
+      expect(mark.box[3] - mark.box[1]).toBeLessThanOrEqual(1);
+    }
+    const result = await checkPdf(pdf('normal'), expected);
+    expect(result.ok).toBe(false);
+    expect(result.differences.map(diagnostic)).toEqual([
+      {
+        kind: 'ink',
+        page: 1,
+        blockId: id,
+        bbox: block.bbox,
+        inkBox: expect.any(Array),
+      },
+    ]);
+    const difference = result.differences[0];
+    if (difference?.kind !== 'ink' || !difference.inkBox || !marks?.length)
+      throw new Error('expected painted ink diagnostic');
+    closeBox(difference.inkBox, [
+      Math.min(...marks.map(mark => mark.box[0])),
+      Math.min(...marks.map(mark => mark.box[1])),
+      Math.max(...marks.map(mark => mark.box[2])),
+      Math.max(...marks.map(mark => mark.box[3])),
+    ]);
+  },
+);
+
 test.each(['page-frame', 'body-padding'])(
   '%s shift rejects both the text-free PNG and empty checkbox using the unshifted twin GT',
   async name => {
