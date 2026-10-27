@@ -38,6 +38,12 @@ export {
 /** What the print runtime (public/print-runtime.js) reports once Paged.js is done. */
 export interface PrintReadyState {
   pageCount: number;
+  /**
+   * Set when the runtime stopped Paged.js reading the pack's `@import`s: the
+   * loop or too many imported sheets, with the chain of pack paths that led
+   * there (T07-29). The other fields are then empty.
+   */
+  importLoop?: string[];
   /** The largest Paged.js page, in CSS px. */
   pageSize?: { width: number; height: number };
   /** `"<family> <weight>: <status>"` of every face that is not loaded. */
@@ -132,7 +138,8 @@ export type RenderErrorCode =
   | 'layout_unsettled'
   | 'request_blocked'
   | 'print_overflow'
-  | 'content_clipped';
+  | 'content_clipped'
+  | 'css_import_loop';
 
 /** A render that must not produce a PDF. */
 export class RenderError extends Error {
@@ -169,13 +176,14 @@ async function withinTimeout<R>(
 /**
  * Waits until Paged.js has finished paginating a page prepared with
  * `prepareHtml` (its `PagedConfig.after`, T03 Must 1). Rejects with a
- * `pagination_timeout` RenderError after `timeoutMs`.
+ * `pagination_timeout` RenderError after `timeoutMs`, and with
+ * `css_import_loop` when the runtime stopped Paged.js reading the imports.
  */
 export async function waitForPrintReady(
   page: PrintPage,
   timeoutMs = defaultTimeoutMs,
 ): Promise<PrintReadyState> {
-  return withinTimeout(
+  const ready = await withinTimeout(
     page.evaluate(
       () =>
         (
@@ -191,6 +199,14 @@ export async function waitForPrintReady(
         `Paged.js did not finish within ${timeoutMs} ms`,
       ),
   );
+  if (ready.importLoop?.length) {
+    throw new RenderError(
+      'css_import_loop',
+      'The stylesheets import each other in a loop or import too many stylesheets',
+      ready.importLoop,
+    );
+  }
+  return ready;
 }
 
 export interface RenderOptions<T> {

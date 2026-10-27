@@ -307,6 +307,79 @@
     await Promise.all(faces.map(face => face.load().catch(() => undefined)));
   }
 
+  // At most this many imported stylesheets, and this much imported CSS text,
+  // per print: a pack's files total at most 24 MiB (packLimits in
+  // src/pack-files.ts), so only a sheet imported over and over gets past
+  // either.
+  const maxImports = 256;
+  const maxImportedChars = 24 * 1024 * 1024;
+  /** @param {string} href a sheet's URL, as Paged.js loads it */
+  const packPath = href => {
+    const url = new URL(href, location.href);
+    const path = url.pathname.replace(/^\/pack\/[^/]+\//, '');
+    try {
+      return decodeURIComponent(path);
+    } catch {
+      return path;
+    }
+  };
+
+  // Paged.js 0.4.3's Polisher.convertViaSheet loads every sheet a sheet
+  // imports, recursively, with no record of what it has loaded: a loop of
+  // @imports, which the upload check misses wherever Paged.js reads an import
+  // it doesn't (T06-4), loads sheets until the print times out. Paged.js
+  // converts one sheet at a time, so the sheets being converted are the chain
+  // of imports that led to this one. A sheet already on it closes a loop;
+  // too many imported sheets is fan-out. Either stops the conversion and
+  // reports the chain through `ready` (T07-29).
+  function guardImports() {
+    const Polisher = /** @type {any} */ (window).Paged.Polisher;
+    const convert = Polisher.prototype.convertViaSheet;
+    /** @type {string[]} */
+    const chain = [];
+    let imports = 0;
+    let importedChars = 0;
+    /** @param {string} reason */
+    const refuse = reason => {
+      resolveReady({
+        pageCount: 0,
+        unloadedFaces: [],
+        importLoop: [`${reason}: ${chain.map(packPath).join(' → ')}`],
+      });
+      return new Error(`print runtime: ${reason}`);
+    };
+    /**
+     * @this {unknown}
+     * @param {string} cssStr
+     * @param {string} href
+     */
+    Polisher.prototype.convertViaSheet = async function (cssStr, href) {
+      const url = new URL(href, location.href);
+      url.hash = '';
+      const key = url.href;
+      const looped = chain.includes(key);
+      if (chain.length > 0) {
+        imports += 1;
+        importedChars += String(cssStr).length;
+      }
+      chain.push(key);
+      try {
+        if (looped) throw refuse('@import loop');
+        if (imports > maxImports) {
+          throw refuse(`more than ${maxImports} imported stylesheets`);
+        }
+        if (importedChars > maxImportedChars) {
+          throw refuse(
+            `more than ${maxImportedChars} characters of imported stylesheets`,
+          );
+        }
+        return await convert.call(this, cssStr, href);
+      } finally {
+        chain.pop();
+      }
+    };
+  }
+
   // Paged.js 0.4.3 neither repeats <thead> on a continued page nor keeps a
   // row whole: a row that starts near the page bottom can end up in the
   // page's hidden overflow column and vanish from the PDF (T03 §5).
@@ -1262,7 +1335,7 @@
     };
   }
 
-  /** @type {(state: { pageCount: number, pageSize: { width: number, height: number }, unloadedFaces: string[], movedBoxes: string[], viewportDependent: string[], animations: string[], boxes: string[] }) => void} */
+  /** @type {(state: { pageCount: number, pageSize?: { width: number, height: number }, unloadedFaces: string[], movedBoxes?: string[], viewportDependent?: string[], animations?: string[], boxes?: string[], importLoop?: string[] }) => void} */
   let resolveReady = () => {};
   /** @type {string[]} */
   let sourceViewportDependent = [];
@@ -1289,6 +1362,7 @@
     PagedConfig: {
       auto: true,
       before: async () => {
+        guardImports();
         registerTableHandler();
         await loadUsedFaces();
         // Before Paged.js replaces the pack's stylesheets with its rewrite,
