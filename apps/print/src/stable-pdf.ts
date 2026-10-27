@@ -5,50 +5,217 @@
 // same bytes (T07-2), so they are blanked out after printing.
 // Each edit keeps the length of what it replaces, so the xref table's byte
 // offsets stay valid and nothing else in the file moves.
+// The file is read as PDF tokens, never searched as text: the document's
+// <title>, alt texts and labels are literal strings the pack writes, and
+// what they say must never be taken for structure (T07-27).
 import { Buffer } from 'node:buffer';
 
-// PDF literal strings: escapes and balanced parentheses (Chrome escapes the
-// unbalanced ones).
-const literal = String.raw`\((?:[^\\()]|\\[\s\S]|\((?:[^\\()]|\\[\s\S])*\))*\)`;
-
-/**
- * The PDF with its stream data overwritten by NULs, so that searches only
- * see the file's structure, never compressed bytes that happen to look like
- * it.
- */
-function structureOnly(text: string): string {
-  let masked = '';
-  let from = 0;
-  const start = /\bstream\r?\n/g;
-  for (;;) {
-    const match = start.exec(text);
-    if (!match) break;
-    const dataStart = match.index + match[0].length;
-    const end = text.indexOf('endstream', dataStart);
-    if (end < 0) break;
-    masked += text.slice(from, dataStart) + '\0'.repeat(end - dataStart);
-    from = end;
-    start.lastIndex = end;
-  }
-  return masked + text.slice(from);
+interface Token {
+  kind: 'name' | 'string' | 'other' | '[' | ']' | '<<' | '>>';
+  start: number;
+  end: number;
 }
 
-/** The [start, end) of the body of indirect object `number` `generation`. */
-function objectBody(
-  masked: string,
-  number: string,
-  generation: string,
-): [number, number] | undefined {
-  const head = new RegExp(
-    String.raw`(?:^|\s)${number}\s+${generation}\s+obj\b`,
-  ).exec(masked);
-  if (!head) return;
-  const start = head.index + head[0].length;
-  // Strings are skipped whole: a document's <title> can hold "endobj".
-  const body = new RegExp(`(?:${literal}|[^(])*?endobj`, 'y');
-  body.lastIndex = start;
-  const match = body.exec(masked);
-  return match ? [start, start + match[0].length - 'endobj'.length] : undefined;
+type Value =
+  | { kind: 'dict'; entries: Map<string, Entry>; end: number }
+  | { kind: 'array'; items: Value[]; end: number }
+  | { kind: 'ref'; key: string; end: number }
+  | { kind: 'token'; token: Token; end: number };
+
+interface Entry {
+  key: Token;
+  value: Value;
+}
+
+const whitespace = new Set([0, 9, 10, 12, 13, 32]);
+const delimiters = new Set([...'()<>[]{}/%'].map(char => char.charCodeAt(0)));
+const integer = /^\d+$/;
+
+/** A PDF's tokens, and its indirect objects by `<number> <generation>`. */
+class Pdf {
+  readonly tokens: Token[] = [];
+  /** Each object's body: its tokens [from, to) and bytes [start, end). */
+  readonly objects = new Map<
+    string,
+    { from: number; to: number; start: number; end: number }
+  >();
+
+  readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+    this.tokenize();
+    this.index();
+  }
+
+  word(token: Token | undefined): string | undefined {
+    return token && this.text.slice(token.start, token.end);
+  }
+
+  private tokenize() {
+    const { text, tokens } = this;
+    const length = text.length;
+    let at = 0;
+    const add = (kind: Token['kind'], start: number, end: number) => {
+      tokens.push({ kind, start, end });
+      at = end;
+    };
+    while (at < length) {
+      const code = text.charCodeAt(at);
+      const char = text[at];
+      if (whitespace.has(code)) {
+        at++;
+      } else if (char === '%') {
+        while (at < length && text[at] !== '\n' && text[at] !== '\r') at++;
+      } else if (char === '(') {
+        // Escapes and balanced parentheses, to any depth.
+        let end = at + 1;
+        for (let depth = 1; end < length && depth > 0; end++) {
+          const inner = text[end];
+          if (inner === '\\') end++;
+          else if (inner === '(') depth++;
+          else if (inner === ')') depth--;
+        }
+        add('string', at, Math.min(end, length));
+      } else if (char === '<' && text[at + 1] === '<') {
+        add('<<', at, at + 2);
+      } else if (char === '>' && text[at + 1] === '>') {
+        add('>>', at, at + 2);
+      } else if (char === '<') {
+        const end = text.indexOf('>', at);
+        add('string', at, end < 0 ? length : end + 1);
+      } else if (char === '[' || char === ']') {
+        add(char, at, at + 1);
+      } else if (delimiters.has(code) && char !== '/') {
+        at++;
+      } else {
+        let end = at + 1;
+        while (
+          end < length &&
+          !whitespace.has(text.charCodeAt(end)) &&
+          !delimiters.has(text.charCodeAt(end))
+        ) {
+          end++;
+        }
+        const stream = text.slice(at, end) === 'stream';
+        add(char === '/' ? 'name' : 'other', at, end);
+        if (stream) at = this.streamEnd(end);
+      }
+    }
+  }
+
+  /** Where the data of the stream whose keyword ends at `keywordEnd` ends. */
+  private streamEnd(keywordEnd: number): number {
+    const { text } = this;
+    let start = keywordEnd;
+    if (text[start] === '\r') start++;
+    if (text[start] === '\n') start++;
+    // The stream's dictionary ends right before its keyword.
+    const keyword = this.tokens.length - 1;
+    let open = keyword - 1;
+    for (let depth = 0; open >= 0; open--) {
+      const kind = this.tokens[open]?.kind;
+      if (kind === '>>') depth++;
+      if (kind === '<<' && --depth === 0) break;
+    }
+    const dict = open >= 0 ? this.parse(open)[0] : undefined;
+    const declared =
+      dict?.kind === 'dict' ? dict.entries.get('/Length')?.value : undefined;
+    const length =
+      declared?.kind === 'token' &&
+      integer.test(this.word(declared.token) ?? '')
+        ? Number(this.word(declared.token))
+        : undefined;
+    if (length !== undefined) {
+      const end = start + length;
+      if (/^\s*endstream/.test(text.slice(end, end + 12))) return end;
+    }
+    const end = text.indexOf('endstream', start);
+    return end < 0 ? text.length : end;
+  }
+
+  private index() {
+    const { tokens } = this;
+    for (let at = 2; at < tokens.length; at++) {
+      if (
+        this.word(tokens[at]) !== 'obj' ||
+        !integer.test(this.word(tokens[at - 2]) ?? '') ||
+        !integer.test(this.word(tokens[at - 1]) ?? '')
+      ) {
+        continue;
+      }
+      const head = tokens[at] as Token;
+      let to = at + 1;
+      while (to < tokens.length && this.word(tokens[to]) !== 'endobj') to++;
+      const end = tokens[to]?.start ?? this.text.length;
+      this.objects.set(
+        `${this.word(tokens[at - 2])} ${this.word(tokens[at - 1])}`,
+        { from: at + 1, to, start: head.end, end },
+      );
+      at = to;
+    }
+  }
+
+  /** The value whose first token is `at`, and the token after it. */
+  parse(at: number): [Value | undefined, number] {
+    const { tokens } = this;
+    const token = tokens[at];
+    if (!token) return [undefined, at + 1];
+    if (token.kind === '<<') {
+      const entries = new Map<string, Entry>();
+      let next = at + 1;
+      while (next < tokens.length && tokens[next]?.kind !== '>>') {
+        const key = tokens[next] as Token;
+        if (key.kind !== 'name') {
+          next++;
+          continue;
+        }
+        const [value, after] = this.parse(next + 1);
+        if (value) entries.set(this.word(key) ?? '', { key, value });
+        next = after;
+      }
+      return [
+        { kind: 'dict', entries, end: tokens[next]?.end ?? token.end },
+        next + 1,
+      ];
+    }
+    if (token.kind === '[') {
+      const items: Value[] = [];
+      let next = at + 1;
+      while (next < tokens.length && tokens[next]?.kind !== ']') {
+        const [value, after] = this.parse(next);
+        if (value) items.push(value);
+        next = after;
+      }
+      return [
+        { kind: 'array', items, end: tokens[next]?.end ?? token.end },
+        next + 1,
+      ];
+    }
+    const [generation, r] = [tokens[at + 1], tokens[at + 2]];
+    if (
+      integer.test(this.word(token) ?? '') &&
+      integer.test(this.word(generation) ?? '') &&
+      this.word(r) === 'R'
+    ) {
+      return [
+        {
+          kind: 'ref',
+          key: `${this.word(token)} ${this.word(generation)}`,
+          end: (r as Token).end,
+        },
+        at + 3,
+      ];
+    }
+    return [{ kind: 'token', token, end: token.end }, at + 1];
+  }
+
+  /** `value`, or the object it refers to. */
+  resolve(value: Value | undefined): Value | undefined {
+    if (value?.kind !== 'ref') return value;
+    const object = this.objects.get(value.key);
+    return object && this.parse(object.from)[0];
+  }
 }
 
 /**
@@ -59,28 +226,37 @@ function objectBody(
  */
 export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
   const text = Buffer.from(pdf).toString('latin1');
-  const masked = structureOnly(text);
+  const file = new Pdf(text);
   // [offset, what to write there]: each as long as what it overwrites.
   const edits: [number, string][] = [];
+  const blank = (start: number, end: number) => {
+    edits.push([start, ' '.repeat(end - start)]);
+  };
+  const dict = (value: Value | undefined) => {
+    const resolved = file.resolve(value);
+    return resolved?.kind === 'dict' ? resolved.entries : undefined;
+  };
   // The last trailer is the one in force.
-  const [, number, generation] =
-    [...masked.matchAll(/trailer\s*<<[\s\S]*?\/Info\s+(\d+)\s+(\d+)\s+R/g)].at(
-      -1,
-    ) ?? [];
-  const body = number && generation && objectBody(masked, number, generation);
-  if (body) {
-    const [start, end] = body;
-    const dict = masked.slice(start, end);
-    // Chrome writes the URL without its scheme, escaped as a literal string.
-    const fallback = `(${documentUrl
-      .replace(/^[a-z][a-z\d+.-]*:\/\//i, '')
-      .replace(/[\\()]/g, String.raw`\$&`)})`;
-    for (const entry of dict.matchAll(
-      new RegExp(String.raw`/(CreationDate|ModDate|Title)\s*(${literal})`, 'g'),
-    )) {
-      if (entry[1] === 'Title' && entry[2] !== fallback) continue;
-      edits.push([start + entry.index, ' '.repeat(entry[0].length)]);
+  const trailer = file.tokens.findLastIndex(
+    (token, at) =>
+      file.word(token) === 'trailer' && file.tokens[at + 1]?.kind === '<<',
+  );
+  const entries = trailer < 0 ? undefined : dict(file.parse(trailer + 1)[0]);
+  // Chrome writes the URL without its scheme, escaped as a literal string.
+  const fallback = `(${documentUrl
+    .replace(/^[a-z][a-z\d+.-]*:\/\//i, '')
+    .replace(/[\\()]/g, String.raw`\$&`)})`;
+  for (const [name, { key, value }] of dict(entries?.get('/Info')?.value) ??
+    []) {
+    if (
+      value.kind !== 'token' ||
+      !file.word(value.token)?.startsWith('(') ||
+      !['/CreationDate', '/ModDate', '/Title'].includes(name) ||
+      (name === '/Title' && file.word(value.token) !== fallback)
+    ) {
+      continue;
     }
+    blank(key.start, value.end);
   }
   // Chrome names each structure element /ID (node<n>), its DOM node's id,
   // lists those names in the IDTree, and names a table cell's header cells
@@ -88,31 +264,38 @@ export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
   // order changes from print to print (a rerun of 100 fixtures differed in
   // 5). All three are removed, the IDTree's objects becoming null; the rest
   // of the structure tree stays.
-  const blank = (index: number, length: number) => {
-    edits.push([index, ' '.repeat(length)]);
-  };
-  for (const id of masked.matchAll(
-    /\/ID\s*\(node\d+\)|\/Headers\s*\[(?:\s*\(node\d+\))*\s*\]/g,
-  )) {
-    blank(id.index, id[0].length);
-  }
-  const trees: [string, string][] = [];
-  for (const root of masked.matchAll(/\/IDTree\s+(\d+)\s+(\d+)\s+R/g)) {
-    blank(root.index, root[0].length);
-    trees.push([root[1] ?? '', root[2] ?? '']);
+  const nodeId = (value: Value | undefined) =>
+    value?.kind === 'token' &&
+    /^\(node\d+\)$/.test(file.word(value.token) ?? '');
+  const trees: string[] = [];
+  for (let at = 0; at < file.tokens.length; at++) {
+    const token = file.tokens[at] as Token;
+    if (token.kind !== 'name') continue;
+    const name = file.word(token);
+    const [value] = file.parse(at + 1);
+    if (name === '/ID' && nodeId(value)) {
+      blank(token.start, value?.end ?? token.end);
+    } else if (
+      name === '/Headers' &&
+      value?.kind === 'array' &&
+      value.items.every(nodeId)
+    ) {
+      blank(token.start, value.end);
+    } else if (name === '/IDTree' && value?.kind === 'ref') {
+      blank(token.start, value.end);
+      trees.push(value.key);
+    }
   }
   const seen = new Set<string>();
-  for (let tree = trees.pop(); tree; tree = trees.pop()) {
-    const [number, generation] = tree;
-    if (seen.has(`${number} ${generation}`)) continue;
-    seen.add(`${number} ${generation}`);
-    const body = objectBody(masked, number, generation);
-    if (!body) continue;
-    const [start, end] = body;
-    const kids = /\/Kids\s*\[([^\]]*)\]/.exec(masked.slice(start, end))?.[1];
-    for (const kid of kids?.matchAll(/(\d+)\s+(\d+)\s+R/g) ?? []) {
-      trees.push([kid[1] ?? '', kid[2] ?? '']);
+  for (let key = trees.pop(); key !== undefined; key = trees.pop()) {
+    const object = file.objects.get(key);
+    if (seen.has(key) || !object) continue;
+    seen.add(key);
+    const kids = dict(file.parse(object.from)[0])?.get('/Kids')?.value;
+    for (const kid of kids?.kind === 'array' ? kids.items : []) {
+      if (kid.kind === 'ref') trees.push(kid.key);
     }
+    const { start, end } = object;
     edits.push([start, ` null${' '.repeat(end - start - ' null'.length)}`]);
   }
   if (edits.length === 0) return pdf;
