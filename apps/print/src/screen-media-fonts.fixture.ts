@@ -8,7 +8,7 @@ import { startPrintWorker } from './test-worker.ts';
 
 // Observe the public FontFaceSet and CSSOM without replacing selection or
 // pagination. The proxy appends observation hooks to the real Worker's runtime.
-const observe = `
+const observe = (consumedSheets: boolean) => `
 (() => {
   const report = value => new Promise(resolve => {
     const image = new Image();
@@ -21,22 +21,43 @@ const observe = `
       .filter(rule => rule.media).map(rule => rule.media.mediaText) };
   });
   const before = window.PagedConfig.before;
+  let owned = [];
+  const ownedMedia = () => owned.map(({ node, sheet }) => ({
+    attribute: node.getAttribute('media'), sheet: sheet.media.mediaText,
+    rules: [...sheet.cssRules].filter(rule => rule.media).map(rule => rule.media.mediaText)
+  }));
   window.PagedConfig.before = async (...args) => {
     await before(...args);
+    if (${consumedSheets}) owned = [...document.querySelectorAll('[data-media-probe]')]
+      .map(node => ({ node, sheet: node.sheet }));
     await report({
       phase: 'before', media: media(),
+      ...(${consumedSheets} ? { ownedMedia: ownedMedia() } : {}),
       faces: [...document.fonts].map(face => face.family + '|' + face.weight)
     });
   };
-  window.__pdfgen.ready.then(() => report({ phase: 'ready', media: media() }));
+  window.__pdfgen.ready.then(() => report({ phase: 'ready', media: media(),
+    ...(${consumedSheets} ? { ownedMedia: ownedMedia() } : {}) }));
+  if (${consumedSheets}) {
+    const printed = window.__pdfgen.printed;
+    window.__pdfgen.printed = async (...args) => {
+      const result = await printed(...args);
+      await report({ phase: 'printed', styles: [...document.querySelectorAll('.pagedjs_page [data-font-probe]')]
+        .map(node => { const style = getComputedStyle(node);
+          return { family: style.fontFamily, weight: style.fontWeight }; }) });
+      return result;
+    };
+  }
 })();`;
 
-export async function fontFixture() {
+export async function fontFixture(consumedSheets = false) {
   const token = 'screen-media-fonts-test';
   const observations: {
     phase: string;
     media: { sheet: string; rules: string[] }[];
     faces?: string[];
+    ownedMedia?: { attribute: string | null; sheet: string; rules: string[] }[];
+    styles?: { family: string; weight: string }[];
   }[] = [];
   let worker: Awaited<ReturnType<typeof startPrintWorker>>;
   let origin: string;
@@ -76,7 +97,7 @@ export async function fontFixture() {
         const runtime = process.env.SCREEN_MEDIA_RUNTIME_COPY
           ? await readFile(process.env.SCREEN_MEDIA_RUNTIME_COPY, 'utf8')
           : await upstream.text();
-        response.end(runtime + observe);
+        response.end(runtime + observe(consumedSheets));
       } else response.end(Buffer.from(await upstream.arrayBuffer()));
     } catch (error) {
       response.writeHead(500);

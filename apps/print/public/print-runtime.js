@@ -187,7 +187,16 @@
     };
     for (const sheet of document.styleSheets) {
       const media = sheet.media.mediaText;
-      if (media !== '' && !printsWith(media)) {
+      // Paged.js reads every <style> and linked sheet but those marked
+      // data-pagedjs-ignore or with a "screen" media token (its
+      // removeStyles), and prints them without their media attribute
+      // (`media="speech"` prints); the sheets it leaves keep theirs.
+      const pagedReads =
+        sheet.ownerNode instanceof Element &&
+        sheet.ownerNode.matches("style, link[rel='stylesheet']") &&
+        !sheet.ownerNode.matches("[data-pagedjs-ignore], [media~='screen']");
+      if (media !== '' && pagedReads) flipped.push([sheet.media, media, 'all']);
+      else if (media !== '' && !printsWith(media)) {
         flipped.push([sheet.media, media, 'not all']);
         continue;
       }
