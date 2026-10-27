@@ -63,15 +63,16 @@ describe('printed barcode centring', () => {
     }
   });
 
-  it('ignores background, below-block ink, every partly outside edge, text, and marks when measuring centred bars', async () => {
+  it('ignores background, vertically separate or merely touching ink, horizontal overhangs, text, and marks when measuring centred bars', async () => {
     const { barcodeCentring } = await import('./barcode-centring.ts');
     const printed = page([
       paint([0, 0, 595, 842]),
+      paint([101, 180, 280, 190]),
       paint([101, 245, 280, 255]),
+      paint([101, 190, 280, 200]),
+      paint([101, 240, 280, 250]),
       paint([99, 210, 130, 230]),
       paint([270, 210, 301, 230]),
-      paint([101, 199, 130, 230]),
-      paint([101, 210, 130, 241]),
       paint([110, 204, 112, 236]),
       paint([288, 204, 290, 236]),
     ]);
@@ -88,6 +89,36 @@ describe('printed barcode centring', () => {
     expect(barcodeCentring(printed, bbox)).toEqual([]);
   });
 
+  it.each([
+    { edge: 'top', y0: 199, y1: 230 },
+    { edge: 'bottom', y0: 210, y1: 241 },
+    { edge: 'top and bottom', y0: 199, y1: 241 },
+  ])(
+    'measures horizontal gaps for ink overhanging the $edge with positive vertical overlap',
+    async ({ y0, y1 }) => {
+      const { barcodeCentring } = await import('./barcode-centring.ts');
+
+      expect(barcodeCentring(page([paint([110, y0, 289, y1])]), bbox)).toEqual([
+        'barcode off centre: gaps 10.00 / 11.00 pt differ by 1.000 pt (limit 0.1 pt)',
+      ]);
+    },
+  );
+
+  it('measures bars snapped 0.21 pt below the real fixture bbox instead of reporting no ink', async () => {
+    const { barcodeCentring } = await import('./barcode-centring.ts');
+    // Fixture 0000's bbox and first bar; the other bar gives equal 7.51 pt
+    // horizontal gaps while keeping Chrome's observed vertical snapping.
+    expect(
+      barcodeCentring(
+        page([
+          paint([75.75, 206.25, 76.453, 231.75]),
+          paint([209.327, 206.25, 210.03, 231.75]),
+        ]),
+        [68.24, 206.03, 217.54, 231.54],
+      ),
+    ).toEqual([]);
+  });
+
   it('includes paints touching each bbox edge instead of discarding boundary bars', async () => {
     const { barcodeCentring } = await import('./barcode-centring.ts');
     expect(
@@ -102,6 +133,8 @@ describe('printed barcode centring', () => {
     const { barcodeCentring } = await import('./barcode-centring.ts');
     const withoutInk = page([
       paint([0, 0, 595, 842]),
+      paint([110, 180, 290, 200]),
+      paint([110, 240, 290, 255]),
       paint([110, 245, 290, 255]),
     ]);
     withoutInk.items.push({
@@ -116,8 +149,7 @@ describe('printed barcode centring', () => {
 
     for (const printed of [page([]), withoutInk]) {
       const problems = barcodeCentring(printed, bbox);
-      expect(problems).toHaveLength(1);
-      expect(problems[0]).toMatch(/^barcode/u);
+      expect(problems).toEqual(['barcode: no ink inside its box']);
     }
   });
 });

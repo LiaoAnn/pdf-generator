@@ -4,7 +4,8 @@
 // with each balance equal to
 // the previous one plus the row's deposit minus its withdrawal (recomputed
 // here from data.json, not read from it), the summary totals, the logo and
-// the barcode with its number.
+// the barcode with its number, centred in its box in the printed PDF (gaps
+// within 0.1 pt, T26-2).
 //   pnpm --filter @pdf-generator/bank-statement acceptance \
 //     --url https://app-<wt>.pdf-generator.liaoann.net [--count 10] [--seed t23]
 // Signs in with the local Access stand-in's service token (vite dev only).
@@ -13,7 +14,9 @@ import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import type { GroundTruth } from '@pdf-generator/contract';
+import { readPdf } from '@pdf-generator/self-check';
 import { unzipSync, zipSync } from 'fflate';
+import { barcodeCentring } from './barcode-centring.ts';
 
 const { values } = parseArgs({
   options: {
@@ -104,8 +107,12 @@ function roc(iso: string, style: 'slash' | 'text'): string {
     : `民國${year}年${Number(month)}月${Number(day)}日`;
 }
 
-/** What is wrong with one fixture's gt.json against its data.json. */
-function compare(gt: GroundTruth, record: Statement): string[] {
+/** What is wrong with one fixture's gt.json against its data.json and PDF. */
+async function compare(
+  gt: GroundTruth,
+  record: Statement,
+  pdf: Uint8Array | undefined,
+): Promise<string[]> {
   const problems: string[] = [];
   const blocks = [...gt.blocks].sort((a, b) => a.order - b.order);
   const expectedHeader = `${record.bank.name}　綜合存款對帳單　對帳期間 ${roc(record.periodStart, 'slash')} 至 ${roc(record.periodEnd, 'slash')}`;
@@ -248,6 +255,17 @@ function compare(gt: GroundTruth, record: Statement): string[] {
       `barcode: ${barcodes.length} block(s) on pages ${barcodes.map(block => block.page)}, number ${JSON.stringify(number?.text)}, expected ${wantNumber}`,
     );
   }
+  if (barcode !== undefined) {
+    const page =
+      pdf === undefined
+        ? undefined
+        : (await readPdf(pdf)).pages[barcode.page - 1];
+    problems.push(
+      ...(page === undefined
+        ? [`barcode: page ${barcode.page} missing from fixture.pdf`]
+        : barcodeCentring(page, barcode.bbox)),
+    );
+  }
   return problems;
 }
 
@@ -314,7 +332,9 @@ for (const fixture of fixtures) {
     ...(fixture.check?.passed
       ? []
       : [`self-check ${JSON.stringify(fixture.check ?? null)}`]),
-    ...(gt && record ? compare(gt, record) : ['gt.json or data.json missing']),
+    ...(gt && record
+      ? await compare(gt, record, zip[`${folder}/fixture.pdf`])
+      : ['gt.json or data.json missing']),
   ];
   if (problems.length > 0) failures += 1;
   const summary = gt
@@ -327,7 +347,7 @@ for (const fixture of fixtures) {
   );
 }
 console.log(
-  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print every ROC date, balance, total, the logo and the barcode as expected`,
+  `${fixtures.length - failures}/${fixtures.length} fixtures pass self-check and print every ROC date, balance, total, the logo and the centred barcode as expected`,
 );
 process.exit(
   failures === 0 && fixtures.length === Number(values.count) ? 0 : 1,
