@@ -25,6 +25,39 @@ const paint = (bounds: Box, overrides: Partial<PdfPaint> = {}): PdfPaint => ({
   ...overrides,
 });
 
+test('scanline row processing preserves the nonzero union of 5,000 overlapping 50-point rectangles instead of cancelling shared crossings', () => {
+  const union: Box = [0, 0, 50, 50];
+  const compound = paint(union, {
+    polygons: Array.from({ length: 5_000 }, () => rectangle(union)),
+  });
+  const actual = measureInk([compound], union, 0, noBackground);
+  expect(actual.unmeasured).toBe(false);
+  expectInk(actual, union, [1, 1], union);
+});
+
+test('scanline row processing preserves disjoint even-odd checkerboard squares and their gaps instead of joining the first and last crossings', () => {
+  const bounds: Box = [0, 0, 40, 40];
+  const polygons: number[][] = [];
+  for (let y = 0; y < 40; y++) {
+    for (let x = 0; x < 40; x++) {
+      if ((x + y) % 2 === 0) polygons.push(rectangle([x, y, x + 1, y + 1]));
+    }
+  }
+  const compound = paint(bounds, { polygons, rule: 'evenodd' });
+  const actual = measureInk([compound], bounds, 0, noBackground);
+  expect(actual.unmeasured).toBe(false);
+  expectInk(actual, bounds, [1, 1], bounds);
+  const firstRow: Box = [0, 0, 40, 1];
+  expectInk(
+    measureInk([compound], firstRow, 0, noBackground),
+    [0, 0, 39, 1],
+    [0.5, 1],
+    firstRow,
+  );
+  const gap: Box = [1, 0, 2, 1];
+  expectNoInk(measureInk([compound], gap, 0, noBackground), gap);
+});
+
 // 256 × 64 pt at quarter-point spacing: 262,144 samples per render.
 const workBox: Box = [0, 0, 256, 64];
 const workSamples = (256 * 64) / 0.0625;

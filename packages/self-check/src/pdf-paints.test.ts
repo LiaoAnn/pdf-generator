@@ -1,11 +1,125 @@
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { gtSchema } from '@pdf-generator/contract';
 import { chromium } from 'playwright-core';
+import { getResolvedPDFJS } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { unstable_startWorker } from 'wrangler';
+import { checkPdf } from './index.ts';
+import { maxPaintPoints, readPaints } from './paints.ts';
 import { type PdfDocument, type PdfPaint, readPdf } from './pdf.ts';
 
 type Box = [number, number, number, number];
+
+test('15,000 stroked cubics exceed the document point budget: retain one bounding rectangle and refuse textless ink', async () => {
+  const browser = await chromium.launch({ headless: true });
+  let pdf: Uint8Array;
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<style>@page{size:100pt 100pt;margin:0}body{margin:0}</style>
+      <svg width="100pt" height="100pt" viewBox="0 0 100 100">
+      <path d="M0 0 ${'C0 0 50 50 50 0 '.repeat(15_000)}" fill="none" stroke="black"/></svg>`);
+    pdf = await page.pdf({ preferCSSPageSize: true });
+  } finally {
+    await browser.close();
+  }
+  expect(pdf.byteLength).toBeLessThan(5_000);
+  const document = await readPdf(pdf);
+  expect(document.pages[0]?.items).toEqual([]);
+  const paints = document.pages[0]?.paints;
+  expect(paints).toHaveLength(1);
+  const paint = paints?.[0];
+  expect(paint?.unmeasured).toBe(true);
+  const [x0, y0, x1, y1] = paint?.box ?? [];
+  expect(paint?.polygons).toEqual([[x0, y0, x1, y0, x1, y1, x0, y1]]);
+  const expected = gtSchema.parse({
+    schemaVersion: 1,
+    source: {
+      templateId: 'stroke-budget',
+      templateVersion: 1,
+      seed: 'T14-9-r13',
+      index: 0,
+    },
+    pages: [{ width: 100, height: 100 }],
+    blocks: [
+      {
+        id: 'stroke',
+        type: 'image',
+        page: 1,
+        order: 0,
+        text: '',
+        bbox: [0, 0, 51, 24],
+      },
+    ],
+  });
+  const report = await checkPdf(pdf, expected);
+  expect(report.ok).toBe(false);
+  expect(report.differences).toEqual([
+    expect.objectContaining({
+      kind: 'ink',
+      blockId: 'stroke',
+      message: expect.stringContaining("can't measure"),
+    }),
+  ]);
+});
+
+test('100 stroked cubics below the document point budget keep their real outline instead of a fallback rectangle', async () => {
+  const browser = await chromium.launch({ headless: true });
+  try {
+    const page = await browser.newPage();
+    await page.setContent(`<style>@page{size:100pt 100pt;margin:0}body{margin:0}</style>
+      <svg width="100pt" height="100pt" viewBox="0 0 100 100">
+      <path d="M0 0 ${'C0 0 50 50 50 0 '.repeat(100)}" fill="none" stroke="black"/></svg>`);
+    const document = await readPdf(await page.pdf({ preferCSSPageSize: true }));
+    expect(document.pages[0]?.paints).toHaveLength(1);
+    const paint = document.pages[0]?.paints[0];
+    expect(paint?.unmeasured).not.toBe(true);
+    expect(paint?.polygons.length).toBeGreaterThan(100);
+    expect(
+      paint?.polygons.reduce((sum, polygon) => sum + polygon.length / 2, 0),
+    ).toBeLessThan(maxPaintPoints);
+    expect(paint?.box[2]).toBeGreaterThan(49);
+    expect(paint?.box[3]).toBeGreaterThan(20);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('a clip exceeding the document point budget marks the rectangle under it unmeasured instead of trusting its black fill', async () => {
+  const { OPS } = await getResolvedPDFJS();
+  // pdf.js DrawOPS: moveTo, then cubics; 16 flattened points per cubic.
+  const data = [0, 0, 0];
+  for (let i = 0; i < Math.ceil(maxPaintPoints / 16); i++)
+    data.push(2, 0, 0, 50, 50, 50, 0);
+  const paints = readPaints(
+    {
+      fnArray: [OPS.clip, OPS.constructPath, OPS.constructPath],
+      argsArray: [
+        [],
+        [OPS.endPath, [new Float32Array(data)], [0, 0, 50, 50]],
+        [
+          OPS.fill,
+          [new Float32Array([0, 0, 0, 1, 50, 0, 1, 50, 50, 1, 0, 50, 4])],
+          [0, 0, 50, 50],
+        ],
+      ],
+    },
+    OPS,
+    {
+      frame: [1, 0, 0, 1, 0, 0],
+      clip: [0, 0, 100, 100],
+      sources: {
+        objectOf: () => undefined,
+        imageOf: () => undefined,
+        decode: () => undefined,
+      },
+    },
+  );
+  expect(paints).toHaveLength(1);
+  expect(paints[0]?.unmeasured).toBe(true);
+  expect(paints[0]?.box).toEqual([0, 0, 50, 50]);
+  expect(paints[0]?.polygons).toEqual([[0, 0, 50, 0, 50, 50, 0, 50]]);
+});
 const svg = (content: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" data-oracle>${content}</svg>`;
 const rect = '<rect x="10" y="20" width="60" height="40"';

@@ -76,42 +76,78 @@ interface Grid {
   rows: number;
 }
 
-/** The sample columns and rows a shape covers in `grid`, by its fill rule. */
+/** The most span entries one shape may have in a band, to be measured. */
+const maxSpanEntries = 1 << 22;
+
+/**
+ * The sample columns and rows a shape covers in `grid`, by its fill rule:
+ * row by row, holding only the edges that cross the row (memory grows with
+ * the edges, not with their crossings).
+ */
 function shapeSpans({ polygons, rule }: PdfShape, grid: Grid): Spans {
   const { ox, oy, cols, rows } = grid;
-  const crossings: [x: number, winding: number][][] = Array.from(
-    { length: rows },
-    () => [],
-  );
+  let count = 0;
+  for (const points of polygons) count += points.length >> 1;
+  // Per edge: its first and last sample row, its start and its extent.
+  const first = new Int32Array(count);
+  const last = new Int32Array(count);
+  const xa = new Float64Array(count);
+  const ya = new Float64Array(count);
+  const dx = new Float64Array(count);
+  const dy = new Float64Array(count);
+  const windings = new Int8Array(count);
+  let edges = 0;
   for (const points of polygons) {
     const n = points.length >> 1;
     for (let i = 0; i < n; i++) {
-      const xa = points[2 * i] ?? 0;
-      const ya = points[2 * i + 1] ?? 0;
+      const x0 = points[2 * i] ?? 0;
+      const y0 = points[2 * i + 1] ?? 0;
       const j = (i + 1) % n;
-      const xb = points[2 * j] ?? 0;
-      const yb = points[2 * j + 1] ?? 0;
-      if (ya === yb) continue;
-      const [top, bottom] = ya < yb ? [ya, yb] : [yb, ya];
+      const x1 = points[2 * j] ?? 0;
+      const y1 = points[2 * j + 1] ?? 0;
+      if (y0 === y1) continue;
+      const [top, bottom] = y0 < y1 ? [y0, y1] : [y1, y0];
       // Rows whose sample line y satisfies top <= y < bottom.
       const r0 = Math.max(0, Math.ceil((top - oy) / step - 0.5));
       const r1 = Math.min(rows - 1, Math.ceil((bottom - oy) / step - 0.5) - 1);
-      const winding = ya < yb ? 1 : -1;
-      spend(Math.max(0, r1 - r0 + 1));
-      for (let r = r0; r <= r1; r++) {
-        const y = oy + (r + 0.5) * step;
-        crossings[r]?.push([xa + ((y - ya) * (xb - xa)) / (yb - ya), winding]);
-      }
+      if (r1 < r0) continue;
+      spend(r1 - r0 + 1);
+      first[edges] = r0;
+      last[edges] = r1;
+      xa[edges] = x0;
+      ya[edges] = y0;
+      dx[edges] = x1 - x0;
+      dy[edges] = y1 - y0;
+      windings[edges] = y0 < y1 ? 1 : -1;
+      edges++;
     }
   }
+  const order = Array.from({ length: edges }, (_, e) => e).sort(
+    (a, b) => (first[a] ?? 0) - (first[b] ?? 0),
+  );
   const inside = (winding: number) =>
     rule === 'evenodd' ? (winding & 1) !== 0 : winding !== 0;
-  return crossings.map(row => {
-    const spans: number[] = [];
-    row.sort((a, b) => a[0] - b[0]);
+  const spans: Spans = [];
+  let active: number[] = [];
+  let next = 0;
+  let entries = 0;
+  for (let r = 0; r < rows; r++) {
+    while (next < edges && (first[order[next] ?? 0] ?? 0) <= r) {
+      active.push(order[next] ?? 0);
+      next++;
+    }
+    active = active.filter(e => (last[e] ?? 0) >= r);
+    const y = oy + (r + 0.5) * step;
+    const crossings = active
+      .map((e): [number, number] => [
+        (xa[e] ?? 0) + ((y - (ya[e] ?? 0)) * (dx[e] ?? 0)) / (dy[e] ?? 1),
+        windings[e] ?? 0,
+      ])
+      .sort((a, b) => a[0] - b[0]);
+    const row: number[] = [];
     let winding = 0;
     let start = 0;
-    for (const [x, w] of row) {
+    for (const [x, w] of crossings) {
       const was = inside(winding);
       winding += w;
       if (!was && inside(winding)) start = x;
@@ -119,11 +155,14 @@ function shapeSpans({ polygons, rule }: PdfShape, grid: Grid): Spans {
         // Columns whose sample x satisfies start <= x < end.
         const c0 = Math.max(0, Math.ceil((start - ox) / step - 0.5));
         const c1 = Math.min(cols, Math.ceil((x - ox) / step - 0.5));
-        if (c1 > c0) spans.push(c0, c1);
+        if (c1 > c0) row.push(c0, c1);
       }
     }
-    return spans;
-  });
+    entries += row.length;
+    if (entries > maxSpanEntries) throw new Overrun();
+    spans.push(row);
+  }
+  return spans;
 }
 
 /** The columns both span lists cover. */

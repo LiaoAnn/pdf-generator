@@ -35,6 +35,14 @@ interface PaintSources {
   decode: (image: unknown) => ImagePixels | undefined;
 }
 
+/**
+ * The most polygon points readPdf keeps for one document (paints, clips,
+ * masks and tiles together; a stroke's outline counted before it is built).
+ * A paint past it is `unmeasured` with its bounding rect as its polygon; a
+ * clip past it leaves the paints under it `unmeasured`.
+ */
+export const maxPaintPoints = 1 << 19;
+
 /** The most paints a tile may hold, and the most mesh vertices, to be measured. */
 const maxTilePaints = 256;
 const maxMeshVertices = 1 << 20;
@@ -66,6 +74,8 @@ interface GraphicsState {
   base: Matrix;
   /** The clipping paths in force, in the output frame. */
   clips: PdfShape[];
+  /** A clip in force was too large to keep: what it shows can't be measured. */
+  clipLost: boolean;
   fill: Source;
   stroke: Source;
 }
@@ -159,6 +169,32 @@ function subpathsOf(value: unknown): Subpath[] {
     } else break;
   }
   return subpaths;
+}
+
+/** How many points `subpathsOf` makes of pdf.js's path data, without making them. */
+function pathPoints(value: unknown): number {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const data = ArrayBuffer.isView(raw)
+    ? (raw as Float32Array)
+    : Array.isArray(raw)
+      ? (raw as number[])
+      : [];
+  let count = 0;
+  for (let i = 0; i < data.length; ) {
+    const op = data[i++];
+    if (op === 0 || op === 1) {
+      count += 1;
+      i += 2;
+    } else if (op === 2) {
+      count += curveSegments;
+      i += 6;
+    } else if (op === 3) {
+      count += curveSegments;
+      i += 4;
+    } else if (op === 4) count += 1;
+    else break;
+  }
+  return count;
 }
 
 /** Twice the signed area of a flat point list. */
@@ -300,6 +336,8 @@ export interface PaintOptions {
   sources: PaintSources;
   /** Tiling patterns inside this many others can't be measured. */
   depth?: number;
+  /** Polygon points the document may still keep (`maxPaintPoints`). */
+  pointBudget?: { left: number };
 }
 
 /**
@@ -309,7 +347,13 @@ export interface PaintOptions {
 export function readPaints(
   operators: { fnArray: number[]; argsArray: unknown[] },
   OPS: Record<string, number>,
-  { frame, clip, sources, depth = 0 }: PaintOptions,
+  {
+    frame,
+    clip,
+    sources,
+    depth = 0,
+    pointBudget = { left: maxPaintPoints },
+  }: PaintOptions,
 ): PdfPaint[] {
   const ops = (...names: string[]) => new Set(names.map(name => OPS[name]));
   const filled = ops(
@@ -347,10 +391,44 @@ export function readPaints(
     mask: undefined,
     base: identity,
     clips: [],
+    clipLost: false,
     fill: '#000000',
     stroke: '#000000',
   };
   let clipping: PdfShape['rule'] | undefined;
+  /** A PDF-space rect's corners in the output frame. */
+  const framePolygon = ([x0, y0, x1, y1]: Rect) => {
+    const [a, b, c, d, e, f] = frame;
+    return [x0, y0, x1, y0, x1, y1, x0, y1].flatMap((v, k, all) =>
+      k % 2 === 0
+        ? [a * v + c * (all[k + 1] ?? 0) + e, b * v + d * (all[k + 1] ?? 0) + f]
+        : [],
+    );
+  };
+  /**
+   * A path's PDF-space bounds, grown by half the line width for a stroke,
+   * inside the clip, as a polygon: what stands for geometry not kept.
+   */
+  const boundsPolygon = ([x0, y0, x1, y1]: Rect, stroke: boolean) => {
+    const [a, b, c, d] = state.ctm;
+    const half = stroke
+      ? (state.lineWidth / 2) *
+        (Math.abs(a) + Math.abs(b) + Math.abs(c) + Math.abs(d))
+      : 0;
+    const corners = framePolygon(
+      intersect([x0 - half, y0 - half, x1 + half, y1 + half], state.clip),
+    );
+    // Both frames are axis-aligned: the rect, top-left corner first.
+    const xs = corners.filter((_, k) => k % 2 === 0);
+    const ys = corners.filter((_, k) => k % 2 === 1);
+    const [l, t, r, u] = [
+      Math.min(...xs),
+      Math.min(...ys),
+      Math.max(...xs),
+      Math.max(...ys),
+    ];
+    return [l, t, r, t, r, u, l, u];
+  };
   /** User-space points through the CTM into the output frame. */
   const toFrame = (points: number[]) => {
     const [a, b, c, d, e, f] = multiply(frame, state.ctm);
@@ -387,7 +465,11 @@ export function readPaints(
     );
     if (!(x0 <= x1 && y0 <= y1)) return;
     let colour: Partial<PdfPaint> = { unmeasured: true };
-    if (state.mask === 'unmeasured' || state.groups.length > maxGroupDepth) {
+    if (
+      state.mask === 'unmeasured' ||
+      state.clipLost ||
+      state.groups.length > maxGroupDepth
+    ) {
       colour = { unmeasured: true };
     } else if (typeof source === 'string') colour = { color: source };
     else if (source && 'ir' in source) {
@@ -446,7 +528,7 @@ export function readPaints(
     const paints = readPaints(
       { fnArray: list.fnArray, argsArray: list.argsArray },
       OPS,
-      { frame: identity, clip: bbox, sources, depth: depth + 1 },
+      { frame: identity, clip: bbox, sources, depth: depth + 1, pointBudget },
     );
     // A tile is measured only if all of it is.
     if (paints.length > maxTilePaints || paints.some(p => p.unmeasured)) {
@@ -503,6 +585,38 @@ export function readPaints(
       const op = args[0] as number;
       if (bounds) {
         const rect = mapRect(state.ctm, bounds);
+        const estimate = pathPoints(args[1]);
+        // Takes `n` points from the document's allowance, if it has them.
+        const keep = (n: number) => {
+          if (n > pointBudget.left) return false;
+          pointBudget.left -= n;
+          return true;
+        };
+        if (!keep(estimate)) {
+          // Too much geometry to keep: its bounds, unmeasured.
+          if (filled.has(op)) {
+            paint(
+              [boundsPolygon(rect, false)],
+              'nonzero',
+              undefined,
+              state.fillAlpha,
+            );
+          }
+          if (stroked.has(op)) {
+            paint(
+              [boundsPolygon(rect, true)],
+              'nonzero',
+              undefined,
+              state.strokeAlpha,
+            );
+          }
+          if (clipping) {
+            state.clip = intersect(state.clip, rect);
+            state.clipLost = true;
+          }
+          clipping = undefined;
+          return;
+        }
         const subpaths = subpathsOf(args[1]);
         if (closing.has(op)) {
           const last = subpaths[subpaths.length - 1];
@@ -518,16 +632,35 @@ export function readPaints(
           );
         }
         if (stroked.has(op)) {
-          paint(
-            strokeOutline(subpaths, state.lineWidth).map(toFrame),
-            'nonzero',
-            state.stroke,
-            state.strokeAlpha,
+          // A quad per segment and an octagon per vertex.
+          const outline = subpaths.reduce(
+            (n, { points: p }) => n + (p.length >> 1) * 12,
+            0,
           );
+          if (keep(outline)) {
+            paint(
+              strokeOutline(subpaths, state.lineWidth).map(toFrame),
+              'nonzero',
+              state.stroke,
+              state.strokeAlpha,
+            );
+          } else {
+            paint(
+              [boundsPolygon(rect, true)],
+              'nonzero',
+              undefined,
+              state.strokeAlpha,
+            );
+          }
         }
         if (clipping) {
           state.clip = intersect(state.clip, rect);
-          state.clips = [...state.clips, { polygons: area(), rule: clipping }];
+          if (keep(estimate)) {
+            state.clips = [
+              ...state.clips,
+              { polygons: area(), rule: clipping },
+            ];
+          } else state.clipLost = true;
         }
       }
       clipping = undefined;

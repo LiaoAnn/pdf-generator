@@ -9,7 +9,7 @@ import {
   multiply,
   type Rect,
 } from './geometry.ts';
-import { type ImagePixels, readPaints } from './paints.ts';
+import { type ImagePixels, maxPaintPoints, readPaints } from './paints.ts';
 
 /** One run of text in a PDF page's text layer. */
 export interface PdfTextItem {
@@ -230,6 +230,8 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   // Decoded pixels stay with the pages' paints: one budget for the document,
   // and an image used again (the same PDF object) is decoded once.
   let budget = maxPixels;
+  // Polygon points the document's paints may keep, across its pages.
+  const pointBudget = { left: maxPaintPoints };
   const byRef = new Map<string, ImagePixels | undefined>();
   const decode = (image: unknown) => {
     const ref = (image as { ref?: unknown } | undefined)?.ref;
@@ -297,6 +299,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
       const paints = readPaints(operators, OPS, {
         frame: [1, 0, 0, -1, -left, top],
         clip: [left, bottom, right, top],
+        pointBudget,
         sources: {
           objectOf,
           imageOf: id => {
