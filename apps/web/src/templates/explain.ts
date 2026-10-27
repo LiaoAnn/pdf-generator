@@ -105,6 +105,8 @@ const packIssues: Record<string, string> = {
     'CSS 裡有反斜線跳脫字元，平台無法確認它引用的檔案。請改成不用跳脫的寫法。',
   'css-page-box':
     'CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的邊界、內距、框線、定位或變形。這會讓 PDF 印出的位置和標準答案對不上。請用 @page 設定頁邊界，html／body 的這些屬性維持 0 或 none。',
+  'css-import-cycle':
+    'CSS 檔案用 @import 繞成一圈（例如 a.css 引用 b.css，b.css 又引用 a.css，或檔案引用自己）。Paged.js 會一直重複載入，印到逾時也印不出來。每個位置是圈上的一個 @import，原始訊息依序列出整圈的檔案；請拿掉其中一個 @import 打斷循環。',
   'font-unused':
     '宣告了 @font-face 卻沒有任何地方用到這個字型。列印時仍會下載它，請刪掉宣告或在 font-family 用它。',
 };
