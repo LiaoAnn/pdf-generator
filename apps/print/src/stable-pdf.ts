@@ -2,7 +2,7 @@
 // HTML to the next: the print time, the tab's URL as the title when the
 // document has none (its /pack/<id>/ is new on every print), and DOM node
 // ids in the tagged PDF's structure tree. A rerun of a batch must give the
-// same bytes (T07-2), so they are blanked out or renumbered after printing.
+// same bytes (T07-2), so they are blanked out after printing.
 // Each edit keeps the length of what it replaces, so the xref table's byte
 // offsets stay valid and nothing else in the file moves.
 import { Buffer } from 'node:buffer';
@@ -44,8 +44,11 @@ function objectBody(
   ).exec(masked);
   if (!head) return;
   const start = head.index + head[0].length;
-  const end = masked.indexOf('endobj', start);
-  return end < 0 ? undefined : [start, end];
+  // Strings are skipped whole: a document's <title> can hold "endobj".
+  const body = new RegExp(`(?:${literal}|[^(])*?endobj`, 'y');
+  body.lastIndex = start;
+  const match = body.exec(masked);
+  return match ? [start, start + match[0].length - 'endobj'.length] : undefined;
 }
 
 /**
@@ -79,28 +82,38 @@ export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
       edits.push([start + entry.index, ' '.repeat(entry[0].length)]);
     }
   }
-  // Each structure element's /ID is `node<n>`, n counting the nodes the
-  // browser has made, so a restarted browser shifts every id (T07-2's source,
-  // PR #11). Renumbered by rank at the same width, they keep the order the
-  // IDTree's sorted /Names and /Limits rely on.
-  const ids = new Map<string, string>();
-  for (const [, digits = ''] of masked.matchAll(/\/ID\s*\(node(\d+)\)/g)) {
-    ids.set(digits, digits);
+  // Chrome names each structure element /ID (node<n>), its DOM node's id,
+  // lists those names in the IDTree, and names a table cell's header cells
+  // by them (/Headers). The browser hands the ids out on demand, so their
+  // order changes from print to print (a rerun of 100 fixtures differed in
+  // 5). All three are removed, the IDTree's objects becoming null; the rest
+  // of the structure tree stays.
+  const blank = (index: number, length: number) => {
+    edits.push([index, ' '.repeat(length)]);
+  };
+  for (const id of masked.matchAll(
+    /\/ID\s*\(node\d+\)|\/Headers\s*\[(?:\s*\(node\d+\))*\s*\]/g,
+  )) {
+    blank(id.index, id[0].length);
   }
-  [...ids.keys()]
-    .sort((a, b) => a.length - b.length || (a < b ? -1 : 1))
-    .forEach((digits, rank) => {
-      ids.set(digits, String(rank).padStart(digits.length, '0'));
-    });
-  // The same strings in the IDTree, wherever it is written (a document's own
-  // string that equals one of them is renumbered with it, which is still the
-  // same on every print).
-  for (const name of masked.matchAll(/\(node(\d+)\)/g)) {
-    const digits = name[1] ?? '';
-    const renumbered = ids.get(digits);
-    if (renumbered !== undefined && renumbered !== digits) {
-      edits.push([name.index + '(node'.length, renumbered]);
+  const trees: [string, string][] = [];
+  for (const root of masked.matchAll(/\/IDTree\s+(\d+)\s+(\d+)\s+R/g)) {
+    blank(root.index, root[0].length);
+    trees.push([root[1] ?? '', root[2] ?? '']);
+  }
+  const seen = new Set<string>();
+  for (let tree = trees.pop(); tree; tree = trees.pop()) {
+    const [number, generation] = tree;
+    if (seen.has(`${number} ${generation}`)) continue;
+    seen.add(`${number} ${generation}`);
+    const body = objectBody(masked, number, generation);
+    if (!body) continue;
+    const [start, end] = body;
+    const kids = /\/Kids\s*\[([^\]]*)\]/.exec(masked.slice(start, end))?.[1];
+    for (const kid of kids?.matchAll(/(\d+)\s+(\d+)\s+R/g) ?? []) {
+      trees.push([kid[1] ?? '', kid[2] ?? '']);
     }
+    edits.push([start, ` null${' '.repeat(end - start - ' null'.length)}`]);
   }
   if (edits.length === 0) return pdf;
   edits.sort(([a], [b]) => a - b);
