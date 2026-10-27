@@ -79,7 +79,9 @@ export function scanCss(css: string): {
       let end = i + 1;
       while (end < css.length && identifier.test(css[end] ?? '')) end++;
       const name = css.slice(c === '@' ? i + 1 : i, end).toLowerCase();
-      if (c === '@') importing = name === 'import';
+      // Paged.js reads an at-rule by its name without a vendor prefix, as
+      // css-tree does: @-webkit-import is an @import too.
+      if (c === '@') importing = /^(?:-[^-]+-)?import$/.test(name);
       else if (css[end] === '(' && name === 'url') {
         let start = end + 1;
         while (cssSpace.test(css[start] ?? '')) start++;

@@ -119,6 +119,9 @@ const boldElements = new Set([
 ]);
 const slantedElements = new Set(['i', 'em', 'cite', 'var', 'dfn', 'address']);
 
+/** How many `@import` cycles are reported one by one. */
+const maxCycleIssues = 50;
+
 /**
  * The `@import`s that lie on a cycle, each with the cycle it closes: the
  * importing file, the files the import leads through, and that file again.
@@ -231,7 +234,21 @@ export function assetIssues(
       );
       return;
     }
-    const problem = resolve(source.file, trimmed.slice(0, urlEnd(trimmed)));
+    // Paged.js drops every quote from an @import's URL, then loads what is
+    // left in place of the @import.
+    const loaded =
+      kind === 'stylesheet' && context === 'css'
+        ? url.replace(/["']/g, '')
+        : url;
+    const start = loaded.slice(urlStart(loaded));
+    const target = start.slice(0, urlEnd(start));
+    const imported = kind === 'stylesheet' && source !== template;
+    if (imported && /^(?:[?#]|$)/.test(target)) {
+      // No path ("", "#x", "?v=2") is the importing stylesheet itself.
+      imports.push({ source, at, path: source.file });
+      return;
+    }
+    const problem = resolve(source.file, target);
     if (problem === undefined) return;
     if (!('path' in problem)) {
       issue(problem.code, source, at, problem.message);
@@ -434,12 +451,24 @@ export function assetIssues(
       });
     } else css({ file: path, text }, text, same, true);
   }
-  for (const { source, at, cycle } of importCycles(imports)) {
+  // Each message names a whole cycle, up to every file in the pack: report
+  // the first ones, enough to fix, so a crafted pack can't make megabytes.
+  const cycles = importCycles(imports);
+  for (const { source, at, cycle } of cycles.slice(0, maxCycleIssues)) {
     issue(
       'css-import-cycle',
       source,
       at,
       `this @import closes a cycle: ${cycle.join(' → ')}; Paged.js would fetch these stylesheets over and over until printing times out`,
+    );
+  }
+  const more = cycles[maxCycleIssues];
+  if (more !== undefined) {
+    issue(
+      'css-import-cycle',
+      more.source,
+      more.at,
+      `${cycles.length - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
     );
   }
 
