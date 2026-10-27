@@ -304,6 +304,34 @@ export function collect() {
             regions.find(([selector]) => element.closest(selector))?.[1] ??
             'area',
           rect: { x, y, width, height },
+          // Chrome paints these on whole px of the page; build moves the box
+          // onto them (T08-2).
+          // An <svg> inside another one is drawn as part of the outer one.
+          replaced: [
+            element,
+            ...Array.from(element.querySelectorAll('img, svg')),
+          ]
+            .filter(
+              inner =>
+                (inner instanceof HTMLImageElement ||
+                  (inner instanceof SVGSVGElement &&
+                    inner.parentElement?.closest('svg') == null)) &&
+                inner.getClientRects().length > 0,
+            )
+            .map(inner => {
+              const box = inner.getBoundingClientRect();
+              return {
+                kind: /** @type {'img' | 'svg'} */ (
+                  inner instanceof HTMLImageElement ? 'img' : 'svg'
+                ),
+                rect: {
+                  x: box.x,
+                  y: box.y,
+                  width: box.width,
+                  height: box.height,
+                },
+              };
+            }),
           text: element instanceof HTMLElement ? element.innerText : '',
           nested: element.parentElement?.closest('[data-gt]') != null,
           attributes: Object.fromEntries(

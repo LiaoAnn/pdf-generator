@@ -9,6 +9,7 @@ import type {
   Measurement,
   Rect,
   Region,
+  ReplacedBox,
 } from './measurement.ts';
 
 type Bbox = [number, number, number, number];
@@ -180,7 +181,7 @@ export function buildGroundTruth(
       id,
       type: element.type,
       page: element.page + 1,
-      bbox: bbox(element.rect, page),
+      bbox: bbox(painted(element.rect, element.replaced ?? [], page), page),
       order: blocks.length,
       text: element.text.trim(),
       ...(origin === undefined ? {} : { continues: origin.id }),
@@ -211,6 +212,65 @@ export function buildGroundTruth(
   if (issues.length > 0) throw new GroundTruthError(issues);
   if (!result.success) throw new GroundTruthError(['invalid gt.json']);
   return result.data;
+}
+
+/** How far a replaced element may sit outside a side and still share it, in px. */
+const flush = 0.01;
+
+/**
+ * The box as Chrome prints it (T08-2): it paints each replaced element inside
+ * the box on whole px of its page, so a side the box shares with one moves to
+ * where that one is painted, and the box grows to cover them all. Ones that
+ * stick out of the box (clipped, say) are left out.
+ */
+function painted(rect: Rect, replaced: ReplacedBox[], page: Rect): Rect {
+  const box = edges(rect, page);
+  const inside = replaced
+    .map(({ kind, rect }) => ({ kind, layout: edges(rect, page) }))
+    .filter(
+      ({ layout }) =>
+        layout[0] >= box[0] - flush &&
+        layout[1] >= box[1] - flush &&
+        layout[2] <= box[2] + flush &&
+        layout[3] <= box[3] + flush,
+    )
+    .map(({ kind, layout }) => ({ layout, paint: paint(kind, layout) }));
+  if (inside.length === 0) return rect;
+  const side = (i: 0 | 1 | 2 | 3): number => {
+    const outer = i < 2 ? Math.min : Math.max;
+    // A shared side is wherever they paint; any other side only grows.
+    const shared = inside.some(
+      ({ layout }) => Math.abs(layout[i] - box[i]) <= flush,
+    );
+    return inside.reduce(
+      (at, { paint }) => outer(at, paint[i]),
+      shared ? (i < 2 ? Infinity : -Infinity) : box[i],
+    );
+  };
+  const [x0, y0, x1, y1] = [side(0), side(1), side(2), side(3)];
+  return { x: x0 + page.x, y: y0 + page.y, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * Where Chrome paints a replaced element laid out at `layout` (page px): an
+ * <img> with each edge rounded; an <svg> from its rounded origin at its own
+ * size, clipped to its rounded box.
+ */
+function paint(kind: ReplacedBox['kind'], layout: Bbox): Bbox {
+  const [x0, y0, x1, y1] = layout.map(Math.round) as Bbox;
+  return kind === 'img'
+    ? [x0, y0, x1, y1]
+    : [
+        x0,
+        y0,
+        Math.min(x0 + layout[2] - layout[0], x1),
+        Math.min(y0 + layout[3] - layout[1], y1),
+      ];
+}
+
+/** `[x0, y0, x1, y1]` of a rect relative to the page, in px. */
+function edges({ x, y, width, height }: Rect, page: Rect): Bbox {
+  return [x - page.x, y - page.y, x - page.x + width, y - page.y + height];
 }
 
 /** `[x0, y0, x1, y1]` in pt relative to the page; each edge rounded on its own. */
