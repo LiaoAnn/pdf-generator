@@ -115,6 +115,49 @@ test('refuses a textless descendant clipped inside its own data-gt block', async
   );
 });
 
+test.each([
+  {
+    name: 'a data-gt box inside a pack wrapper named katex-mathml',
+    body: '<div class="katex-mathml" style="width:100px;height:30px;overflow:hidden"><div data-gt="image" style="width:100px;height:100px;background:black"></div></div>',
+  },
+  {
+    name: 'a textless descendant inside a non-formula block with a clipping katex-mathml wrapper',
+    body: '<div data-gt="image" style="width:100px;height:100px"><div class="katex-mathml" style="width:100px;height:30px;overflow:hidden"><div style="width:100px;height:100px;background:black"></div></div></div>',
+  },
+  {
+    name: 'a data-gt box itself named katex-mathml',
+    body: '<div style="width:100px;height:30px;overflow:hidden"><div class="katex-mathml" data-gt="image" style="width:100px;height:100px;background:black"></div></div>',
+  },
+])('refuses clipping of $name', async ({ body }) => {
+  await expectError(await post(document(body)), 1);
+});
+
+test.each([
+  { side: 'top', offset: 'top:-20px' },
+  { side: 'left', offset: 'left:-20px' },
+])('refuses a data-gt box clipped at the $side', async ({ side, offset }) => {
+  // Keep even the unclipped box inside the page content area, so page bounds
+  // cannot account for the refusal. Relative positioning avoids margin collapse.
+  const body = `<div style="margin:40px;width:100px;height:40px;overflow:hidden"><div data-gt="image" style="position:relative;${offset};width:80px;height:40px;background:black"></div></div>`;
+  const control = await post(
+    document(body.replace('overflow:hidden', 'overflow:visible')),
+  );
+  expect(
+    control.status,
+    control.status === 200 ? '' : await control.clone().text(),
+  ).toBe(200);
+  await control.arrayBuffer();
+
+  const response = await post(document(body));
+  const details = response.clone();
+  await expectError(response, 1);
+  const { error } = apiErrorSchema.parse(await details.json());
+  expect(
+    error.details?.some(detail => detail.message.includes(`at the ${side}`)),
+    JSON.stringify(error.details),
+  ).toBe(true);
+});
+
 test('clipping on the second page reports page 2 rather than the first page', async () => {
   const body = `<section><div style="height:20px;background:black" data-gt="image"></div></section><section><div class="wrapper">${box}</div></section>`;
   const pagination = 'section + section { break-before: page; }';

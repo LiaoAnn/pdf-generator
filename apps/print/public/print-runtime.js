@@ -616,8 +616,10 @@
   // that clips it (overflow, contain: paint, clip-path, ...), and not by one
   // an absolutely positioned box escapes. Only the part inside the page's
   // content area counts; reaching outside it is outsidePages()'s to report.
-  // Skipped: KaTeX's MathML copy, clipped to 1px on purpose, and an SVG's
-  // drawing, which its <svg> clips by design (text in it counts).
+  // Skipped, unless marked data-gt themselves: MathML elements in KaTeX's
+  // .katex-mathml copy, clipped to 1px on purpose (the class alone exempts
+  // nothing: a pack can use it), and an SVG's drawing, which its <svg> clips
+  // by design (text in it counts).
   async function clippedContent() {
     const tolerance = 1;
     const round = (/** @type {number} */ value) => value.toFixed(1);
@@ -632,11 +634,12 @@
       for (const element of content.querySelectorAll(
         '[data-gt], [data-gt] *',
       )) {
-        if (element.closest('.katex-mathml')) continue;
         if (
-          element instanceof SVGElement &&
           !element.hasAttribute('data-gt') &&
-          !(element instanceof SVGTextContentElement)
+          ((element.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
+            element.closest('.katex-mathml')) ||
+            (element instanceof SVGElement &&
+              !(element instanceof SVGTextContentElement)))
         ) {
           continue;
         }
