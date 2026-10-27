@@ -304,6 +304,26 @@ export function collect() {
             regions.find(([selector]) => element.closest(selector))?.[1] ??
             'area',
           rect: { x, y, width, height },
+          // Chrome paints these on whole px of the page; build moves the box
+          // onto them (T08-2).
+          replaced: [element, ...Array.from(element.querySelectorAll('img'))]
+            .filter(
+              inner =>
+                inner instanceof HTMLImageElement &&
+                inner.getClientRects().length > 0,
+            )
+            .map(inner => {
+              const box = inner.getBoundingClientRect();
+              return {
+                kind: /** @type {const} */ ('img'),
+                rect: {
+                  x: box.x,
+                  y: box.y,
+                  width: box.width,
+                  height: box.height,
+                },
+              };
+            }),
           text: element instanceof HTMLElement ? element.innerText : '',
           nested: element.parentElement?.closest('[data-gt]') != null,
           attributes: Object.fromEntries(

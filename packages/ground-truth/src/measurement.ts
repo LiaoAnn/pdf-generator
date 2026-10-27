@@ -31,6 +31,11 @@ export interface MeasuredElement {
   region: Region;
   /** Its border box. */
   rect: Rect;
+  /**
+   * The replaced elements it is or holds that are laid out, in document
+   * order: Chrome paints these on whole CSS px of the printed page (T08-2).
+   */
+  replaced?: ReplacedBox[];
   /** Its `innerText`. */
   text: string;
   /** True when it lies inside another `data-gt` element. */
@@ -44,6 +49,14 @@ export interface MeasuredElement {
   innerAttributes?: { tag: string; name: string }[];
   /** Type-specific data collected in the browser (T13: `ElementDetails`). */
   details?: unknown;
+}
+
+/** A replaced element inside (or being) a measured element. */
+export interface ReplacedBox {
+  /** An `<img>`, or an `<svg>` not inside another `<svg>`. */
+  kind: 'img' | 'svg';
+  /** Its border box. */
+  rect: Rect;
 }
 
 /** A `.pagedjs_page` border box. */

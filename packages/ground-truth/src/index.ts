@@ -17,5 +17,6 @@ export type {
   Measurement,
   Rect,
   Region,
+  ReplacedBox,
 } from './measurement.ts';
 export { type EvaluatingPage, readGroundTruth } from './read.ts';
