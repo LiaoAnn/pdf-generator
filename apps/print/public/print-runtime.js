@@ -145,6 +145,38 @@
       .split(',')
       .every(query => /^\s*(only\s+)?(screen|speech)\b/i.test(query));
 
+  // A sheet @import-ed with a print media list applies to the print as a whole
+  // sheet, cascade and inheritance included, which its text alone can't show
+  // (a family on body, bold on strong). Read computed styles once with those
+  // imports applied on screen as well, then restore their media.
+  function findUsedInPrintImports() {
+    /** @type {[CSSImportRule, string][]} */
+    const imports = [];
+    /** @param {CSSRuleList} rules */
+    const collect = rules => {
+      for (const rule of rules) {
+        if (!(rule instanceof CSSImportRule) || !rule.styleSheet) continue;
+        const media = rule.media.mediaText;
+        if (media !== '' && printsWith(media)) imports.push([rule, media]);
+        try {
+          collect(rule.styleSheet.cssRules);
+        } catch {}
+      }
+    };
+    for (const sheet of document.styleSheets) {
+      try {
+        collect(sheet.cssRules);
+      } catch {}
+    }
+    if (imports.length === 0) return;
+    for (const [rule] of imports) rule.media.mediaText = 'all';
+    try {
+      findUsedInDocument();
+    } finally {
+      for (const [rule, media] of imports) rule.media.mediaText = media;
+    }
+  }
+
   // Rules computed styles can't show before Paged.js runs: @page rules (margin
   // boxes exist only after pagination) and @media print rules (Paged.js
   // applies them; the page is still on screen media here). Read them from the
@@ -223,6 +255,7 @@
   async function loadUsedFaces() {
     await stylesheetsSettled();
     findUsedInDocument();
+    findUsedInPrintImports();
     await findUsedInAtRules();
     const faces = [...used].sort().map(entry => {
       const [key = '', variant] = entry.split('|');
