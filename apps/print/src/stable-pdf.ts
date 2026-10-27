@@ -222,7 +222,9 @@ class Pdf {
  * `pdf` as Chrome printed it from `documentUrl`, without what differs between
  * two prints of the same HTML: `/CreationDate` and `/ModDate`, `/Title` when
  * it is the URL Chrome falls back to (a document's own `<title>` stays), and
- * the DOM node ids that name the tagged PDF's structure elements.
+ * the DOM node ids that name the tagged PDF's structure elements. Throws
+ * when two of those edits would overlap, which no PDF Chrome writes needs:
+ * applying both would change the file's length.
  */
 export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
   const text = Buffer.from(pdf).toString('latin1');
@@ -325,6 +327,11 @@ export function stablePdf(pdf: Uint8Array, documentUrl: string): Uint8Array {
   let result = '';
   let from = 0;
   for (const [start, replacement] of edits) {
+    if (start < from) {
+      throw new Error(
+        `stablePdf: the edits at byte ${start} and before byte ${from} overlap`,
+      );
+    }
     result += text.slice(from, start) + replacement;
     from = start + replacement.length;
   }
