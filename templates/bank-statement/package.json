@@ -12,6 +12,7 @@
   "devDependencies": {
     "@pdf-generator/contract": "workspace:*",
     "@pdf-generator/fake-data": "workspace:*",
+    "@pdf-generator/self-check": "workspace:*",
     "@pdf-generator/template-tools": "workspace:*",
     "@types/node": "^24.13.6",
     "fflate": "^0.8.3",
