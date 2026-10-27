@@ -51,6 +51,15 @@ export const maxPaintPoints = 1 << 19;
  */
 export const maxPaints = 1 << 15;
 
+/**
+ * The most clipping paths a paint may be drawn through to be measured, and
+ * the most transparency groups and clipping paths one document may create
+ * (the 6 packs: one clip a paint, no groups). Past either, the paints that
+ * need more are `unmeasured`, and no more are kept.
+ */
+export const maxClips = 32;
+export const maxStructures = 1 << 14;
+
 /** The most paints a tile may hold, and the most mesh vertices, to be measured. */
 const maxTilePaints = 256;
 const maxMeshVertices = 1 << 20;
@@ -82,8 +91,11 @@ interface GraphicsState {
   base: Matrix;
   /** The clipping paths in force, in the output frame. */
   clips: PdfShape[];
-  /** A clip in force was too large to keep: what it shows can't be measured. */
-  clipLost: boolean;
+  /**
+   * A clip or group in force couldn't be kept (too large, too deep, or past
+   * the document's budget): what is painted here can't be measured.
+   */
+  lost: boolean;
   fill: Source;
   stroke: Source;
 }
@@ -348,6 +360,8 @@ export interface PaintOptions {
   pointBudget?: { left: number };
   /** Paint records the document may still keep (`maxPaints`), and how many were dropped. */
   paintBudget?: { left: number; dropped: number };
+  /** Groups and clipping paths the document may still create (`maxStructures`). */
+  structureBudget?: { left: number };
 }
 
 /**
@@ -364,6 +378,7 @@ export function readPaints(
     depth = 0,
     pointBudget = { left: maxPaintPoints },
     paintBudget = { left: maxPaints, dropped: 0 },
+    structureBudget = { left: maxStructures },
   }: PaintOptions,
 ): PdfPaint[] {
   const ops = (...names: string[]) => new Set(names.map(name => OPS[name]));
@@ -402,7 +417,7 @@ export function readPaints(
     mask: undefined,
     base: identity,
     clips: [],
-    clipLost: false,
+    lost: false,
     fill: '#000000',
     stroke: '#000000',
   };
@@ -439,6 +454,23 @@ export function readPaints(
       Math.max(...ys),
     ];
     return [l, t, r, t, r, u, l, u];
+  };
+  // Clips and groups in force are copied per state: a few, and not too deep.
+  const addClip = (shape: PdfShape) => {
+    if (state.clips.length >= maxClips || structureBudget.left <= 0) {
+      state.lost = true;
+    } else {
+      structureBudget.left--;
+      state.clips = [...state.clips, shape];
+    }
+  };
+  const addGroup = (group: PdfGroup) => {
+    if (state.groups.length >= maxGroupDepth || structureBudget.left <= 0) {
+      state.lost = true;
+    } else {
+      structureBudget.left--;
+      state.groups = [...state.groups, group];
+    }
   };
   /** User-space points through the CTM into the output frame. */
   const toFrame = (points: number[]) => {
@@ -478,7 +510,7 @@ export function readPaints(
     let colour: Partial<PdfPaint> = { unmeasured: true };
     if (
       state.mask === 'unmeasured' ||
-      state.clipLost ||
+      state.lost ||
       state.groups.length > maxGroupDepth
     ) {
       colour = { unmeasured: true };
@@ -551,6 +583,7 @@ export function readPaints(
         depth: depth + 1,
         pointBudget,
         paintBudget,
+        structureBudget,
       },
     );
     // A tile is measured only if all of it is.
@@ -635,7 +668,7 @@ export function readPaints(
           }
           if (clipping) {
             state.clip = intersect(state.clip, rect);
-            state.clipLost = true;
+            state.lost = true;
           }
           clipping = undefined;
           return;
@@ -678,12 +711,8 @@ export function readPaints(
         }
         if (clipping) {
           state.clip = intersect(state.clip, rect);
-          if (keep(estimate)) {
-            state.clips = [
-              ...state.clips,
-              { polygons: area(), rule: clipping },
-            ];
-          } else state.clipLost = true;
+          if (keep(estimate)) addClip({ polygons: area(), rule: clipping });
+          else state.lost = true;
         }
       }
       clipping = undefined;
@@ -775,14 +804,11 @@ export function readPaints(
           // inside it none is in force until one is set there.
           const mask = state.mask;
           groupKinds.push(undefined);
-          state.groups = [
-            ...state.groups,
-            {
-              id: groupCount++,
-              alpha: state.fillAlpha,
-              ...(mask && mask !== 'unmeasured' ? { mask } : {}),
-            },
-          ];
+          addGroup({
+            id: groupCount++,
+            alpha: state.fillAlpha,
+            ...(mask && mask !== 'unmeasured' ? { mask } : {}),
+          });
           state.mask = mask === 'unmeasured' ? mask : undefined;
         }
         state.fillAlpha = 1;
@@ -800,13 +826,10 @@ export function readPaints(
       if (bbox) {
         state.clip = intersect(state.clip, mapRect(state.ctm, bbox));
         const [x0, y0, x1, y1] = bbox;
-        state.clips = [
-          ...state.clips,
-          {
-            polygons: [toFrame([x0, y0, x1, y0, x1, y1, x0, y1])],
-            rule: 'nonzero',
-          },
-        ];
+        addClip({
+          polygons: [toFrame([x0, y0, x1, y0, x1, y1, x0, y1])],
+          rule: 'nonzero',
+        });
       }
     } else if (fn === OPS.paintFormXObjectEnd) pop();
     else if (fn === OPS.endGroup) {

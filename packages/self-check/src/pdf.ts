@@ -13,6 +13,7 @@ import {
   type ImagePixels,
   maxPaintPoints,
   maxPaints,
+  maxStructures,
   readPaints,
 } from './paints.ts';
 
@@ -238,6 +239,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
   // Polygon points the document's paints may keep, across its pages.
   const pointBudget = { left: maxPaintPoints };
   const paintBudget = { left: maxPaints, dropped: 0 };
+  const structureBudget = { left: maxStructures };
   const byRef = new Map<string, ImagePixels | undefined>();
   const decode = (image: unknown) => {
     const ref = (image as { ref?: unknown } | undefined)?.ref;
@@ -308,6 +310,7 @@ export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
         clip: [left, bottom, right, top],
         pointBudget,
         paintBudget,
+        structureBudget,
         sources: {
           objectOf,
           imageOf: id => {
