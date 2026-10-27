@@ -13,6 +13,7 @@ import {
 import { scaledPages } from './pdf-scale.ts';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
+import { stablePdf } from './stable-pdf.ts';
 
 export {
   type PrintStore,
@@ -665,10 +666,15 @@ async function print<T>(
       await setViewport(pageViewport);
     }
   }
-  const pdf = await page.pdf({
-    preferCSSPageSize: true,
-    printBackground: true,
-  });
+  // Every check below reads the bytes the response carries: the ones without
+  // what changes from one print to the next (T07-2).
+  const pdf = stablePdf(
+    await page.pdf({
+      preferCSSPageSize: true,
+      printBackground: true,
+    }),
+    documentUrl,
+  );
   // The PDF is the authority on what was printed (T03 Must 4, PDF part).
   // Content Paged.js didn't lay out (a pack's own pagedjs-content template
   // leaves the rest of <body> live) or CSS on its page boxes can add sheets
