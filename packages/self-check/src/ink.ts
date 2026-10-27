@@ -76,8 +76,11 @@ interface Grid {
   rows: number;
 }
 
-/** The most span entries one shape may have in a band, to be measured. */
-const maxSpanEntries = 1 << 22;
+/**
+ * The most span entries one shape may have in a band, to be measured; also
+ * the most the band's cache of clip spans keeps at once.
+ */
+const maxSpanEntries = 1 << 21;
 
 /**
  * The sample columns and rows a shape covers in `grid`, by its fill rule:
@@ -600,15 +603,24 @@ function measure(
     const n = cols * grid.rows;
     // Clips are shared by many paints; a few are kept, not all.
     const clipSpans = new Map<PdfShape, Spans>();
+    let cachedEntries = 0;
     /** A paint's spans in this band, inside its clips; made when drawn, not kept. */
     const spansOf = (paint: PdfPaint) => {
       let spans = shapeSpans(paint, grid);
       for (const clip of paint.clips) {
         let clipped = clipSpans.get(clip);
         if (!clipped) {
-          if (clipSpans.size >= 64) clipSpans.clear();
           clipped = shapeSpans(clip, grid);
+          const entries = clipped.reduce((n, row) => n + row.length, 0);
+          if (
+            clipSpans.size >= 64 ||
+            cachedEntries + entries > maxSpanEntries
+          ) {
+            clipSpans.clear();
+            cachedEntries = 0;
+          }
           clipSpans.set(clip, clipped);
+          cachedEntries += entries;
         }
         const cut = clipped;
         spans = spans.map((row, r) =>
