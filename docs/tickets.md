@@ -356,7 +356,7 @@
 - **來源**：T09 的 ASK（步驟 0～7 與各步的還原方式見 T09 的 thread）；每一步都是外部服務呼叫，執行前要使用者同意
 
 ### T07-1 印 PDF：雲端 Chrome 152 驗收
-- **目標**：在真的 Browser Rendering（Chrome 152）上跑 T07 的 3 份驗收文件：部署 `pdf-generator-print`、設 `PRINT_TOKEN`、最多 12 份（含 session 重用），記錄啟動與渲染時間，跑完刪除 Worker；排版有問題就另開修正票；並確認 T07-8 的做法在真的平台可用：每次列印建立的 browser context 帶 `proxyServer`（指向不通的本機埠、只放行列印 Worker 自己的網址）能建立、能載入列印 Worker 的檔案，外部 `@import` 仍得 422；以及 T07-18 的 PDF 縮放檢查（假設 Chrome／Skia 為每個繪圖寫入完整的變換矩陣）在真的平台成立，正常樣板不會被誤擋成 `page_box_moved`
+- **目標**：在真的 Browser Rendering（Chrome 152）上跑 T07 的 3 份驗收文件：部署 `pdf-generator-print`、設 `PRINT_TOKEN`、最多 12 份（含 session 重用），記錄啟動與渲染時間，跑完刪除 Worker；排版有問題就另開修正票；並確認 T07-8 的做法在真的平台可用：每次列印建立的 browser context 帶 `proxyServer`（指向不通的本機埠、只放行列印 Worker 自己的網址）能建立、能載入列印 Worker 的檔案，外部 `@import` 仍得 422；以及 T07-18 的 PDF 縮放檢查（假設 Chrome／Skia 為每個繪圖寫入完整的變換矩陣）在真的平台成立，正常樣板不會被誤擋成 `page_box_moved`；以及 T07-2 的位元組相同在真的平台成立：同一份 HTML 印兩次，PDF 的 sha256 相同
 - **Blocked by**：T07
 - **Blocks**：—（建議在 T16 部署前完成）
 - **撞車風險**：無
@@ -940,3 +940,12 @@
 - **驗收測試**：只有 1 px 墨跡的大區塊被自我檢查擋下；6 個樣板各 10 份的自我檢查全部仍通過
 - **不做**：改有文字區塊的比對
 - **來源**：PR #78（T07-25）
+
+### T07-27 印 PDF：整理 PDF 結構時跳過字串內容
+- **目標**：T07-2 的 `stable-pdf.ts` 在 PDF 裡找 `/IDTree`、`/ID` 等結構時，沒有跳過字串常值；樣板包的 `<title>` 寫成「Report /IDTree 31 0 R」這類文字會被當成結構，印出來的 PDF 可能讀不了。改成只在字串常值以外找結構
+- **Blocked by**：T07-2
+- **Blocks**：—
+- **撞車風險**：`apps/print/src/stable-pdf.ts`
+- **驗收測試**：`<title>` 含 `/IDTree 31 0 R`、`/ID (node1)` 等字樣的文件印兩次 sha256 相同，PDF 可被 pdf.js 讀取，標題文字不變；6 個樣板各 10 份 gt.json 與 main 相同
+- **不做**：關掉 tagged PDF
+- **來源**：PR #79（T07-2）
