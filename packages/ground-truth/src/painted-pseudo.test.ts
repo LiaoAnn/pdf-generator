@@ -291,6 +291,26 @@ describe('readGroundTruth: ::before and ::after paint for their block', () => {
     });
   }, 30_000);
 
+  test('a page with no pseudo-element to rebuild is read without inserting anything', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pad"><div data-gt="paragraph" data-gt-id="plain" class="small"></div></div>`,
+        css,
+      );
+      // A rule that holds only while the head has one more <style> than it
+      // has now (this rule's own included) would give the block a shadow.
+      await page.evaluate(`(() => {
+        const count = document.head.querySelectorAll('style').length;
+        const rule = document.createElement('style');
+        rule.textContent = 'html:has(head > style:nth-of-type(' + (count + 2) + ')) [data-gt] { box-shadow: 100px 0 0 #000; }';
+        document.head.appendChild(rule);
+      })()`);
+      const result = await readGroundTruth(page, source);
+      expect(boxes(result)).toEqual({ plain: layoutBox });
+    });
+  }, 30_000);
+
   test('a pseudo-element whose rebuilding would change the layout is left out', async () => {
     await withPage(async page => {
       const result = await read(

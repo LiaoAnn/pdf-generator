@@ -243,9 +243,13 @@ export function collect() {
         });
       }
     }
-    hiding = document.createElement('style');
-    hiding.textContent = `[${markName}~="before"]::before, [${markName}~="after"]::after { display: none !important; }`;
-    document.head.appendChild(hiding);
+    // Nothing to rebuild: insert nothing, so the page read is the page
+    // printed (the guard below only runs when spans were inserted).
+    if (candidates.length > 0) {
+      hiding = document.createElement('style');
+      hiding.textContent = `[${markName}~="before"]::before, [${markName}~="after"]::after { display: none !important; }`;
+      document.head.appendChild(hiding);
+    }
     for (const { host, pseudo, properties, text } of candidates) {
       const span = document.createElement('span');
       for (const [name, value] of properties) {
@@ -287,7 +291,7 @@ export function collect() {
       // measure no pseudo-element at all.
       for (const span of spans) span.remove();
       spans.length = 0;
-      hiding.remove();
+      hiding?.remove();
       hiding = undefined;
       for (const host of markedHosts) {
         host.removeAttribute(markName);
