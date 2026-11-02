@@ -396,14 +396,65 @@ export function collect() {
                       offset: Number.parseFloat(style.outlineOffset),
                     }
                   : undefined;
-              // The rect an outline of this element paints inside: the
+              // T08-4: outer box-shadows, each a shape painted around every
+              // client rect. Chrome serializes the computed box-shadow as a
+              // comma-separated list, each shadow `<color> <x>px <y>px
+              // <blur>px <spread>px` with ` inset` last; the colour may hold
+              // commas (rgba(...)) or spaces (rgb(0 0 0 / 0)), so split on
+              // commas and spaces outside parentheses only. Inset and fully
+              // transparent shadows (same alpha parsing as borders) paint
+              // nothing. Offsets, blur and spread stay unrounded.
+              const shadows =
+                visible && style.boxShadow !== 'none'
+                  ? style.boxShadow
+                      .split(/,(?![^(]*\))/)
+                      .map(part => {
+                        const tokens = part.trim().split(/\s+(?![^(]*\))/);
+                        const inset = tokens.includes('inset');
+                        const first = tokens.findIndex(token =>
+                          /px$/.test(token),
+                        );
+                        const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] =
+                          tokens
+                            .slice(first, inset ? -1 : undefined)
+                            .map(token => Number.parseFloat(token));
+                        const color = tokens.slice(0, first).join(' ');
+                        const slash = color.lastIndexOf('/');
+                        const parts = color.split(',');
+                        const alpha =
+                          slash >= 0
+                            ? Number.parseFloat(color.slice(slash + 1))
+                            : parts.length === 4
+                              ? Number.parseFloat(parts[3] ?? '')
+                              : 1;
+                        return {
+                          inset,
+                          alpha,
+                          offsetX,
+                          offsetY,
+                          blur,
+                          spread,
+                        };
+                      })
+                      .filter(shadow => !shadow.inset && shadow.alpha > 0)
+                  : [];
+              // An inline element broken over lines is shadowed as one box
+              // sliced at the line ends (box-decoration-break: slice, the
+              // initial value): a sliced side gets no shadow past it. With
+              // direction rtl the sliced sides swap.
+              const decoration =
+                style.getPropertyValue('box-decoration-break') ||
+                style.getPropertyValue('-webkit-box-decoration-break') ||
+                'slice';
+              const rtl = style.direction === 'rtl';
+              // The rect an outline or shadow of this element paints inside: the
               // intersection, over its ancestors up to and including its
               // .pagedjs_page, of each one's padding box on every axis on
               // which its overflow is not visible. Paged.js's .pagedjs_sheet
               // has overflow hidden, so this always covers the page's edges.
               /** @type {Rect | undefined} */
               let clipBox;
-              if (outlines !== undefined) {
+              if (outlines !== undefined || shadows.length > 0) {
                 let x0 = -Infinity;
                 let y0 = -Infinity;
                 let x1 = Infinity;
@@ -468,7 +519,8 @@ export function collect() {
                   ? Number.parseFloat(style.getPropertyValue(borderWidth))
                   : 0,
               );
-              for (const rect of inner.getClientRects()) {
+              const clientRects = Array.from(inner.getClientRects());
+              for (const [k, rect] of clientRects.entries()) {
                 if (outlines !== undefined) {
                   boxes.push({
                     kind: 'outline',
@@ -480,6 +532,39 @@ export function collect() {
                     },
                     width: outlines.width,
                     offset: outlines.offset,
+                    ...(clipBox && { clip: clipBox }),
+                  });
+                }
+                for (const shadow of shadows) {
+                  // box-decoration-break: slice slices the element's box at
+                  // each line end: the left side of every fragment but the
+                  // first and the right side of every fragment but the last
+                  // (swapped with direction: rtl).
+                  const sliced = /** @type {('left' | 'right')[]} */ ([
+                    ...(decoration === 'slice' &&
+                    clientRects.length > 1 &&
+                    k > 0
+                      ? [rtl ? 'right' : 'left']
+                      : []),
+                    ...(decoration === 'slice' &&
+                    clientRects.length > 1 &&
+                    k < clientRects.length - 1
+                      ? [rtl ? 'left' : 'right']
+                      : []),
+                  ]);
+                  boxes.push({
+                    kind: 'shadow',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                    offsetX: shadow.offsetX,
+                    offsetY: shadow.offsetY,
+                    blur: shadow.blur,
+                    spread: shadow.spread,
+                    ...(sliced.length > 0 && { sliced }),
                     ...(clipBox && { clip: clipBox }),
                   });
                 }

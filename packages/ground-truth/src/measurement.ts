@@ -35,7 +35,7 @@ export interface MeasuredElement {
    * What it is or holds that Chrome paints on whole CSS px of the printed
    * page, in document order: replaced elements (T08-2), backgrounds and
    * borders (T08-3), decorations painted outside the border box (T08-4: so
-   * far outlines, later box-shadows and generated content).
+   * far outlines and box-shadows, later generated content).
    */
   painted?: PaintedBox[];
   /** Its `innerText`. */
@@ -55,32 +55,47 @@ export interface MeasuredElement {
 
 /**
  * Something painted on whole px inside (or being) a measured element. `img`,
- * `svg` and `box` paint near or inside the border box; `outline` (and later
- * box-shadow and generated content) paints a ring or shape that may extend
- * past it, so it only ever grows the block's box, cut to the overflow clips
- * around it and to its page.
+ * `svg` and `box` paint near or inside the border box; `outline` and
+ * `shadow` (and later generated content) paint a ring or shape that may
+ * extend past it, so they only ever grow the block's box, cut to the
+ * overflow clips around it and to its page.
  */
 export interface PaintedBox {
   /**
    * An `<img>`, an `<svg>` not inside another `<svg>`, the background and
-   * borders of an element (`box`), or an element's outline (`outline`).
+   * borders of an element (`box`), an element's outline (`outline`), or an
+   * element's outer box-shadow (`shadow`).
    */
-  kind: 'img' | 'svg' | 'box' | 'outline';
+  kind: 'img' | 'svg' | 'box' | 'outline' | 'shadow';
   /**
    * For an img or svg its border box; for a box the area its decoration
-   * covers; for an outline the outlined rect (one client rect of the
-   * outlined element, so an inline element broken over lines adds one entry
-   * per line box).
+   * covers; for an outline or shadow the decorated rect (one client rect of
+   * the element, so an inline element broken over lines adds one entry per
+   * line box).
    */
   rect: Rect;
   /** Outline only: the computed outline-width in CSS px. */
   width?: number;
   /** Outline only: the computed outline-offset in CSS px. */
   offset?: number;
+  /** Shadow only: the shadow's x offset in CSS px. */
+  offsetX?: number;
+  /** Shadow only: the shadow's y offset in CSS px. */
+  offsetY?: number;
+  /** Shadow only: the blur radius in CSS px. */
+  blur?: number;
+  /** Shadow only: the spread radius in CSS px (negative shrinks the shape). */
+  spread?: number;
   /**
-   * Outline only: the rect it paints inside, in viewport coordinates: the
-   * intersection of the padding box of every ancestor whose overflow clips
-   * that axis, up to its `.pagedjs_page`.
+   * Shadow only: sides this client rect lost to box-decoration-break: slice
+   * (an inline element broken over lines): the shadow reaches exactly to the
+   * rect's edge there and paints nothing past it.
+   */
+  sliced?: ('left' | 'right')[];
+  /**
+   * Outline and shadow only: the rect it paints inside, in viewport
+   * coordinates: the intersection of the padding box of every ancestor whose
+   * overflow clips that axis, up to its `.pagedjs_page`.
    */
   clip?: Rect;
 }
