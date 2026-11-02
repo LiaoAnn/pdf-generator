@@ -349,6 +349,9 @@ importers:
       '@pdf-generator/contract':
         specifier: workspace:*
         version: link:../contract
+      fflate:
+        specifier: ^0.8.3
+        version: 0.8.3
       playwright-core:
         specifier: 1.63.0
         version: 1.63.0
