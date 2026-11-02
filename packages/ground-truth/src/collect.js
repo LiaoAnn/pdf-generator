@@ -127,7 +127,27 @@ export function collect() {
     '-webkit-box-decoration-break',
     'direction',
   ];
-  const snapshot = seen
+  // What the guard compares: the blocks, everything in them and their
+  // ancestors (whose overflow clips what the blocks paint).
+  /** @type {Element[]} */
+  const guarded = Array.from(
+    new Set([
+      ...seen.flatMap(element => {
+        /** @type {Element[]} */
+        const ancestors = [];
+        for (
+          let at = element.parentElement;
+          at !== null;
+          at = at.parentElement
+        ) {
+          ancestors.push(at);
+        }
+        return ancestors;
+      }),
+      ...seen,
+    ]),
+  );
+  const snapshot = guarded
     .map(element => {
       const style = getComputedStyle(element);
       return [
@@ -250,7 +270,7 @@ export function collect() {
     }
     if (
       spans.length > 0 &&
-      seen
+      guarded
         .map(element => {
           const style = getComputedStyle(element);
           return [

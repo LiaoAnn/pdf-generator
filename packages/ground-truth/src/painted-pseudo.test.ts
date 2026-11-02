@@ -278,6 +278,19 @@ describe('readGroundTruth: ::before and ::after paint for their block', () => {
     });
   }, 30_000);
 
+  test('a rebuild that changes an ancestor’s clip, not the block, measures no pseudo-element', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad"><div class="wrap"><div data-gt="list_item" data-gt-id="framed" class="small bullet"></div></div></div>`,
+        // The wrapper clips the bullet on the printed page; a child anywhere
+        // in it would stop that.
+        `.wrap { overflow: hidden; } .wrap:has(span) { overflow: visible; }`,
+      );
+      expect(boxes(result)).toEqual({ framed: layoutBox });
+    });
+  }, 30_000);
+
   test('a pseudo-element whose rebuilding would change the layout is left out', async () => {
     await withPage(async page => {
       const result = await read(
