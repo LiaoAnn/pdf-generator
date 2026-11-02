@@ -1,7 +1,8 @@
 // T07-30: data-gt text laid out with zero width (negative letter-spacing,
 // word-spacing) can't be matched against the PDF's text layer, so the print
 // runtime reports it (`zeroWidthText`) and renderPdf refuses the print with
-// its own code instead of skipping the text. A fake page stands in for the
+// its own code instead of skipping the text; zero-height text (T07-31) the
+// same way with text_zero_height. A fake page stands in for the
 // browser: these tests pin how renderPdf treats the runtime's report.
 import { readFileSync } from 'node:fs';
 import { expect, test, vi } from 'vitest';
@@ -116,4 +117,62 @@ test('content_clipped precedes text_zero_width', async () => {
   expect(outcome).toMatchObject({
     error: { code: 'content_clipped', details: clipped },
   });
+});
+
+// T07-31: data-gt text laid out with zero height (font-size 0, scaleY(0),
+// scale(0)) was skipped by the text check while gt.json still records its
+// text. The runtime reports it (`zeroHeightText`) and renderPdf refuses the
+// print with text_zero_height, whose guidance (remove the zero font size or
+// the flattening transform) differs from text_zero_width's.
+const zeroHeight = ['page 1: 零號字', 'page 3: FLATTENED'];
+
+// Regression: zero-height text was dropped from the text check and the PDF
+// printed with ground truth it can't back up (T07-31).
+test('zero-height data-gt text rejects with text_zero_height and keeps every detail', async () => {
+  const { outcome, page, inspect } = await run({ zeroHeightText: zeroHeight });
+  expect(outcome).toHaveProperty('error');
+  const { error } = outcome as { error: unknown };
+  expect(error).toBeInstanceOf(RenderError);
+  expect(error).toMatchObject({
+    code: 'text_zero_height',
+    details: zeroHeight,
+  });
+  expect(inspect).not.toHaveBeenCalled();
+  expect(page.close).toHaveBeenCalledTimes(1);
+});
+
+// Regression: refusing on an empty list would refuse every print.
+test('empty zero-height diagnostics allow ground-truth inspection', async () => {
+  const { outcome, inspect } = await run({ zeroHeightText: [] });
+  expect(outcome).toHaveProperty('result');
+  expect(inspect).toHaveBeenCalledTimes(1);
+});
+
+// Regression: text_missing's font advice would send the author after the
+// wrong cause for text that is there but flattened to zero height.
+test('text_zero_height precedes text_missing when both are found', async () => {
+  const { outcome } = await run({
+    zeroHeightText: zeroHeight,
+    expectedText: missingFromPdf,
+  });
+  expect(outcome).toMatchObject({
+    error: { code: 'text_zero_height', details: zeroHeight },
+  });
+});
+
+// The earlier refusals keep their place: clipping first, then zero width.
+test.each([
+  {
+    name: 'content_clipped',
+    state: { clippedContent: clipped },
+    error: { code: 'content_clipped', details: clipped },
+  },
+  {
+    name: 'text_zero_width',
+    state: { zeroWidthText: zeroWidth },
+    error: { code: 'text_zero_width', details: zeroWidth },
+  },
+])('$name precedes text_zero_height', async ({ state, error }) => {
+  const { outcome } = await run({ ...state, zeroHeightText: zeroHeight });
+  expect(outcome).toMatchObject({ error });
 });

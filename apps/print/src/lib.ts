@@ -121,6 +121,14 @@ export interface PrintedState {
    * in the PDF, so the text check can't vouch for it.
    */
   zeroWidthText?: string[];
+  /**
+   * `"page <n>: <text>"` (the text NFKC, without whitespace, at most 40
+   * characters) of every `[data-gt]` text node outside KaTeX's hidden MathML
+   * copy that the browser lays out with zero height (`font-size: 0`,
+   * `scaleY(0)`, `scale(0)`) and that holds characters that print (T07-31):
+   * the text check can't vouch for it, yet gt.json records it.
+   */
+  zeroHeightText?: string[];
 }
 
 /**
@@ -148,6 +156,7 @@ export type RenderErrorCode =
   | 'print_overflow'
   | 'content_clipped'
   | 'text_zero_width'
+  | 'text_zero_height'
   | 'css_import_loop';
 
 /** A render that must not produce a PDF. */
@@ -784,6 +793,15 @@ async function print<T>(
       'text_zero_width',
       'Some data-gt text is laid out with zero width',
       printed.zeroWidthText,
+    );
+  }
+  // Zero-height text (font-size 0, scaleY(0), scale(0)) is skipped by the
+  // text check too, while gt.json still records its text.
+  if (printed.zeroHeightText && printed.zeroHeightText.length > 0) {
+    throw new RenderError(
+      'text_zero_height',
+      'Some data-gt text is laid out with zero height',
+      printed.zeroHeightText,
     );
   }
   if (
