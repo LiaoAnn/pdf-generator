@@ -113,6 +113,14 @@ export interface PrintedState {
    * there.
    */
   expectedText?: ExpectedBlock[][];
+  /**
+   * `"page <n>: <text>"` (the text NFKC, without whitespace, at most 40
+   * characters) of every `[data-gt]` text node outside KaTeX's hidden MathML
+   * copy that the browser lays out with zero width but positive height and
+   * that holds characters that print (T07-30): its glyphs can't be located
+   * in the PDF, so the text check can't vouch for it.
+   */
+  zeroWidthText?: string[];
 }
 
 /**
@@ -139,6 +147,7 @@ export type RenderErrorCode =
   | 'request_blocked'
   | 'print_overflow'
   | 'content_clipped'
+  | 'text_zero_width'
   | 'css_import_loop';
 
 /** A render that must not produce a PDF. */
@@ -766,6 +775,15 @@ async function print<T>(
       'content_clipped',
       'Some data-gt content is clipped by an ancestor',
       printed.clippedContent,
+    );
+  }
+  // Zero-width text (negative letter-spacing, word-spacing) leaves the text
+  // check nothing to find, so the PDF can miss it.
+  if (printed.zeroWidthText && printed.zeroWidthText.length > 0) {
+    throw new RenderError(
+      'text_zero_width',
+      'Some data-gt text is laid out with zero width',
+      printed.zeroWidthText,
     );
   }
   if (
