@@ -1016,10 +1016,22 @@
   // letters. The rects are where the text is, also where it overflows its
   // element or is positioned outside it: whether text lies in its block's box
   // is the self-check's to report (T14), not this guard's.
+  //
+  // Chrome clamps a text node's range rect to zero width (the height stays
+  // the line's) whenever its total advance is zero or negative — negative
+  // letter-spacing or word-spacing, a scaleX(0) transform — yet still paints
+  // the glyphs, and each character's rect is then offset from where its glyph
+  // is drawn, so the text can't be matched in the PDF. Such a node is not
+  // skipped: it is reported in `zeroWidthText` (T07-30) and lib.ts refuses
+  // the print. A node that truly prints nothing — only default-ignorable or
+  // control characters (a zero-width space node, KaTeX's .vlist-s), a zero
+  // font size (its rects have zero height) — stays skipped.
   function expectedText() {
     const ptPerPx = 0.75;
     const hidden = hiddenCopies();
-    return pagedPages().map(page => {
+    /** @type {string[]} */
+    const zeroWidth = [];
+    const pages = pagedPages().map((page, index) => {
       const origin = page.getBoundingClientRect();
       /** @type {Map<Element, { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[]>} */
       const blocks = new Map();
@@ -1036,9 +1048,28 @@
         if (!text) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
-        const rects = [...range.getClientRects()].filter(
-          rect => rect.width > 0 && rect.height > 0,
-        );
+        const raw = [...range.getClientRects()];
+        if (
+          raw.some(rect => rect.height > 0) &&
+          raw.every(rect => rect.width < 0.5)
+        ) {
+          // Zero-width printing text (T07-30): the glyphs print but can't be
+          // located in the PDF (their rects are offset from where they are
+          // drawn), so lib.ts refuses the print. The clamped rect keeps a
+          // sub-pixel residue (up to ~0.02px seen for letter-spacing:-1em),
+          // so "zero width" means narrower than half a pixel. Text that
+          // prints nothing — default-ignorable or control characters only
+          // (KaTeX's .vlist-s zero-width-space node), a font size of 0 (its
+          // rect height is 0) — stays skipped, as before.
+          if (
+            text.replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '') !==
+            ''
+          ) {
+            zeroWidth.push(`page ${index + 1}: ${text.slice(0, 40)}`);
+          }
+          continue;
+        }
+        const rects = raw.filter(rect => rect.width > 0 && rect.height > 0);
         if (rects.length === 0) continue;
         const texts = blocks.get(element) ?? [];
         texts.push({
@@ -1054,6 +1085,7 @@
       }
       return [...blocks.values()].map(texts => ({ texts }));
     });
+    return { expectedText: pages, zeroWidthText: zeroWidth };
   }
 
   // Writes each page's number and the page count into the page-number slots
@@ -1331,7 +1363,9 @@
         .slice(0, 50),
       clippedContent: await clippedContent(),
       plainInk: plainInk(),
-      expectedText: expectedText(),
+      // expectedText, and zeroWidthText: text that prints with a zero-width
+      // rect, which lib.ts refuses with text_zero_width (T07-30).
+      ...expectedText(),
     };
   }
 

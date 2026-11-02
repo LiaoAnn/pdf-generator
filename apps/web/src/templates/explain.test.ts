@@ -187,6 +187,7 @@ describe('template author error explanations', () => {
     'pagination_timeout',
     'row_fragmented',
     'text_missing',
+    'text_zero_width',
   ];
 
   test('preview page-count refusals explain the template CSS cause without changing the print code or diagnostic', () => {
@@ -395,6 +396,29 @@ describe('template author error explanations', () => {
     expect.soft(issue?.explanation).toContain('裁');
     expect.soft(issue?.explanation).toMatch(/overflow|祖先|外層/i);
     expect.soft(issue?.explanation).toMatch(/請|移除|調整|增加|改用|避免|不要/);
+  });
+
+  // T07-30: text squeezed to zero width is printed but can't be checked;
+  // text_missing's font advice would send the author after the wrong cause.
+  test('preview text_zero_width explains squeezed data-gt text and tells authors to remove the negative spacing', () => {
+    const raw = 'page 1: 擠成零寬的文字';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'text_zero_width', message: raw }],
+    });
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('text_zero_width');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toMatch(cjk);
+    expect.soft(issue?.explanation).not.toBe(fallback());
+    expect.soft(issue?.explanation).toContain('data-gt');
+    expect.soft(issue?.explanation).toMatch(/寬度.{0,4}(零|0)|零寬/);
+    expect.soft(issue?.explanation).toContain('letter-spacing');
+    expect.soft(issue?.explanation).toContain('word-spacing');
+    expect.soft(issue?.explanation).toMatch(/負/);
+    expect.soft(issue?.explanation).toMatch(/移除|拿掉|刪除|不要/);
   });
 
   test.each([...uploadCodes, ...printCodes])(
@@ -631,6 +655,7 @@ describe('stored fixture print errors', () => {
     'pagination_timeout',
     'row_fragmented',
     'text_missing',
+    'text_zero_width',
   ])(
     'explains the stored %s code with the same guidance as a preview refusal',
     async code => {
