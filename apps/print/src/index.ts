@@ -1,8 +1,10 @@
 // The print Worker. Static assets (fonts, Paged.js, the print runtime) are
 // served before this handler runs. `POST /print` turns a document into a PDF;
 // `PUT /batch/<batch>/pack` stores a batch's pack once, content-addressed,
-// for its prints by reference; `GET /pack/<id>/<path>` serves a print's
-// document and pack files to its browser tab,
+// for its prints by reference (and starts the background sweep of packs
+// whose batch never ended); `DELETE /batch/<batch>` ends a batch and deletes
+// its pack's copy; `GET /pack/<id>/<path>` serves a print's document and
+// pack files to its browser tab,
 // `GET /batch/<batch>/<digest>/<path>` a batch's pack files;
 // `DELETE /session/<id>` closes a kept-alive browser session.
 import { Buffer } from 'node:buffer';
@@ -19,8 +21,10 @@ import {
   servePackFile,
 } from './lib.ts';
 import {
+  deleteBatchPack,
   PackNotUploadedError,
   serveBatchFile,
+  sweepBatchPacks,
   uploadBatchPack,
 } from './pack-files.ts';
 import {
@@ -231,6 +235,7 @@ async function print(
 async function uploadPack(
   request: Request,
   env: PrintEnv,
+  ctx: ExecutionContext,
   batch: string,
 ): Promise<Response> {
   const id = batchIdSchema.safeParse(batch);
@@ -270,7 +275,20 @@ async function uploadPack(
     id.data,
     parsed.data.files,
   );
+  // Housekeeping in the background: drop uploads whose batch's day is over.
+  // Wall-clock time is fine here: this is storage housekeeping, not the
+  // generation path.
+  ctx.waitUntil(sweepBatchPacks(env.PACK_FILES, Date.now()));
   return Response.json({ digest });
+}
+
+async function endBatch(env: PrintEnv, batch: string): Promise<Response> {
+  const id = batchIdSchema.safeParse(batch);
+  if (!id.success) {
+    return apiError(400, 'invalid_request', 'The batch id is not a batch id');
+  }
+  await deleteBatchPack(env.PACK_FILES, id.data);
+  return new Response(null, { status: 204 });
 }
 
 async function closeSession(env: PrintEnv, id: string): Promise<Response> {
@@ -301,8 +319,13 @@ export default {
     const batchUpload = /^\/batch\/([^/]+)\/pack$/.exec(pathname)?.[1];
     if (batchUpload && request.method === 'PUT') {
       return (
-        (await denied(request, env)) ?? uploadPack(request, env, batchUpload)
+        (await denied(request, env)) ??
+        uploadPack(request, env, ctx, batchUpload)
       );
+    }
+    const batchEnd = /^\/batch\/([^/]+)$/.exec(pathname)?.[1];
+    if (batchEnd && request.method === 'DELETE') {
+      return (await denied(request, env)) ?? endBatch(env, batchEnd);
     }
     const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
     if (pathname === '/print' && request.method === 'POST') {

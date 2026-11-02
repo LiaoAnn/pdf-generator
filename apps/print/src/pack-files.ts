@@ -9,6 +9,10 @@
 // per print, at batch/<batch>/<digest>/print/<printId>, served at the same
 // /batch/<batch>/<digest>/<path> with ?print=<printId>. Either way relative
 // URLs resolve between the document and the pack files as in the pack.
+// A batch's copy lives only as long as its batch: DELETE /batch/<batch>
+// deletes it, and the sweep (started in the background after each upload)
+// deletes every upload whose index is older than a batch's 24 hours, so an
+// end that never arrived still frees the bucket.
 import { Buffer } from 'node:buffer';
 import { relativePathSchema } from '@pdf-generator/contract';
 
@@ -261,6 +265,106 @@ export async function uploadBatchPack(
   if (failed) throw failed.reason;
   await writeIndex(true);
   return digest;
+}
+
+/**
+ * What ending a batch and the sweep need of the store; R2Bucket satisfies
+ * it.
+ */
+export interface BatchPackStore {
+  list(options?: { prefix?: string; cursor?: string }): Promise<{
+    objects: { key: string; uploaded: Date }[];
+    truncated: boolean;
+    cursor?: string;
+  }>;
+  delete(keys: string | string[]): Promise<unknown>;
+}
+
+/**
+ * Every key under `prefix`, deleted in chunks of at most 1000 (R2's limit),
+ * following the list cursor to the last page. DELETE /batch/<batch> and the
+ * sweep share it.
+ */
+async function deletePrefix(
+  store: BatchPackStore,
+  prefix: string,
+): Promise<void> {
+  // Every page first, then the deletes: deleting while paging would move the
+  // keys a page's cursor points at.
+  const keys: string[] = [];
+  let cursor: string | undefined;
+  do {
+    const page: Awaited<ReturnType<BatchPackStore['list']>> = await store.list({
+      prefix,
+      ...(cursor ? { cursor } : {}),
+    });
+    keys.push(...page.objects.map(object => object.key));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor !== undefined);
+  for (let at = 0; at < keys.length; at += 1000) {
+    await store.delete(keys.slice(at, at + 1000));
+  }
+}
+
+/**
+ * `DELETE /batch/<batch>`: everything the batch stored, its uploaded files
+ * and its upload indexes. Idempotent: an empty batch deletes nothing.
+ */
+export async function deleteBatchPack(
+  store: BatchPackStore,
+  batch: string,
+): Promise<void> {
+  // The index first: a print that starts meanwhile then answers
+  // pack_not_uploaded rather than finding some files gone.
+  await deletePrefix(store, `batch-index/${batch}/`);
+  await deletePrefix(store, `batch/${batch}/`);
+}
+
+/**
+ * A batch gets 24 hours; its pack's copy may stay one more, so a batch
+ * still running is never swept. An index is rewritten on every upload, so
+ * its `uploaded` is when its batch last touched the pack.
+ */
+const batchPackGrace = 25 * 3_600_000;
+
+/**
+ * Deletes every upload index last written more than `batchPackGrace` before
+ * `now`, and that upload's files: the batch they belonged to has ended or
+ * its end never arrived (its web isolate died). Younger indexes and their
+ * files stay, as do keys outside batch/ and batch-index/ (a print's inline
+ * files). Never throws: it runs in the background after an upload.
+ */
+export async function sweepBatchPacks(
+  store: BatchPackStore,
+  now: number,
+): Promise<void> {
+  try {
+    // Every index first, then the deletions: as in deletePrefix, deleting
+    // while paging would move keys under a page's cursor.
+    const expired: { key: string; batch: string; digest: string }[] = [];
+    let cursor: string | undefined;
+    do {
+      const page: Awaited<ReturnType<BatchPackStore['list']>> =
+        await store.list({
+          prefix: 'batch-index/',
+          ...(cursor ? { cursor } : {}),
+        });
+      for (const object of page.objects) {
+        const match = /^batch-index\/([^/]+)\/([^/]+)$/.exec(object.key);
+        if (match && now - object.uploaded.getTime() > batchPackGrace) {
+          const [, batch = '', digest = ''] = match;
+          expired.push({ key: object.key, batch, digest });
+        }
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor !== undefined);
+    for (const { key, batch, digest } of expired) {
+      await store.delete(key);
+      await deletePrefix(store, `batch/${batch}/${digest}/`);
+    }
+  } catch (error) {
+    console.warn('The batch-pack sweep failed:', error);
+  }
 }
 
 /** A print referenced a pack that was never completely uploaded for its batch. */
