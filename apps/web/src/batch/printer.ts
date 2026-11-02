@@ -142,10 +142,74 @@ function decodeBase64(text: string): Uint8Array<ArrayBuffer> {
  * hands back (`X-Browser-Session`) and lends each to one print at a time, so
  * a batch pays the browser launch (tens of seconds remotely, T03 §6.2) once
  * per concurrent print rather than once per fixture.
+ *
+ * With `options.batch` it prints for that batch: it uploads each job's
+ * pack files to the print Worker once (PUT /batch/<batch>/pack) and prints
+ * by reference to them, so the browser keeps the files cached between
+ * prints. Without it the pack's files ride along with every print.
  */
-export function createPrinter(service: Service, token: string): SessionPrinter {
+export function createPrinter(
+  service: Service,
+  token: string,
+  options: { batch?: string } = {},
+): SessionPrinter {
+  const batch = options.batch;
   const idle: string[] = [];
   let closed = false;
+  // The batch's pack copy at the print Worker: the files that were uploaded
+  // and the in-flight upload (shared by every concurrent first print). A
+  // failed upload is forgotten, so the next print uploads again.
+  let uploaded: {
+    files: Record<string, string>;
+    digest: Promise<string>;
+  } | null = null;
+  const uploadPack = async (files: Record<string, string>): Promise<string> => {
+    let response: Response;
+    try {
+      response = await service.fetch(
+        `https://print.internal/batch/${encodeURIComponent(batch as string)}/pack`,
+        {
+          method: 'PUT',
+          headers: {
+            authorization: `Bearer ${token}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ files }),
+        },
+      );
+    } catch (cause) {
+      throw unreachable(cause);
+    }
+    if (response.status !== 200) throw await failure(response);
+    const body = (await response.json().catch(() => undefined)) as
+      | { digest?: unknown }
+      | undefined;
+    if (typeof body?.digest !== 'string' || !body.digest) {
+      throw new PrintFailure(
+        response.status,
+        'print_bad_response',
+        'pack upload answered without a digest',
+      );
+    }
+    return body.digest;
+  };
+  const ensureUploaded = (files: Record<string, string>): Promise<string> => {
+    const remembered = uploaded;
+    if (
+      remembered &&
+      Object.keys(files).length === Object.keys(remembered.files).length &&
+      Object.keys(files).every(key => remembered.files[key] === files[key])
+    ) {
+      return remembered.digest;
+    }
+    const digest = uploadPack(files);
+    uploaded = { files, digest };
+    digest.catch(() => {
+      // A failed upload is forgotten: the next print uploads again.
+      if (uploaded?.digest === digest) uploaded = null;
+    });
+    return digest;
+  };
   const end = async (session: string) => {
     try {
       const response = await service.fetch(
@@ -165,27 +229,56 @@ export function createPrinter(service: Service, token: string): SessionPrinter {
       await Promise.all(idle.splice(0).map(end));
     },
     async print(job) {
-      const session = idle.pop() ?? 'new';
-      let response: Response;
-      try {
-        // The host is not used by a service binding; the print Worker loads
-        // its assets from its own ASSET_ORIGIN.
-        response = await service.fetch('https://print.internal/print', {
-          method: 'POST',
-          headers: {
-            authorization: `Bearer ${token}`,
-            'content-type': 'application/json',
-            'x-browser-session': session,
+      const body = batch
+        ? {
+            ...job,
+            pack: {
+              template: job.pack.template,
+              batch,
+              digest: await ensureUploaded(job.pack.files),
+            },
+          }
+        : job;
+      const post = async (payload: typeof body) => {
+        const session = idle.pop() ?? 'new';
+        let response: Response;
+        try {
+          // The host is not used by a service binding; the print Worker loads
+          // its assets from its own ASSET_ORIGIN.
+          response = await service.fetch('https://print.internal/print', {
+            method: 'POST',
+            headers: {
+              authorization: `Bearer ${token}`,
+              'content-type': 'application/json',
+              'x-browser-session': session,
+            },
+            body: JSON.stringify(payload),
+          });
+        } catch (cause) {
+          throw unreachable(cause);
+        }
+        const returned = response.headers.get('x-browser-session');
+        if (returned) {
+          if (closed) await end(returned);
+          else idle.push(returned);
+        }
+        return response;
+      };
+      let response = await post(body);
+      if (batch && response.status === 409) {
+        const refused = await failure(response);
+        if (refused.code !== 'pack_not_uploaded') throw refused;
+        // The print Worker lost the batch's pack copy: upload it again and
+        // retry the print once. A second refusal fails the print.
+        uploaded = null;
+        response = await post({
+          ...job,
+          pack: {
+            template: job.pack.template,
+            batch,
+            digest: await ensureUploaded(job.pack.files),
           },
-          body: JSON.stringify(job),
         });
-      } catch (cause) {
-        throw unreachable(cause);
-      }
-      const returned = response.headers.get('x-browser-session');
-      if (returned) {
-        if (closed) await end(returned);
-        else idle.push(returned);
       }
       if (response.status !== 200) throw await failure(response);
       try {
@@ -219,7 +312,7 @@ export function createBatchPrinters(
     for(batchId) {
       let printer = printers.get(batchId);
       if (!printer) {
-        printer = createPrinter(service, token);
+        printer = createPrinter(service, token, { batch: batchId });
         printers.set(batchId, printer);
       }
       return printer;
@@ -228,6 +321,20 @@ export function createBatchPrinters(
       const printer = printers.get(batchId);
       printers.delete(batchId);
       await printer?.close();
+      // Another isolate may have uploaded the batch's pack, so delete it at
+      // the print Worker even when this isolate has no printer for it. Never
+      // reject: a copy left behind ends at the print Worker's sweep.
+      try {
+        const response = await service.fetch(
+          `https://print.internal/batch/${encodeURIComponent(batchId)}`,
+          { method: 'DELETE', headers: { authorization: `Bearer ${token}` } },
+        );
+        if (!response.ok) {
+          console.warn(`ending batch ${batchId} at print: ${response.status}`);
+        }
+      } catch (error) {
+        console.warn(`ending batch ${batchId} at print failed`, error);
+      }
     },
   };
 }

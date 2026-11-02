@@ -1,7 +1,12 @@
 // The print Worker. Static assets (fonts, Paged.js, the print runtime) are
 // served before this handler runs. `POST /print` turns a document into a PDF;
-// `GET /pack/<id>/<path>` serves a print's document and pack files to its
-// browser tab; `DELETE /session/<id>` closes a kept-alive browser session.
+// `PUT /batch/<batch>/pack` stores a batch's pack once, content-addressed,
+// for its prints by reference (and starts the background sweep of packs
+// whose batch never ended); `DELETE /batch/<batch>` ends a batch and deletes
+// its pack's copy; `GET /pack/<id>/<path>` serves a print's document and
+// pack files to its browser tab,
+// `GET /batch/<batch>/<digest>/<path>` a batch's pack files;
+// `DELETE /session/<id>` closes a kept-alive browser session.
 import { Buffer } from 'node:buffer';
 import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
@@ -15,7 +20,18 @@ import {
   renderPdf,
   servePackFile,
 } from './lib.ts';
-import { printRequestSchema } from './request.ts';
+import {
+  deleteBatchPack,
+  PackNotUploadedError,
+  serveBatchFile,
+  sweepBatchPacks,
+  uploadBatchPack,
+} from './pack-files.ts';
+import {
+  batchIdSchema,
+  packUploadSchema,
+  printRequestSchema,
+} from './request.ts';
 
 interface PrintEnv extends Env {
   /** Bearer token callers of `/print` must send (a secret). */
@@ -125,7 +141,11 @@ async function print(
       })),
     );
   }
-  const sizeIssues = packSizeIssues(parsed.data.pack);
+  const sizeIssues = packSizeIssues(
+    parsed.data.pack && 'files' in parsed.data.pack
+      ? parsed.data.pack.files
+      : {},
+  );
   if (sizeIssues.length > 0) return tooLarge(sizeIssues);
   // X-Browser-Session: `new` or a session id keeps the browser for the next
   // request (a batch); the response names the session to send next time.
@@ -144,11 +164,22 @@ async function print(
   // could close its browser: close it here.
   let close = discard;
   try {
+    const assetOrigin = env.ASSET_ORIGIN ?? new URL(request.url).origin;
+    const pack = parsed.data.pack;
+    // In a kept-alive session, prints of one batch share one browser
+    // context (the pack's cacheable files load once per session). The key
+    // scopes what the cache can leak across to this browser, origin, batch
+    // and digest; one-request browsers and inline packs never share.
+    const sharedContext =
+      sessionId && pack && 'batch' in pack
+        ? `${sessionId}\n${assetOrigin}\n${pack.batch}\n${pack.digest}`
+        : undefined;
     // With a source, the ground truth is read on the paginated tab that
     // printed the PDF, in print media (T03 Must 3, T07-20).
     const result = await renderPdf(browser, parsed.data, {
-      assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
+      assetOrigin,
       store: env.PACK_FILES,
+      ...(sharedContext ? { sharedContext } : {}),
       ...(source ? { inspect: page => readGroundTruth(page, source) } : {}),
     });
     close = release;
@@ -203,10 +234,72 @@ async function print(
         ),
       );
     }
+    if (error instanceof PackNotUploadedError) {
+      return refused(apiError(409, 'pack_not_uploaded', error.message));
+    }
     throw error;
   } finally {
     await close();
   }
+}
+
+async function uploadPack(
+  request: Request,
+  env: PrintEnv,
+  ctx: ExecutionContext,
+  batch: string,
+): Promise<Response> {
+  const id = batchIdSchema.safeParse(batch);
+  if (!id.success) {
+    return apiError(400, 'invalid_request', `The batch id is not a batch id`);
+  }
+  const body = await readBody(request, packLimits.bodyBytes);
+  if (body === undefined) {
+    return tooLarge([
+      `the request body is more than the limit of ${packLimits.bodyBytes} bytes`,
+    ]);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return apiError(400, 'invalid_request', 'Body is not valid JSON');
+  }
+  const parsed = packUploadSchema.safeParse(json);
+  if (!parsed.success) {
+    return apiError(
+      400,
+      'invalid_request',
+      'Body is not a pack upload',
+      parsed.error.issues.map(issue => ({
+        message: issue.message,
+        path: issue.path.filter(
+          (key): key is string | number => typeof key !== 'symbol',
+        ),
+      })),
+    );
+  }
+  const sizeIssues = packSizeIssues(parsed.data.files);
+  if (sizeIssues.length > 0) return tooLarge(sizeIssues);
+  const digest = await uploadBatchPack(
+    env.PACK_FILES,
+    id.data,
+    parsed.data.files,
+  );
+  // Housekeeping in the background: drop uploads whose batch's day is over.
+  // Wall-clock time is fine here: this is storage housekeeping, not the
+  // generation path.
+  ctx.waitUntil(sweepBatchPacks(env.PACK_FILES, Date.now()));
+  return Response.json({ digest });
+}
+
+async function endBatch(env: PrintEnv, batch: string): Promise<Response> {
+  const id = batchIdSchema.safeParse(batch);
+  if (!id.success) {
+    return apiError(400, 'invalid_request', 'The batch id is not a batch id');
+  }
+  await deleteBatchPack(env.PACK_FILES, id.data);
+  return new Response(null, { status: 204 });
 }
 
 async function closeSession(env: PrintEnv, id: string): Promise<Response> {
@@ -227,6 +320,23 @@ export default {
         (await servePackFile(env.PACK_FILES, url)) ??
         apiError(404, 'not_found', `No file at ${pathname}`)
       );
+    }
+    if (pathname.startsWith('/batch/') && request.method === 'GET') {
+      return (
+        (await serveBatchFile(env.PACK_FILES, url)) ??
+        apiError(404, 'not_found', `No file at ${pathname}`)
+      );
+    }
+    const batchUpload = /^\/batch\/([^/]+)\/pack$/.exec(pathname)?.[1];
+    if (batchUpload && request.method === 'PUT') {
+      return (
+        (await denied(request, env)) ??
+        uploadPack(request, env, ctx, batchUpload)
+      );
+    }
+    const batchEnd = /^\/batch\/([^/]+)$/.exec(pathname)?.[1];
+    if (batchEnd && request.method === 'DELETE') {
+      return (await denied(request, env)) ?? endBatch(env, batchEnd);
     }
     const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
     if (pathname === '/print' && request.method === 'POST') {

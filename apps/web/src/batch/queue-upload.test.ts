@@ -160,10 +160,14 @@ test('the real queue handler prints the uploaded version from R2 rather than the
     ack: vi.fn(),
     retry: vi.fn<(options?: { delaySeconds?: number }) => void>(),
   } satisfies Message<FixtureJob>;
+  // The batch uploads its pack once (PUT /batch/<id>/pack, T07-5) and
+  // prints by reference to it.
+  const uploads: { url: string; files: Record<string, string> }[] = [];
   const sent: {
     html: string;
-    pack: { template: string; files: Record<string, string> };
+    pack: { template: string; batch: string; digest: string };
   }[] = [];
+  const digest = 'e'.repeat(64);
   const sendEvent = vi.fn(
     async (_event: { type: string; payload?: unknown }) => {},
   );
@@ -171,6 +175,13 @@ test('the real queue handler prints the uploaded version from R2 rather than the
     fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
       const req = new Request(input, init);
       if (req.method === 'DELETE') return new Response(null, { status: 204 });
+      if (req.method === 'PUT') {
+        const { files } = (await req.json()) as {
+          files: Record<string, string>;
+        };
+        uploads.push({ url: req.url, files });
+        return Response.json({ digest });
+      }
       sent.push((await req.json()) as (typeof sent)[number]);
       return Response.json({
         pageCount: 2,
@@ -201,15 +212,21 @@ test('the real queue handler prints the uploaded version from R2 rather than the
   expect(sent).toHaveLength(1);
   expect(sent[0]?.html).toContain(marker);
   expect(sent[0]?.html).not.toContain('later-version');
-  expect(sent[0]?.pack.template).toBe(templatePath);
+  expect(sent[0]?.pack).toEqual({
+    template: templatePath,
+    batch: batch.id,
+    digest,
+  });
+  expect(uploads.map(upload => upload.url)).toEqual([
+    `https://print.internal/batch/${batch.id}/pack`,
+  ]);
+  const uploaded = uploads[0]?.files ?? {};
   for (const [path, bytes] of Object.entries(valid)) {
     if (path === 'manifest.json' || path === templatePath) continue;
-    expect(sent[0]?.pack.files[path], path).toBe(
-      Buffer.from(bytes).toString('base64'),
-    );
+    expect(uploaded[path], path).toBe(Buffer.from(bytes).toString('base64'));
   }
   expect(
-    Buffer.from(sent[0]?.pack.files[templatePath] ?? '', 'base64').toString(),
+    Buffer.from(uploaded[templatePath] ?? '', 'base64').toString(),
   ).toContain(marker);
   const rows = await drizzle(platform.env.DB)
     .select()
