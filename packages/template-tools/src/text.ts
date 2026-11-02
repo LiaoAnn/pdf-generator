@@ -8,7 +8,9 @@ import {
 } from 'jsonc-parser';
 import type { PackIssue } from './issues.ts';
 
-const utf8 = new TextDecoder('utf-8', { fatal: true });
+// ignoreBOM is the WHATWG default (the BOM is still stripped); the Workers
+// types mark it required.
+const utf8 = new TextDecoder('utf-8', { fatal: true, ignoreBOM: false });
 
 /** UTF-8 text without its BOM, or undefined when the bytes aren't UTF-8. */
 export function decode(bytes: Uint8Array): string | undefined {
