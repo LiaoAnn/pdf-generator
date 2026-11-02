@@ -188,6 +188,7 @@ describe('template author error explanations', () => {
     'row_fragmented',
     'text_missing',
     'text_zero_width',
+    'text_zero_height',
   ];
 
   test('preview page-count refusals explain the template CSS cause without changing the print code or diagnostic', () => {
@@ -418,6 +419,35 @@ describe('template author error explanations', () => {
     expect.soft(issue?.explanation).toContain('letter-spacing');
     expect.soft(issue?.explanation).toContain('word-spacing');
     expect.soft(issue?.explanation).toMatch(/負/);
+    expect.soft(issue?.explanation).toMatch(/移除|拿掉|刪除|不要/);
+  });
+
+  // T07-31: text flattened to zero height (font-size 0, scaleY(0), scale(0))
+  // is laid out but can't be checked; text_zero_width's advice (remove the
+  // negative spacing) names the wrong cause and fix.
+  test('preview text_zero_height explains flattened data-gt text and tells authors to remove the zero font size or transform', () => {
+    const raw = 'page 1: 高度為零的文字';
+    const explained = (code: string) =>
+      explain({
+        code: 'preview_failed',
+        message: 'Printing failed',
+        details: [{ code, message: raw }],
+      });
+    const result = explained('text_zero_height');
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('text_zero_height');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toMatch(cjk);
+    expect.soft(issue?.explanation).not.toBe(fallback());
+    expect
+      .soft(issue?.explanation)
+      .not.toBe(explained('text_zero_width').issues[0]?.explanation);
+    expect.soft(issue?.explanation).toContain('data-gt');
+    expect.soft(issue?.explanation).toMatch(/高度.{0,4}(零|0)|零高/);
+    expect.soft(issue?.explanation).toContain('font-size');
+    expect.soft(issue?.explanation).toContain('scaleY(0)');
+    expect.soft(issue?.explanation).toContain('scale(0)');
     expect.soft(issue?.explanation).toMatch(/移除|拿掉|刪除|不要/);
   });
 
@@ -656,6 +686,7 @@ describe('stored fixture print errors', () => {
     'row_fragmented',
     'text_missing',
     'text_zero_width',
+    'text_zero_height',
   ])(
     'explains the stored %s code with the same guidance as a preview refusal',
     async code => {

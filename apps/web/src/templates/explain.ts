@@ -137,6 +137,8 @@ const printIssues: Record<string, string> = {
     '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。',
   text_zero_width:
     '有 data-gt 的文字排出來寬度是零：通常是負的 letter-spacing 或 word-spacing 把字元擠在同一個位置或反向排列，或 transform: scaleX(0) 把文字壓扁成零寬。PDF 也許還印得出字，但平台找不到它在頁面上的位置，無法確認它有印出來；標準答案的框也會是零寬，和 PDF 對不上。請移除負的 letter-spacing／word-spacing，或拿掉把文字壓扁的 transform，讓文字恢復正常的寬度。',
+  text_zero_height:
+    '有 data-gt 的文字排出來高度是零：通常是 font-size: 0 把字號設成零，或 transform: scaleY(0)、scale(0) 把文字壓扁成零高。平台在頁面上找不到這段文字，無法確認它有印出來；標準答案（gt.json）仍會記下它的文字，但框的高度是零，和 PDF 對不上。請移除 font-size: 0 或把文字壓扁的 transform，讓文字恢復正常的高度。如果這段文字不該出現在文件上，請從樣板刪除它（或拿掉它的 data-gt），不要用把高度縮成零的方式藏起來。',
   viewport_dependent:
     '版面會隨視窗大小改變：印 PDF 前，平台在差約 1 px 的兩種視窗大小（例如 A4 的 793 與 794 px），以及 Paged.js 分頁時的視窗下量 data-gt 元素的框，結果不同。常見原因是 CSS 用了 vw、vh 等視窗單位、依視窗寬高判斷的 @media 或 @container，或圖片的 sizes。另外 position: fixed 的元素、<picture> 依 media 選圖也會被擋。實際列印的頁面大小和量測標準答案時的視窗不完全相同，PDF 會和標準答案對不上。請改用 mm、pt、px 等固定單位，頁面大小用 @page 設定，不要讓版面依視窗大小改變。',
 };
