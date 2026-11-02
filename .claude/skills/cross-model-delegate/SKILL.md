@@ -83,7 +83,7 @@ Report: the files you changed and why each, the test command and the tail of its
 
 ## Runner brief (Kimi K3: probes, acceptance runs, re-checks, PR draft)
 
-Hand Kimi any job that is long or mostly waiting: a probe of how Chrome or pdf.js behaves, an acceptance batch, the 6-template gt.json comparison against a main baseline, `pnpm verify` after a rebase or a small fix, drafting the PR body. You design the job and its pass criterion; Kimi runs it and reports. One runner or implementer at a time in your worktree unless the jobs can't touch the same files or dev servers.
+Hand Kimi any job that is long or mostly waiting: a probe of how Chrome or pdf.js behaves, an acceptance batch, the 6-template gt.json comparison against a main baseline (`pnpm dump-gt` on main and on the branch, then `pnpm compare-gt`; AGENTS.md "Batch locally"), `pnpm verify` after a rebase or a small fix, drafting the PR body. You design the job and its pass criterion; Kimi runs it and reports. One runner or implementer at a time in your worktree unless the jobs can't touch the same files or dev servers.
 
 ```text
 You are a runner for ticket <TNN> in /data/worktrees/pdf-generator/<wt> (worktree name <wt>).
