@@ -86,6 +86,13 @@ test.each([
     detail: 'page 1: 零寬文字甲',
   },
   {
+    // Zero-width characters among printing ones don't make it print nothing.
+    name: 'squeezed text mixing letters and U+200B',
+    markup:
+      '<p data-gt="paragraph"><span style="letter-spacing:-2em">負​寬混字</span></p>',
+    detail: 'page 1: 負​寬混字',
+  },
+  {
     name: 'Latin text squeezed by letter-spacing:-1em',
     markup:
       '<p data-gt="paragraph"><span style="letter-spacing:-1em">SQUEEZED</span></p>',
