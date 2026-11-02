@@ -36,6 +36,597 @@ export function collect() {
     ['.pagedjs_margin-left', 'left'],
     ['.pagedjs_margin-right', 'right'],
   ];
+  // T08-4: a ::before or ::after belongs to the element it is generated on,
+  // so what it paints counts for that element's block exactly as an
+  // element's own would. Pseudo-elements have no DOM geometry, so each one
+  // of a laid-out data-gt element or of a laid-out HTML element inside one
+  // (not inside an <svg>) that could paint a decoration — a background image
+  // or non-transparent color, a visible border side (style not none/hidden,
+  // positive width, color not transparent), an outline (styled, wider than
+  // 0, not transparent) or a box-shadow — is rebuilt briefly as a real
+  // <span>: every property of its computed style copied onto its inline
+  // style with priority 'important' (content left out, animations and
+  // transitions off) and its decoded text as its content, inserted where the
+  // pseudo-element renders (first child for ::before, last for ::after)
+  // while one injected <style> hides the real pseudo-elements. If the
+  // rebuild moves anything (a pack rule such as :has() reacting to the
+  // span), everything is undone and no pseudo-element is measured at all.
+  // Either way the rebuild is undone before any text or attribute is read,
+  // so the page ends exactly as it was.
+  /** @type {Map<Element, PaintedBox[]>} */
+  const paintedByElement = new Map();
+  /** @type {Element[]} */
+  const spans = [];
+  /** @type {HTMLStyleElement | undefined} */
+  let hiding;
+  /** The laid-out blocks and everything in them: what rebuilding must not
+   * move, and where pseudo-elements can be hosted. */
+  /** @type {Element[]} */
+  const seen = Array.from(
+    new Set(
+      Array.from(document.querySelectorAll('[data-gt]'))
+        .filter(element => element.getClientRects().length > 0)
+        .flatMap(element => [
+          element,
+          ...Array.from(element.querySelectorAll('*')),
+        ]),
+    ),
+  );
+  /** @type {HTMLElement[]} */
+  const seenHtml = /** @type {HTMLElement[]} */ (
+    seen.filter(element => element instanceof HTMLElement)
+  ).filter(
+    element =>
+      element.parentElement?.closest('svg') == null &&
+      element.getClientRects().length > 0,
+  );
+  const seenRects = seen
+    .map(element =>
+      Array.from(
+        element.getClientRects(),
+        rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
+      ).join(';'),
+    )
+    .join('|');
+  try {
+    /** @type {{ host: HTMLElement; pseudo: string; properties: [string, string][]; text: string }[]} */
+    const candidates = [];
+    for (const host of seenHtml) {
+      for (const pseudo of ['::before', '::after']) {
+        const pseudoStyle = getComputedStyle(host, pseudo);
+        // Only content that consists solely of CSS strings (one or more
+        // "..." parts separated by whitespace) can paint a measurable
+        // pseudo-element; anything else (none, normal, counter(), attr(),
+        // url(), open/close quotes, / alt text) is left out.
+        const content = pseudoStyle.content;
+        const strings = Array.from(
+          content.matchAll(/"((?:\\.|[^"\\])*)"/g),
+          match => match[1] ?? '',
+        );
+        if (
+          strings.length === 0 ||
+          content.replace(/"(?:\\.|[^"\\])*"/g, '').trim() !== '' ||
+          pseudoStyle.display === 'none' ||
+          pseudoStyle.visibility !== 'visible'
+        ) {
+          continue;
+        }
+        // alpha of the background color, the four border colors and the
+        // outline color: what follows the '/' in the slash color syntax
+        // (rgb(0 0 0 / 0), lab(), color()) or rgba()'s fourth part.
+        const alpha = [
+          pseudoStyle.backgroundColor,
+          pseudoStyle.borderTopColor,
+          pseudoStyle.borderRightColor,
+          pseudoStyle.borderBottomColor,
+          pseudoStyle.borderLeftColor,
+          pseudoStyle.outlineColor,
+        ].map(color => {
+          const slash = color.lastIndexOf('/');
+          const parts = color.split(',');
+          return slash >= 0
+            ? Number.parseFloat(color.slice(slash + 1))
+            : parts.length === 4
+              ? Number.parseFloat(parts[3] ?? '')
+              : 1;
+        });
+        if (
+          pseudoStyle.backgroundImage === 'none' &&
+          (alpha[0] ?? 0) === 0 &&
+          ['top', 'right', 'bottom', 'left'].every(
+            (side, index) =>
+              ['none', 'hidden'].includes(
+                pseudoStyle.getPropertyValue(`border-${side}-style`),
+              ) ||
+              Number.parseFloat(
+                pseudoStyle.getPropertyValue(`border-${side}-width`),
+              ) <= 0 ||
+              (alpha[index + 1] ?? 0) === 0,
+          ) &&
+          (pseudoStyle.outlineStyle === 'none' ||
+            Number.parseFloat(pseudoStyle.outlineWidth) <= 0 ||
+            (alpha[5] ?? 0) === 0) &&
+          pseudoStyle.boxShadow === 'none'
+        ) {
+          continue;
+        }
+        candidates.push({
+          host,
+          pseudo,
+          properties: Array.from(pseudoStyle, name => [
+            /** @type {string} */ (name),
+            pseudoStyle.getPropertyValue(name),
+          ]),
+          // CSS escape decoding: \ followed by 1-6 hex digits and one
+          // optional whitespace is that code point; \ followed by any other
+          // char is that char.
+          text: strings
+            .join('')
+            .replace(
+              /\\(?:([0-9a-fA-F]{1,6})\s?|([\s\S]))/g,
+              (_whole, hex, char) =>
+                hex === undefined
+                  ? /** @type {string} */ (char)
+                  : String.fromCodePoint(Number.parseInt(hex, 16)),
+            ),
+        });
+      }
+    }
+    hiding = document.createElement('style');
+    hiding.textContent =
+      '[data-collect-pseudo-host~="before"]::before, [data-collect-pseudo-host~="after"]::after { display: none !important; }';
+    document.head.appendChild(hiding);
+    for (const { host, pseudo, properties, text } of candidates) {
+      const span = document.createElement('span');
+      for (const [name, value] of properties) {
+        if (name !== 'content') {
+          span.style.setProperty(name, value, 'important');
+        }
+      }
+      span.style.setProperty('animation-name', 'none', 'important');
+      span.style.setProperty('transition-property', 'none', 'important');
+      span.textContent = text;
+      span.setAttribute('data-collect-pseudo', pseudo.slice(2));
+      host.setAttribute(
+        'data-collect-pseudo-host',
+        `${host.getAttribute('data-collect-pseudo-host') ?? ''} ${pseudo.slice(2)}`.trim(),
+      );
+      if (pseudo === '::before') {
+        host.insertBefore(span, host.firstChild);
+      } else {
+        host.appendChild(span);
+      }
+      spans.push(span);
+    }
+    if (
+      spans.length > 0 &&
+      seen
+        .map(element =>
+          Array.from(
+            element.getClientRects(),
+            rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
+          ).join(';'),
+        )
+        .join('|') !== seenRects
+    ) {
+      // The rebuild moved something: undo it wholesale and measure no
+      // pseudo-element at all.
+      for (const span of spans) span.remove();
+      spans.length = 0;
+      hiding.remove();
+      hiding = undefined;
+      for (const host of seenHtml) {
+        host.removeAttribute('data-collect-pseudo-host');
+      }
+    }
+    // Chrome paints these on whole px of the page; build moves the box onto
+    // them. Replaced elements (T08-2): an <svg> inside another one is drawn
+    // as part of the outer one. Backgrounds and borders (T08-3): one entry
+    // per client rect, so each line fragment of an inline element counts; an
+    // element that paints nothing (display: none or contents) contributes
+    // none. Outlines and outer box-shadows (T08-4) grow the box instead, and
+    // a rebuilt pseudo-element's background or borders count as 'pseudo'
+    // entries that carry the overflow clips around it. Document order
+    // throughout.
+    for (const element of Array.from(
+      document.querySelectorAll('[data-gt]'),
+    ).filter(element => element.getClientRects().length > 0)) {
+      paintedByElement.set(
+        element,
+        [element, ...Array.from(element.querySelectorAll('*'))].flatMap(
+          inner => {
+            /** @type {PaintedBox[]} */
+            const boxes = [];
+            if (
+              (inner instanceof HTMLImageElement ||
+                (inner instanceof SVGSVGElement &&
+                  inner.parentElement?.closest('svg') == null)) &&
+              inner.getClientRects().length > 0
+            ) {
+              const box = inner.getBoundingClientRect();
+              boxes.push({
+                kind: /** @type {'img' | 'svg'} */ (
+                  inner instanceof HTMLImageElement ? 'img' : 'svg'
+                ),
+                rect: {
+                  x: box.x,
+                  y: box.y,
+                  width: box.width,
+                  height: box.height,
+                },
+              });
+            }
+            // A laid-out HTML element with a visible background or border,
+            // not inside an <svg>: visibility resolved on it (inherited as
+            // computed). The background (an image, or a color with alpha > 0)
+            // paints each whole client rect; without one, the painted area is
+            // the union of the visible border sides' strips on each client
+            // rect, a side being visible when its style is not none/hidden,
+            // its width is positive and its color's alpha > 0. alpha is what
+            // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
+            // lab(), color()) or rgba()'s fourth part.
+            if (
+              inner instanceof HTMLElement &&
+              inner.parentElement?.closest('svg') == null
+            ) {
+              const style = getComputedStyle(inner);
+              const visible = style.visibility === 'visible';
+              // alpha of the background color and the four border colors, in
+              // top, right, bottom, left order.
+              const alpha = [
+                style.backgroundColor,
+                style.borderTopColor,
+                style.borderRightColor,
+                style.borderBottomColor,
+                style.borderLeftColor,
+              ].map(color => {
+                const slash = color.lastIndexOf('/');
+                const parts = color.split(',');
+                return slash >= 0
+                  ? Number.parseFloat(color.slice(slash + 1))
+                  : parts.length === 4
+                    ? Number.parseFloat(parts[3] ?? '')
+                    : 1;
+              });
+              const background =
+                visible &&
+                (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
+              // T08-4: an outline paints a ring around each client rect
+              // when it is styled (not none), wider than 0, visible and not
+              // fully transparent (Chrome reports a width even for style
+              // none). offset and width are the computed values, already
+              // snapped by Chrome (2.5px → 2px, 3.3px → 3px).
+              const outlineWidth = Number.parseFloat(style.outlineWidth);
+              const outlineSlash = style.outlineColor.lastIndexOf('/');
+              const outlineParts = style.outlineColor.split(',');
+              const outlineAlpha =
+                outlineSlash >= 0
+                  ? Number.parseFloat(
+                      style.outlineColor.slice(outlineSlash + 1),
+                    )
+                  : outlineParts.length === 4
+                    ? Number.parseFloat(outlineParts[3] ?? '')
+                    : 1;
+              const outlines =
+                visible &&
+                style.outlineStyle !== 'none' &&
+                outlineWidth > 0 &&
+                outlineAlpha > 0
+                  ? {
+                      width: outlineWidth,
+                      offset: Number.parseFloat(style.outlineOffset),
+                    }
+                  : undefined;
+              // T08-4: outer box-shadows, each a shape painted around every
+              // client rect. Chrome serializes the computed box-shadow as a
+              // comma-separated list, each shadow `<color> <x>px <y>px
+              // <blur>px <spread>px` with ` inset` last; the colour may hold
+              // commas (rgba(...)) or spaces (rgb(0 0 0 / 0)), so split on
+              // commas and spaces outside parentheses only. Inset and fully
+              // transparent shadows (same alpha parsing as borders) paint
+              // nothing. Offsets, blur and spread stay unrounded.
+              const shadows =
+                visible && style.boxShadow !== 'none'
+                  ? style.boxShadow
+                      .split(/,(?![^(]*\))/)
+                      .map(part => {
+                        const tokens = part.trim().split(/\s+(?![^(]*\))/);
+                        const inset = tokens.includes('inset');
+                        const first = tokens.findIndex(token =>
+                          /px$/.test(token),
+                        );
+                        const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] =
+                          tokens
+                            .slice(first, inset ? -1 : undefined)
+                            .map(token => Number.parseFloat(token));
+                        const color = tokens.slice(0, first).join(' ');
+                        const slash = color.lastIndexOf('/');
+                        const parts = color.split(',');
+                        const alpha =
+                          slash >= 0
+                            ? Number.parseFloat(color.slice(slash + 1))
+                            : parts.length === 4
+                              ? Number.parseFloat(parts[3] ?? '')
+                              : 1;
+                        return {
+                          inset,
+                          alpha,
+                          offsetX,
+                          offsetY,
+                          blur,
+                          spread,
+                        };
+                      })
+                      .filter(shadow => !shadow.inset && shadow.alpha > 0)
+                  : [];
+              // An inline element broken over lines is shadowed as one box
+              // sliced at the line ends (box-decoration-break: slice, the
+              // initial value): a sliced side gets no shadow past it. With
+              // direction rtl the sliced sides swap.
+              const decoration =
+                style.getPropertyValue('box-decoration-break') ||
+                style.getPropertyValue('-webkit-box-decoration-break') ||
+                'slice';
+              const rtl = style.direction === 'rtl';
+              // A rebuilt ::before/::after (T08-4): its background or borders
+              // count like an element's own, but its box may lie outside the
+              // block's, so its entries are 'pseudo' and carry the overflow
+              // clips around it (its ancestors start at its host, so a host
+              // with overflow: hidden clips its own pseudo-elements).
+              const pseudo = inner.hasAttribute('data-collect-pseudo');
+              // The rect an outline or shadow of this element — or a rebuilt
+              // pseudo-element's box — paints inside: the intersection, over
+              // its ancestors up to and including its .pagedjs_page, of each
+              // one's padding box on every axis on which its overflow is not
+              // visible. Paged.js's .pagedjs_sheet has overflow hidden, so
+              // this always covers the page's edges.
+              /** @type {Rect | undefined} */
+              let clipBox;
+              if (outlines !== undefined || shadows.length > 0 || pseudo) {
+                let x0 = -Infinity;
+                let y0 = -Infinity;
+                let x1 = Infinity;
+                let y1 = Infinity;
+                for (
+                  let at = inner.parentElement;
+                  at !== null;
+                  at = at.parentElement
+                ) {
+                  const ancestorStyle = getComputedStyle(at);
+                  const ancestorRect = at.getBoundingClientRect();
+                  if (ancestorStyle.overflowX !== 'visible') {
+                    x0 = Math.max(
+                      x0,
+                      ancestorRect.x +
+                        Number.parseFloat(ancestorStyle.borderLeftWidth),
+                    );
+                    x1 = Math.min(
+                      x1,
+                      ancestorRect.right -
+                        Number.parseFloat(ancestorStyle.borderRightWidth),
+                    );
+                  }
+                  if (ancestorStyle.overflowY !== 'visible') {
+                    y0 = Math.max(
+                      y0,
+                      ancestorRect.top +
+                        Number.parseFloat(ancestorStyle.borderTopWidth),
+                    );
+                    y1 = Math.min(
+                      y1,
+                      ancestorRect.bottom -
+                        Number.parseFloat(ancestorStyle.borderBottomWidth),
+                    );
+                  }
+                  if (at.classList.contains('pagedjs_page')) break;
+                }
+                // Infinite only off every page: no clip then (an infinite
+                // number doesn't survive the trip out of the browser).
+                if ([x0, y0, x1, y1].every(Number.isFinite)) {
+                  clipBox = {
+                    x: x0,
+                    y: y0,
+                    width: x1 - x0,
+                    height: y1 - y0,
+                  };
+                }
+              }
+              // The width each visible border side paints, in top, right,
+              // bottom, left order; 0 for a side that paints nothing.
+              const sides = [
+                ['border-top-style', 'border-top-width'],
+                ['border-right-style', 'border-right-width'],
+                ['border-bottom-style', 'border-bottom-width'],
+                ['border-left-style', 'border-left-width'],
+              ].map(([borderStyle = '', borderWidth = ''], i) =>
+                visible &&
+                !['none', 'hidden'].includes(
+                  style.getPropertyValue(borderStyle),
+                ) &&
+                (alpha[i + 1] ?? 0) > 0
+                  ? Number.parseFloat(style.getPropertyValue(borderWidth))
+                  : 0,
+              );
+              const clientRects = Array.from(inner.getClientRects());
+              for (const [k, rect] of clientRects.entries()) {
+                if (outlines !== undefined) {
+                  boxes.push({
+                    kind: 'outline',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                    width: outlines.width,
+                    offset: outlines.offset,
+                    ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                  });
+                }
+                for (const shadow of shadows) {
+                  // box-decoration-break: slice slices the element's box at
+                  // each line end: the left side of every fragment but the
+                  // first and the right side of every fragment but the last
+                  // (swapped with direction: rtl).
+                  const sliced = /** @type {('left' | 'right')[]} */ ([
+                    ...(decoration === 'slice' &&
+                    clientRects.length > 1 &&
+                    k > 0
+                      ? [rtl ? 'right' : 'left']
+                      : []),
+                    ...(decoration === 'slice' &&
+                    clientRects.length > 1 &&
+                    k < clientRects.length - 1
+                      ? [rtl ? 'left' : 'right']
+                      : []),
+                  ]);
+                  boxes.push({
+                    kind: 'shadow',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                    offsetX: shadow.offsetX,
+                    offsetY: shadow.offsetY,
+                    blur: shadow.blur,
+                    spread: shadow.spread,
+                    ...(sliced.length > 0 ? { sliced } : {}),
+                    ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                  });
+                }
+                if (background) {
+                  boxes.push({
+                    kind: pseudo ? 'pseudo' : 'box',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                    ...(pseudo && clipBox !== undefined
+                      ? { clip: clipBox }
+                      : {}),
+                  });
+                  continue;
+                }
+                // With border-collapse: collapse a cell's outer half-border
+                // lies inside the table's own border box: the outer cells'
+                // client rects sit half a border width inside the table's
+                // rect (measured: cell [75.063, 101.25, 124.813, 121.563]
+                // in a table [74.563, 100.75, 175.063, 142.375] for a 1px
+                // border), so a visible border on such a cell paints an ink
+                // line right on the table's edge, one the cell's own strips
+                // never reach. Count it as a strip on that side of the
+                // table's own client rect, of the line's full width.
+                const cellWidths =
+                  inner instanceof HTMLTableElement &&
+                  style.borderCollapse === 'collapse'
+                    ? Array.from(inner.querySelectorAll('td, th')).reduce(
+                        (widths, cell) => {
+                          const cellStyle = getComputedStyle(cell);
+                          if (cellStyle.visibility !== 'visible') {
+                            return widths;
+                          }
+                          const cellRect = cell.getBoundingClientRect();
+                          const perSide = [
+                            cellRect.top - rect.y,
+                            rect.x + rect.width - cellRect.right,
+                            rect.y + rect.height - cellRect.bottom,
+                            cellRect.left - rect.x,
+                          ];
+                          for (const i of [0, 1, 2, 3]) {
+                            const prop = ['top', 'right', 'bottom', 'left'][i];
+                            if (
+                              ['none', 'hidden'].includes(
+                                cellStyle.getPropertyValue(
+                                  `border-${prop}-style`,
+                                ),
+                              )
+                            ) {
+                              continue;
+                            }
+                            const color = cellStyle.getPropertyValue(
+                              `border-${prop}-color`,
+                            );
+                            const slash = color.lastIndexOf('/');
+                            const parts = color.split(',');
+                            const alpha =
+                              slash >= 0
+                                ? Number.parseFloat(color.slice(slash + 1))
+                                : parts.length === 4
+                                  ? Number.parseFloat(parts[3] ?? '')
+                                  : 1;
+                            const width = Number.parseFloat(
+                              cellStyle.getPropertyValue(
+                                `border-${prop}-width`,
+                              ),
+                            );
+                            if (
+                              width > 0 &&
+                              alpha > 0 &&
+                              (perSide[i] ?? width) <= width / 2 + 0.01
+                            ) {
+                              widths[i] = Math.max(widths[i] ?? 0, width);
+                            }
+                          }
+                          return widths;
+                        },
+                        /** @type {number[]} */ ([0, 0, 0, 0]),
+                      )
+                    : [0, 0, 0, 0];
+                const x1 = rect.x + rect.width;
+                const y1 = rect.y + rect.height;
+                // The visible sides' strips, [x0, y0, x1, y1] each (a NaN
+                // width never passes its `> 0` test): the element's own
+                // border and, for a collapsed-border table, the line an
+                // outer cell's border paints on the table's edge.
+                const [wTop = 0, wRight = 0, wBottom = 0, wLeft = 0] =
+                  sides.map((width, i) => Math.max(width, cellWidths[i] ?? 0));
+                const strips = [
+                  ...(wTop > 0 ? [[rect.x, rect.y, x1, rect.y + wTop]] : []),
+                  ...(wRight > 0 ? [[x1 - wRight, rect.y, x1, y1]] : []),
+                  ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
+                  ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
+                ];
+                if (strips.length > 0) {
+                  const x0 = Math.min(...strips.map(strip => strip[0] ?? 0));
+                  const y0 = Math.min(...strips.map(strip => strip[1] ?? 0));
+                  const right0 = Math.max(
+                    ...strips.map(strip => strip[2] ?? 0),
+                  );
+                  const bottom0 = Math.max(
+                    ...strips.map(strip => strip[3] ?? 0),
+                  );
+                  boxes.push({
+                    kind: pseudo ? 'pseudo' : 'box',
+                    rect: {
+                      x: x0,
+                      y: y0,
+                      width: right0 - x0,
+                      height: bottom0 - y0,
+                    },
+                    ...(pseudo && clipBox !== undefined
+                      ? { clip: clipBox }
+                      : {}),
+                  });
+                }
+              }
+            }
+            return boxes;
+          },
+        ),
+      );
+    }
+  } finally {
+    // Whatever happened, the page goes back exactly as it was: spans, the
+    // injected style and the host marks all away.
+    for (const span of spans) span.remove();
+    if (hiding !== undefined) hiding.remove();
+    for (const host of seenHtml)
+      host.removeAttribute('data-collect-pseudo-host');
+  }
   // KaTeX's MathML copy of a formula that the browser hides (T07-26), as the
   // print runtime's hiddenCopies() decides: a .katex-mathml span or div that
   // clips all of its content to at most 1x1 px (absolutely positioned, one
@@ -304,384 +895,11 @@ export function collect() {
             regions.find(([selector]) => element.closest(selector))?.[1] ??
             'area',
           rect: { x, y, width, height },
-          // Chrome paints these on whole px of the page; build moves the box
-          // onto them. Replaced elements (T08-2): an <svg> inside another one
-          // is drawn as part of the outer one. Backgrounds and borders
-          // (T08-3): one entry per client rect, so each line fragment of an
-          // inline element counts; an element that paints nothing (display:
-          // none or contents) contributes none. Document order throughout.
-          painted: [
-            element,
-            ...Array.from(element.querySelectorAll('*')),
-          ].flatMap(inner => {
-            /** @type {PaintedBox[]} */
-            const boxes = [];
-            if (
-              (inner instanceof HTMLImageElement ||
-                (inner instanceof SVGSVGElement &&
-                  inner.parentElement?.closest('svg') == null)) &&
-              inner.getClientRects().length > 0
-            ) {
-              const box = inner.getBoundingClientRect();
-              boxes.push({
-                kind: /** @type {'img' | 'svg'} */ (
-                  inner instanceof HTMLImageElement ? 'img' : 'svg'
-                ),
-                rect: {
-                  x: box.x,
-                  y: box.y,
-                  width: box.width,
-                  height: box.height,
-                },
-              });
-            }
-            // A laid-out HTML element with a visible background or border,
-            // not inside an <svg>: visibility resolved on it (inherited as
-            // computed). The background (an image, or a color with alpha > 0)
-            // paints each whole client rect; without one, the painted area is
-            // the union of the visible border sides' strips on each client
-            // rect, a side being visible when its style is not none/hidden,
-            // its width is positive and its color's alpha > 0. alpha is what
-            // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
-            // lab(), color()) or rgba()'s fourth part.
-            if (
-              inner instanceof HTMLElement &&
-              inner.parentElement?.closest('svg') == null
-            ) {
-              const style = getComputedStyle(inner);
-              const visible = style.visibility === 'visible';
-              // alpha of the background color and the four border colors, in
-              // top, right, bottom, left order.
-              const alpha = [
-                style.backgroundColor,
-                style.borderTopColor,
-                style.borderRightColor,
-                style.borderBottomColor,
-                style.borderLeftColor,
-              ].map(color => {
-                const slash = color.lastIndexOf('/');
-                const parts = color.split(',');
-                return slash >= 0
-                  ? Number.parseFloat(color.slice(slash + 1))
-                  : parts.length === 4
-                    ? Number.parseFloat(parts[3] ?? '')
-                    : 1;
-              });
-              const background =
-                visible &&
-                (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
-              // T08-4: an outline paints a ring around each client rect
-              // when it is styled (not none), wider than 0, visible and not
-              // fully transparent (Chrome reports a width even for style
-              // none). offset and width are the computed values, already
-              // snapped by Chrome (2.5px → 2px, 3.3px → 3px).
-              const outlineWidth = Number.parseFloat(style.outlineWidth);
-              const outlineSlash = style.outlineColor.lastIndexOf('/');
-              const outlineParts = style.outlineColor.split(',');
-              const outlineAlpha =
-                outlineSlash >= 0
-                  ? Number.parseFloat(
-                      style.outlineColor.slice(outlineSlash + 1),
-                    )
-                  : outlineParts.length === 4
-                    ? Number.parseFloat(outlineParts[3] ?? '')
-                    : 1;
-              const outlines =
-                visible &&
-                style.outlineStyle !== 'none' &&
-                outlineWidth > 0 &&
-                outlineAlpha > 0
-                  ? {
-                      width: outlineWidth,
-                      offset: Number.parseFloat(style.outlineOffset),
-                    }
-                  : undefined;
-              // T08-4: outer box-shadows, each a shape painted around every
-              // client rect. Chrome serializes the computed box-shadow as a
-              // comma-separated list, each shadow `<color> <x>px <y>px
-              // <blur>px <spread>px` with ` inset` last; the colour may hold
-              // commas (rgba(...)) or spaces (rgb(0 0 0 / 0)), so split on
-              // commas and spaces outside parentheses only. Inset and fully
-              // transparent shadows (same alpha parsing as borders) paint
-              // nothing. Offsets, blur and spread stay unrounded.
-              const shadows =
-                visible && style.boxShadow !== 'none'
-                  ? style.boxShadow
-                      .split(/,(?![^(]*\))/)
-                      .map(part => {
-                        const tokens = part.trim().split(/\s+(?![^(]*\))/);
-                        const inset = tokens.includes('inset');
-                        const first = tokens.findIndex(token =>
-                          /px$/.test(token),
-                        );
-                        const [offsetX = 0, offsetY = 0, blur = 0, spread = 0] =
-                          tokens
-                            .slice(first, inset ? -1 : undefined)
-                            .map(token => Number.parseFloat(token));
-                        const color = tokens.slice(0, first).join(' ');
-                        const slash = color.lastIndexOf('/');
-                        const parts = color.split(',');
-                        const alpha =
-                          slash >= 0
-                            ? Number.parseFloat(color.slice(slash + 1))
-                            : parts.length === 4
-                              ? Number.parseFloat(parts[3] ?? '')
-                              : 1;
-                        return {
-                          inset,
-                          alpha,
-                          offsetX,
-                          offsetY,
-                          blur,
-                          spread,
-                        };
-                      })
-                      .filter(shadow => !shadow.inset && shadow.alpha > 0)
-                  : [];
-              // An inline element broken over lines is shadowed as one box
-              // sliced at the line ends (box-decoration-break: slice, the
-              // initial value): a sliced side gets no shadow past it. With
-              // direction rtl the sliced sides swap.
-              const decoration =
-                style.getPropertyValue('box-decoration-break') ||
-                style.getPropertyValue('-webkit-box-decoration-break') ||
-                'slice';
-              const rtl = style.direction === 'rtl';
-              // The rect an outline or shadow of this element paints inside: the
-              // intersection, over its ancestors up to and including its
-              // .pagedjs_page, of each one's padding box on every axis on
-              // which its overflow is not visible. Paged.js's .pagedjs_sheet
-              // has overflow hidden, so this always covers the page's edges.
-              /** @type {Rect | undefined} */
-              let clipBox;
-              if (outlines !== undefined || shadows.length > 0) {
-                let x0 = -Infinity;
-                let y0 = -Infinity;
-                let x1 = Infinity;
-                let y1 = Infinity;
-                for (
-                  let at = inner.parentElement;
-                  at !== null;
-                  at = at.parentElement
-                ) {
-                  const ancestorStyle = getComputedStyle(at);
-                  const ancestorRect = at.getBoundingClientRect();
-                  if (ancestorStyle.overflowX !== 'visible') {
-                    x0 = Math.max(
-                      x0,
-                      ancestorRect.x +
-                        Number.parseFloat(ancestorStyle.borderLeftWidth),
-                    );
-                    x1 = Math.min(
-                      x1,
-                      ancestorRect.right -
-                        Number.parseFloat(ancestorStyle.borderRightWidth),
-                    );
-                  }
-                  if (ancestorStyle.overflowY !== 'visible') {
-                    y0 = Math.max(
-                      y0,
-                      ancestorRect.top +
-                        Number.parseFloat(ancestorStyle.borderTopWidth),
-                    );
-                    y1 = Math.min(
-                      y1,
-                      ancestorRect.bottom -
-                        Number.parseFloat(ancestorStyle.borderBottomWidth),
-                    );
-                  }
-                  if (at.classList.contains('pagedjs_page')) break;
-                }
-                // Infinite only off every page: no clip then (an infinite
-                // number doesn't survive the trip out of the browser).
-                if ([x0, y0, x1, y1].every(Number.isFinite)) {
-                  clipBox = {
-                    x: x0,
-                    y: y0,
-                    width: x1 - x0,
-                    height: y1 - y0,
-                  };
-                }
-              }
-              // The width each visible border side paints, in top, right,
-              // bottom, left order; 0 for a side that paints nothing.
-              const sides = [
-                ['border-top-style', 'border-top-width'],
-                ['border-right-style', 'border-right-width'],
-                ['border-bottom-style', 'border-bottom-width'],
-                ['border-left-style', 'border-left-width'],
-              ].map(([borderStyle = '', borderWidth = ''], i) =>
-                visible &&
-                !['none', 'hidden'].includes(
-                  style.getPropertyValue(borderStyle),
-                ) &&
-                (alpha[i + 1] ?? 0) > 0
-                  ? Number.parseFloat(style.getPropertyValue(borderWidth))
-                  : 0,
-              );
-              const clientRects = Array.from(inner.getClientRects());
-              for (const [k, rect] of clientRects.entries()) {
-                if (outlines !== undefined) {
-                  boxes.push({
-                    kind: 'outline',
-                    rect: {
-                      x: rect.x,
-                      y: rect.y,
-                      width: rect.width,
-                      height: rect.height,
-                    },
-                    width: outlines.width,
-                    offset: outlines.offset,
-                    ...(clipBox && { clip: clipBox }),
-                  });
-                }
-                for (const shadow of shadows) {
-                  // box-decoration-break: slice slices the element's box at
-                  // each line end: the left side of every fragment but the
-                  // first and the right side of every fragment but the last
-                  // (swapped with direction: rtl).
-                  const sliced = /** @type {('left' | 'right')[]} */ ([
-                    ...(decoration === 'slice' &&
-                    clientRects.length > 1 &&
-                    k > 0
-                      ? [rtl ? 'right' : 'left']
-                      : []),
-                    ...(decoration === 'slice' &&
-                    clientRects.length > 1 &&
-                    k < clientRects.length - 1
-                      ? [rtl ? 'left' : 'right']
-                      : []),
-                  ]);
-                  boxes.push({
-                    kind: 'shadow',
-                    rect: {
-                      x: rect.x,
-                      y: rect.y,
-                      width: rect.width,
-                      height: rect.height,
-                    },
-                    offsetX: shadow.offsetX,
-                    offsetY: shadow.offsetY,
-                    blur: shadow.blur,
-                    spread: shadow.spread,
-                    ...(sliced.length > 0 && { sliced }),
-                    ...(clipBox && { clip: clipBox }),
-                  });
-                }
-                if (background) {
-                  boxes.push({
-                    kind: 'box',
-                    rect: {
-                      x: rect.x,
-                      y: rect.y,
-                      width: rect.width,
-                      height: rect.height,
-                    },
-                  });
-                  continue;
-                }
-                // With border-collapse: collapse a cell's outer half-border
-                // lies inside the table's own border box: the outer cells'
-                // client rects sit half a border width inside the table's
-                // rect (measured: cell [75.063, 101.25, 124.813, 121.563]
-                // in a table [74.563, 100.75, 175.063, 142.375] for a 1px
-                // border), so a visible border on such a cell paints an ink
-                // line right on the table's edge, one the cell's own strips
-                // never reach. Count it as a strip on that side of the
-                // table's own client rect, of the line's full width.
-                const cellWidths =
-                  inner instanceof HTMLTableElement &&
-                  style.borderCollapse === 'collapse'
-                    ? Array.from(inner.querySelectorAll('td, th')).reduce(
-                        (widths, cell) => {
-                          const cellStyle = getComputedStyle(cell);
-                          if (cellStyle.visibility !== 'visible') {
-                            return widths;
-                          }
-                          const cellRect = cell.getBoundingClientRect();
-                          const perSide = [
-                            cellRect.top - rect.y,
-                            rect.x + rect.width - cellRect.right,
-                            rect.y + rect.height - cellRect.bottom,
-                            cellRect.left - rect.x,
-                          ];
-                          for (const i of [0, 1, 2, 3]) {
-                            const prop = ['top', 'right', 'bottom', 'left'][i];
-                            if (
-                              ['none', 'hidden'].includes(
-                                cellStyle.getPropertyValue(
-                                  `border-${prop}-style`,
-                                ),
-                              )
-                            ) {
-                              continue;
-                            }
-                            const color = cellStyle.getPropertyValue(
-                              `border-${prop}-color`,
-                            );
-                            const slash = color.lastIndexOf('/');
-                            const parts = color.split(',');
-                            const alpha =
-                              slash >= 0
-                                ? Number.parseFloat(color.slice(slash + 1))
-                                : parts.length === 4
-                                  ? Number.parseFloat(parts[3] ?? '')
-                                  : 1;
-                            const width = Number.parseFloat(
-                              cellStyle.getPropertyValue(
-                                `border-${prop}-width`,
-                              ),
-                            );
-                            if (
-                              width > 0 &&
-                              alpha > 0 &&
-                              (perSide[i] ?? width) <= width / 2 + 0.01
-                            ) {
-                              widths[i] = Math.max(widths[i] ?? 0, width);
-                            }
-                          }
-                          return widths;
-                        },
-                        /** @type {number[]} */ ([0, 0, 0, 0]),
-                      )
-                    : [0, 0, 0, 0];
-                const x1 = rect.x + rect.width;
-                const y1 = rect.y + rect.height;
-                // The visible sides' strips, [x0, y0, x1, y1] each (a NaN
-                // width never passes its `> 0` test): the element's own
-                // border and, for a collapsed-border table, the line an
-                // outer cell's border paints on the table's edge.
-                const [wTop = 0, wRight = 0, wBottom = 0, wLeft = 0] =
-                  sides.map((width, i) => Math.max(width, cellWidths[i] ?? 0));
-                const strips = [
-                  ...(wTop > 0 ? [[rect.x, rect.y, x1, rect.y + wTop]] : []),
-                  ...(wRight > 0 ? [[x1 - wRight, rect.y, x1, y1]] : []),
-                  ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
-                  ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
-                ];
-                if (strips.length > 0) {
-                  const x0 = Math.min(...strips.map(strip => strip[0] ?? 0));
-                  const y0 = Math.min(...strips.map(strip => strip[1] ?? 0));
-                  const right0 = Math.max(
-                    ...strips.map(strip => strip[2] ?? 0),
-                  );
-                  const bottom0 = Math.max(
-                    ...strips.map(strip => strip[3] ?? 0),
-                  );
-                  boxes.push({
-                    kind: 'box',
-                    rect: {
-                      x: x0,
-                      y: y0,
-                      width: right0 - x0,
-                      height: bottom0 - y0,
-                    },
-                  });
-                }
-              }
-            }
-            return boxes;
-          }),
+          // Painted boxes are computed up front, while any rebuilt
+          // ::before/::after of the block or of an element in it stands in
+          // for its pseudo-element (T08-4); [] when that rebuild had to be
+          // undone.
+          painted: paintedByElement.get(element) ?? [],
           text: element instanceof HTMLElement ? element.innerText : '',
           nested: element.parentElement?.closest('[data-gt]') != null,
           attributes: Object.fromEntries(
