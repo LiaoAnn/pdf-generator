@@ -301,20 +301,47 @@ describe('browser session cleanup', () => {
   );
 });
 
+const digest = 'd'.repeat(64);
+
+/**
+ * A print Worker for batch printers: PUT /batch/<id>/pack answers `upload`
+ * (the digest by default), POST /print answers `printed` (a PDF with a new
+ * session by default), DELETE answers 204. Records every request.
+ */
+function printWorker({
+  upload = async () => Response.json({ digest }),
+  printed,
+}: {
+  upload?: (sent: Request) => Promise<Response>;
+  printed?: (sent: Request) => Promise<Response>;
+} = {}) {
+  const calls: Request[] = [];
+  let next = 0;
+  const fetch: Fetch = async (input, init) => {
+    const sent = new Request(input, init);
+    calls.push(new Request(input, init));
+    if (sent.method === 'DELETE') return new Response(null, { status: 204 });
+    if (sent.method === 'PUT') return upload(sent);
+    if (printed) return printed(sent);
+    const session = sent.headers.get('x-browser-session');
+    return answer(
+      session === 'new' ? `session-${next++}` : (session ?? undefined),
+    );
+  };
+  const of = (method: string) => calls.filter(call => call.method === method);
+  return { fetch, calls, of };
+}
+
+const reference = (batch: string) => ({
+  template: request.pack.template,
+  batch,
+  digest,
+});
+
 describe('batch-owned printers', () => {
   test('reuses within a batch, isolates other batches, and forgets a closed batch without closing its neighbor', async () => {
-    const calls: Request[] = [];
-    let next = 0;
-    const fetch: Fetch = async (input, init) => {
-      const sent = new Request(input, init);
-      calls.push(sent);
-      if (sent.method === 'DELETE') return new Response(null, { status: 204 });
-      const session = sent.headers.get('x-browser-session');
-      return answer(
-        session === 'new' ? `session-${next++}` : (session ?? undefined),
-      );
-    };
-    const batches = createBatchPrinters({ fetch }, 'token');
+    const worker = printWorker();
+    const batches = createBatchPrinters(worker, 'token');
     await batches.for('a').print(request);
     await batches.for('a').print(request);
     await batches.for('b').print(request);
@@ -324,12 +351,13 @@ describe('batch-owned printers', () => {
     await batches.for('b').print(request);
     await batches.for('a').print(request);
     expect(
-      calls
-        .filter(call => call.method === 'POST')
-        .map(call => call.headers.get('x-browser-session')),
+      worker.of('POST').map(call => call.headers.get('x-browser-session')),
     ).toEqual(['new', 'session-0', 'new', 'session-1', 'new']);
     expect(
-      calls.filter(call => call.method === 'DELETE').map(call => call.url),
+      worker
+        .of('DELETE')
+        .map(call => call.url)
+        .filter(url => url.includes('/session/')),
     ).toEqual(['https://print.internal/session/session-0']);
   });
 
@@ -338,6 +366,7 @@ describe('batch-owned printers', () => {
     const fetch: Fetch = async (input, init) => {
       const sent = new Request(input, init);
       if (sent.method === 'DELETE') throw new Error('offline');
+      if (sent.method === 'PUT') return Response.json({ digest });
       sessions.push(sent.headers.get('x-browser-session'));
       return answer('old-session');
     };
@@ -346,5 +375,198 @@ describe('batch-owned printers', () => {
     await expect(batches.close('a')).resolves.toBeUndefined();
     await batches.for('a').print(request);
     expect(sessions).toEqual(['new', 'new']);
+  });
+});
+
+// T07-5: a batch sends its pack's files to the print Worker once and prints
+// by reference to them, so the browser can keep them between prints.
+describe('batch pack upload', () => {
+  // Regression: resending the files with every print (up to 24 MiB each)
+  // is what the batch-scoped upload replaces.
+  test('uploads the pack once for 10 prints and sends each print only its reference', async () => {
+    const worker = printWorker();
+    const printer = createBatchPrinters(worker, 'batch-token').for('batch-1');
+    for (let i = 0; i < 10; i++) await printer.print(request);
+
+    const puts = worker.of('PUT');
+    expect(puts).toHaveLength(1);
+    const [put] = puts;
+    if (!put) throw new Error('No upload');
+    expect(put.url).toBe('https://print.internal/batch/batch-1/pack');
+    expect(put.headers.get('authorization')).toBe('Bearer batch-token');
+    expect(put.headers.get('content-type')).toMatch(/^application\/json\b/i);
+    expect(await put.json()).toEqual({ files: request.pack.files });
+
+    const posts = worker.of('POST');
+    expect(posts).toHaveLength(10);
+    for (const post of posts) {
+      expect(await post.json()).toEqual({
+        ...request,
+        pack: reference('batch-1'),
+      });
+    }
+  });
+
+  // Regression: each of the first concurrent prints (a queue delivery runs
+  // up to 4 at once) uploading the pack itself.
+  test('concurrent first prints share one upload', async () => {
+    let finish: (response: Response) => void = () => {};
+    const worker = printWorker({
+      upload: () =>
+        new Promise(resolve => {
+          finish = resolve;
+        }),
+    });
+    const printer = createBatchPrinters(worker, 'token').for('batch-1');
+    const prints = Promise.all(
+      Array.from({ length: 4 }, () => printer.print(request)),
+    );
+    await vi.waitFor(() => expect(worker.of('PUT')).toHaveLength(1));
+    finish(Response.json({ digest }));
+    await prints;
+    expect(worker.of('PUT')).toHaveLength(1);
+    expect(worker.of('POST')).toHaveLength(4);
+  });
+
+  // Regression: a print Worker that lost the copy (swept, or ended by
+  // another isolate) failing the rest of the batch; or retrying forever.
+  test('uploads again once when print answers pack_not_uploaded, then gives up', async () => {
+    const notUploaded = () =>
+      Response.json(
+        { error: { code: 'pack_not_uploaded', message: 'gone' } },
+        { status: 409 },
+      );
+    let refusals = 1;
+    const worker = printWorker({
+      printed: async () => (refusals-- > 0 ? notUploaded() : answer()),
+    });
+    const printer = createBatchPrinters(worker, 'token').for('batch-1');
+    await expect(printer.print(request)).resolves.toMatchObject({
+      pageCount: 2,
+    });
+    expect(worker.of('PUT')).toHaveLength(2);
+    expect(worker.of('POST')).toHaveLength(2);
+
+    refusals = 2;
+    const failed = printer.print(request);
+    await expect(failed).rejects.toBeInstanceOf(PrintFailure);
+    await expect(failed).rejects.toMatchObject({
+      status: 409,
+      code: 'pack_not_uploaded',
+    });
+    expect(worker.of('PUT')).toHaveLength(3);
+    expect(worker.of('POST')).toHaveLength(4);
+  });
+
+  // Regression: a printer that keeps the first upload's digest for another
+  // pack prints the old template's files.
+  test('a pack with other files is uploaded again', async () => {
+    const worker = printWorker();
+    const printer = createBatchPrinters(worker, 'token').for('batch-1');
+    const changed = {
+      ...request,
+      pack: {
+        ...request.pack,
+        files: { ...request.pack.files, 'fonts/report.woff2': 'AAEAgP4=' },
+      },
+    };
+    await printer.print(request);
+    await printer.print(changed);
+    await printer.print(changed);
+    const uploads = await Promise.all(worker.of('PUT').map(put => put.json()));
+    expect(uploads).toEqual([
+      { files: request.pack.files },
+      { files: changed.pack.files },
+    ]);
+  });
+
+  // Regression: an upload failure surfacing as an unreadable body (no retry
+  // decision possible), or a failed upload remembered for the whole batch.
+  test('a failed upload fails the print with its status and code, and the next print uploads again', async () => {
+    let refuse = true;
+    const worker = printWorker({
+      upload: async () =>
+        refuse
+          ? Response.json(
+              {
+                error: {
+                  code: 'pack_too_large',
+                  message: 'too large',
+                  details: [{ message: 'fonts/report.woff2 is too large' }],
+                },
+              },
+              { status: 413 },
+            )
+          : Response.json({ digest }),
+    });
+    const printer = createBatchPrinters(worker, 'token').for('batch-1');
+    const failed = printer.print(request);
+    await expect(failed).rejects.toBeInstanceOf(PrintFailure);
+    await expect(failed).rejects.toMatchObject({
+      status: 413,
+      code: 'pack_too_large',
+      details: ['fonts/report.woff2 is too large'],
+    });
+    expect(worker.of('POST')).toHaveLength(0);
+
+    refuse = false;
+    await printer.print(request);
+    expect(worker.of('PUT')).toHaveLength(2);
+    expect(worker.of('POST')).toHaveLength(1);
+  });
+
+  test('an unreachable print Worker during the upload is status zero', async () => {
+    const worker = printWorker({
+      upload: async () => {
+        throw new Error('offline');
+      },
+    });
+    const failed = createBatchPrinters(worker, 'token')
+      .for('batch-1')
+      .print(request);
+    await expect(failed).rejects.toMatchObject({
+      status: 0,
+      code: 'print_unreachable',
+    });
+  });
+
+  // Regression: the copy outliving its batch until the print Worker's sweep
+  // (a day), also when another isolate printed the batch's fixtures.
+  test('closing a batch ends its pack copy at the print Worker, also for a batch this isolate never printed, and never rejects', async () => {
+    const worker = printWorker();
+    const batches = createBatchPrinters(worker, 'close-token');
+    await batches.for('batch-1').print(request);
+    await batches.close('batch-1');
+    await batches.close('batch-2');
+    const ends = worker
+      .of('DELETE')
+      .filter(call => !call.url.includes('/session/'));
+    expect(ends.map(call => call.url)).toEqual([
+      'https://print.internal/batch/batch-1',
+      'https://print.internal/batch/batch-2',
+    ]);
+    for (const end of ends) {
+      expect(end.headers.get('authorization')).toBe('Bearer close-token');
+    }
+
+    const offline = createBatchPrinters(
+      {
+        fetch: async () => {
+          throw new Error('offline');
+        },
+      },
+      'token',
+    );
+    await expect(offline.close('batch-1')).resolves.toBeUndefined();
+  });
+
+  // Regression: the preview (no batch) depending on an upload it never
+  // ends; it keeps sending its files inline.
+  test('a printer without a batch keeps sending the files inline', async () => {
+    const worker = printWorker();
+    await createPrinter(worker, 'token').print(request);
+    expect(worker.of('PUT')).toHaveLength(0);
+    const [post] = worker.of('POST');
+    expect(await post?.json()).toEqual(request);
   });
 });

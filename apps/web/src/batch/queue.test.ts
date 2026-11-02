@@ -617,20 +617,22 @@ test('the queue handler fails an unreadable PDF instead of completing it', async
       ...platform.env,
       PRINT_TOKEN: 'test-token',
       PRINT: {
-        fetch: async () =>
-          Response.json({
-            pageCount: 2,
-            pdf: btoa(String.fromCharCode(...garbage)),
-            gt: gtSchema.parse({
-              ...gtExample,
-              source: {
-                templateId: input.templateId,
-                templateVersion: input.templateVersion,
-                seed: input.seed,
-                index: 0,
-              },
-            }),
-          }),
+        fetch: async (url: RequestInfo | URL, init?: RequestInit) =>
+          new Request(url, init).method === 'PUT'
+            ? Response.json({ digest: 'f'.repeat(64) })
+            : Response.json({
+                pageCount: 2,
+                pdf: btoa(String.fromCharCode(...garbage)),
+                gt: gtSchema.parse({
+                  ...gtExample,
+                  source: {
+                    templateId: input.templateId,
+                    templateVersion: input.templateVersion,
+                    seed: input.seed,
+                    index: 0,
+                  },
+                }),
+              }),
       } as unknown as Env['PRINT'],
       BATCH_WORKFLOW: {
         get: async () => ({ sendEvent: async () => {} }),
@@ -740,6 +742,10 @@ test('consumer retains sessions across deliveries but isolates batches and close
           deleted.push(sent.url);
           return new Response(null, { status: 204 });
         }
+        // Each batch uploads its pack once (T07-5).
+        if (sent.method === 'PUT') {
+          return Response.json({ digest: 'c'.repeat(64) });
+        }
         const session = sent.headers.get('x-browser-session');
         sessions.push(session);
         // Retryable print failure retains a healthy browser session.
@@ -771,10 +777,20 @@ test('consumer retains sessions across deliveries but isolates batches and close
   expect(sessions).toEqual(['new', 'session-0', 'new']);
   expect(deleted).toEqual([]);
   acknowledged(await deliver(a, 3));
-  expect(deleted).toEqual(['https://print.internal/session/session-0']);
+  // Closing an exhausted batch ends its sessions and its pack upload.
+  expect(deleted.sort()).toEqual(
+    [
+      'https://print.internal/session/session-0',
+      `https://print.internal/batch/${a}`,
+    ].sort(),
+  );
   acknowledged(await deliver(b, 3));
-  expect(deleted.sort()).toEqual([
-    'https://print.internal/session/session-0',
-    'https://print.internal/session/session-1',
-  ]);
+  expect(deleted.sort()).toEqual(
+    [
+      'https://print.internal/session/session-0',
+      'https://print.internal/session/session-1',
+      `https://print.internal/batch/${a}`,
+      `https://print.internal/batch/${b}`,
+    ].sort(),
+  );
 });
