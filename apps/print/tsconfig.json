@@ -1,11 +1,12 @@
 {
+  // Worker program: the code wrangler runs (src/index.ts and everything it
+  // imports), typed with the Workers runtime types worker-configuration.d.ts
+  // carries and no DOM lib. The Node tests and vitest.config.ts are checked
+  // by tsconfig.node.json, the print browser runtime by tsconfig.browser.json.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Not for @pdf-generator/ground-truth, which needs no DOM lib (T08-1):
-    // the Node tests and vitest.config pass Node's URL where the Workers types
-    // expect theirs, and template-tools' TextDecoder options miss ignoreBOM,
-    // which DOM's types hide.
-    "lib": ["ESNext", "DOM", "DOM.Iterable"]
+    // The Worker runs with nodejs_compat_v2 and imports node:buffer.
+    "types": ["node"]
   },
-  "include": ["worker-configuration.d.ts", "src"]
+  "include": ["worker-configuration.d.ts", "src/index.ts"]
 }

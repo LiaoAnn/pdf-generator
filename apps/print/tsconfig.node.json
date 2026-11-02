@@ -1,0 +1,11 @@
+{
+  // Node-test program: the tests and vitest.config.ts, which run in Node.
+  // The tests start the Worker code, so they see the Worker globals
+  // (Env/R2Bucket) through worker-configuration.d.ts; they take URL from
+  // node:url because the Workers types declare their own global URL. No DOM.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["worker-configuration.d.ts", "src", "vitest.config.ts"]
+}
