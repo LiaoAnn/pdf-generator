@@ -228,6 +228,56 @@ describe('readGroundTruth: ::before and ::after paint for their block', () => {
     });
   }, 30_000);
 
+  test('the shadow of a ::before outside the box grows it, as an element’s own shadow does', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad"><div data-gt="paragraph" data-gt-id="shaded" class="small shade"></div></div>`,
+        // A transparent 4.25 px square 10.25 px left of the box (64..68.25 x
+        // 104.75..109 px, rounded 64..68 x 105..109) whose 2 px spread shadow
+        // reaches 62..70 x 103..111.
+        `.shade::before { content: ''; position: absolute; left: -10.25px; top: 4px;
+           width: 4.25px; height: 4.25px; box-shadow: 0 0 0 2px #000; }`,
+      );
+      expect(boxes(result)).toEqual({ shaded: [46.5, 75.56, 86.06, 98.44] });
+    });
+  }, 30_000);
+
+  test('a pack attribute the reader also uses is left with its own value, and the box read with it', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pad"><div data-gt="list_item" data-gt-id="owned" class="small bullet" data-collect-pseudo-host="custom"></div>
+         <div data-gt="paragraph" data-gt-id="plain" class="small" data-collect-pseudo-host="custom"></div></div>`,
+        // Without the attribute the blocks would be 80.5 px wide and black.
+        `${css} [data-gt]:not([data-collect-pseudo-host="custom"]) { width: 80.5px; background: #000; }`,
+      );
+      const html = `document.documentElement.outerHTML`;
+      const before = await page.evaluate(html);
+      const first = await readGroundTruth(page, source);
+      expect(await page.evaluate(html)).toEqual(before);
+      expect(await readGroundTruth(page, source)).toEqual(first);
+      // The bullet grows the first box; the second keeps its layout box,
+      // 30.5 px lower.
+      expect(boxes(first)).toEqual({
+        owned: [46.5, 75.56, 86.06, 98.44],
+        plain: [55.69, 98.44, 86.06, 121.31],
+      });
+    });
+  }, 30_000);
+
+  test('a rebuild that changes what an element paints, not where it is, measures no pseudo-element', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad"><div data-gt="list_item" data-gt-id="tinted" class="small bullet tint"></div></div>`,
+        // A child in the item would paint it black; the printed page has none.
+        `.tint:has(*) { background: #000; box-shadow: 30px 0 0 #000; }`,
+      );
+      expect(boxes(result)).toEqual({ tinted: layoutBox });
+    });
+  }, 30_000);
+
   test('a pseudo-element whose rebuilding would change the layout is left out', async () => {
     await withPage(async page => {
       const result = await read(

@@ -156,6 +156,34 @@ describe('readGroundTruth: an outer box-shadow is in its block’s box', () => {
     });
   }, 30_000);
 
+  test('two shadows reaching past opposite sides each grow their own side', async () => {
+    await withPage(async page => {
+      // One 5.25 px left (68.75 at the left), one 6.25 px down (137.25 at
+      // the bottom, and as wide as the rounded box: 74..115): each decides
+      // the side it passes.
+      expect(
+        await shadowed(page, '-5.25px 0 0 0 #000, 0 6.25px 0 0 #000'),
+      ).toEqual([51.56, 75.56, 86.25, 102.94]);
+    });
+  }, 30_000);
+
+  test('an <svg> block’s own shadow counts as an element’s does', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pad"><svg data-gt="image" data-gt-id="drawing" class="small"
+            style="display: block; box-shadow: 0 0 0 2.25px #000" viewBox="0 0 40 30">
+            <rect width="40" height="30" fill="#00f"/></svg></div>`,
+        css,
+      );
+      const result = await readGroundTruth(page, source);
+      // 74..115 x 101..131 grown by 2.25: 71.75..117.25 x 98.75..133.25 px.
+      expect(boxes(result)).toEqual({
+        drawing: [53.81, 74.06, 87.94, 99.94],
+      });
+    });
+  }, 30_000);
+
   test('a hidden block’s shadow moves no side', async () => {
     await withPage(async page => {
       expect(

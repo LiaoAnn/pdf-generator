@@ -49,16 +49,30 @@ export function collect() {
   // transitions off) and its decoded text as its content, inserted where the
   // pseudo-element renders (first child for ::before, last for ::after)
   // while one injected <style> hides the real pseudo-elements. If the
-  // rebuild moves anything (a pack rule such as :has() reacting to the
-  // span), everything is undone and no pseudo-element is measured at all.
-  // Either way the rebuild is undone before any text or attribute is read,
-  // so the page ends exactly as it was.
+  // rebuild moves or repaints anything (a pack rule such as :has() reacting
+  // to the span), everything is undone and no pseudo-element is measured at
+  // all. The host mark is the first attribute name no element on the page
+  // carries, removed afterwards from only the elements it was set on, and
+  // the rebuilt spans are known by identity, never by an attribute of the
+  // span: reading never adds to, changes or removes an attribute a pack
+  // element carries. Either way the rebuild is undone before any text or
+  // attribute is read, so the page ends exactly as it was.
   /** @type {Map<Element, PaintedBox[]>} */
   const paintedByElement = new Map();
   /** @type {Element[]} */
   const spans = [];
+  /** @type {Set<Element>} */
+  const markedHosts = new Set();
   /** @type {HTMLStyleElement | undefined} */
   let hiding;
+  // The reader's own mark: the first attribute name no element in the
+  // document carries (data-collect-pseudo-host, then -1, -2, …), so marking
+  // hosts can never change an attribute a pack element has, however the
+  // pack's CSS reacts to attributes.
+  let markName = 'data-collect-pseudo-host';
+  for (let i = 1; document.querySelector(`[${markName}]`) !== null; i += 1) {
+    markName = `data-collect-pseudo-host-${i}`;
+  }
   /** The laid-out blocks and everything in them: what rebuilding must not
    * move, and where pseudo-elements can be hosted. */
   /** @type {Element[]} */
@@ -80,13 +94,50 @@ export function collect() {
       element.parentElement?.closest('svg') == null &&
       element.getClientRects().length > 0,
   );
-  const seenRects = seen
-    .map(element =>
-      Array.from(
-        element.getClientRects(),
-        rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
-      ).join(';'),
-    )
+  // What the rebuild must not change: every seen element's client rects
+  // and the computed values that decide what it paints, so any change,
+  // layout or paint (through a pack rule such as :has()), rolls the rebuild
+  // back.
+  const paintedProps = [
+    'display',
+    'visibility',
+    'background-color',
+    'background-image',
+    'border-top-style',
+    'border-top-width',
+    'border-top-color',
+    'border-right-style',
+    'border-right-width',
+    'border-right-color',
+    'border-bottom-style',
+    'border-bottom-width',
+    'border-bottom-color',
+    'border-left-style',
+    'border-left-width',
+    'border-left-color',
+    'border-collapse',
+    'outline-style',
+    'outline-width',
+    'outline-color',
+    'outline-offset',
+    'box-shadow',
+    'overflow-x',
+    'overflow-y',
+    'box-decoration-break',
+    '-webkit-box-decoration-break',
+    'direction',
+  ];
+  const snapshot = seen
+    .map(element => {
+      const style = getComputedStyle(element);
+      return [
+        ...Array.from(
+          element.getClientRects(),
+          rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
+        ),
+        ...paintedProps.map(name => style.getPropertyValue(name)),
+      ].join(';');
+    })
     .join('|');
   try {
     /** @type {{ host: HTMLElement; pseudo: string; properties: [string, string][]; text: string }[]} */
@@ -173,8 +224,7 @@ export function collect() {
       }
     }
     hiding = document.createElement('style');
-    hiding.textContent =
-      '[data-collect-pseudo-host~="before"]::before, [data-collect-pseudo-host~="after"]::after { display: none !important; }';
+    hiding.textContent = `[${markName}~="before"]::before, [${markName}~="after"]::after { display: none !important; }`;
     document.head.appendChild(hiding);
     for (const { host, pseudo, properties, text } of candidates) {
       const span = document.createElement('span');
@@ -186,11 +236,11 @@ export function collect() {
       span.style.setProperty('animation-name', 'none', 'important');
       span.style.setProperty('transition-property', 'none', 'important');
       span.textContent = text;
-      span.setAttribute('data-collect-pseudo', pseudo.slice(2));
       host.setAttribute(
-        'data-collect-pseudo-host',
-        `${host.getAttribute('data-collect-pseudo-host') ?? ''} ${pseudo.slice(2)}`.trim(),
+        markName,
+        `${host.getAttribute(markName) ?? ''} ${pseudo.slice(2)}`.trim(),
       );
+      markedHosts.add(host);
       if (pseudo === '::before') {
         host.insertBefore(span, host.firstChild);
       } else {
@@ -201,23 +251,28 @@ export function collect() {
     if (
       spans.length > 0 &&
       seen
-        .map(element =>
-          Array.from(
-            element.getClientRects(),
-            rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
-          ).join(';'),
-        )
-        .join('|') !== seenRects
+        .map(element => {
+          const style = getComputedStyle(element);
+          return [
+            ...Array.from(
+              element.getClientRects(),
+              rect => `${rect.x},${rect.y},${rect.width},${rect.height}`,
+            ),
+            ...paintedProps.map(name => style.getPropertyValue(name)),
+          ].join(';');
+        })
+        .join('|') !== snapshot
     ) {
-      // The rebuild moved something: undo it wholesale and measure no
-      // pseudo-element at all.
+      // The rebuild moved or repainted something: undo it wholesale and
+      // measure no pseudo-element at all.
       for (const span of spans) span.remove();
       spans.length = 0;
       hiding.remove();
       hiding = undefined;
-      for (const host of seenHtml) {
-        host.removeAttribute('data-collect-pseudo-host');
+      for (const host of markedHosts) {
+        host.removeAttribute(markName);
       }
+      markedHosts.clear();
     }
     // Chrome paints these on whole px of the page; build moves the box onto
     // them. Replaced elements (T08-2): an <svg> inside another one is drawn
@@ -265,9 +320,17 @@ export function collect() {
             // its width is positive and its color's alpha > 0. alpha is what
             // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
             // lab(), color()) or rgba()'s fourth part.
+            // An outer <svg> (one not inside another <svg>) is a CSS box
+            // too: its outline and outer box-shadows paint like an HTML
+            // element's (T08-4). It keeps its 'svg' entry above and gets no
+            // background or border 'box' entry.
+            const outerSvg =
+              inner instanceof SVGSVGElement &&
+              inner.parentElement?.closest('svg') == null;
             if (
-              inner instanceof HTMLElement &&
-              inner.parentElement?.closest('svg') == null
+              outerSvg ||
+              (inner instanceof HTMLElement &&
+                inner.parentElement?.closest('svg') == null)
             ) {
               const style = getComputedStyle(inner);
               const visible = style.visibility === 'visible';
@@ -289,6 +352,7 @@ export function collect() {
                     : 1;
               });
               const background =
+                !outerSvg &&
                 visible &&
                 (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
               // T08-4: an outline paints a ring around each client rect
@@ -368,12 +432,14 @@ export function collect() {
                 style.getPropertyValue('-webkit-box-decoration-break') ||
                 'slice';
               const rtl = style.direction === 'rtl';
-              // A rebuilt ::before/::after (T08-4): its background or borders
-              // count like an element's own, but its box may lie outside the
-              // block's, so its entries are 'pseudo' and carry the overflow
-              // clips around it (its ancestors start at its host, so a host
-              // with overflow: hidden clips its own pseudo-elements).
-              const pseudo = inner.hasAttribute('data-collect-pseudo');
+              // A rebuilt ::before/::after (T08-4), known by identity so no
+              // attribute of a pack element can be mistaken for one: its
+              // background or borders count like an element's own, but its
+              // box may lie outside the block's, so its entries are 'pseudo'
+              // and carry the overflow clips around it (its ancestors start
+              // at its host, so a host with overflow: hidden clips its own
+              // pseudo-elements).
+              const pseudo = spans.includes(inner);
               // The rect an outline or shadow of this element — or a rebuilt
               // pseudo-element's box — paints inside: the intersection, over
               // its ancestors up to and including its .pagedjs_page, of each
@@ -432,13 +498,18 @@ export function collect() {
                 }
               }
               // The width each visible border side paints, in top, right,
-              // bottom, left order; 0 for a side that paints nothing.
-              const sides = [
-                ['border-top-style', 'border-top-width'],
-                ['border-right-style', 'border-right-width'],
-                ['border-bottom-style', 'border-bottom-width'],
-                ['border-left-style', 'border-left-width'],
-              ].map(([borderStyle = '', borderWidth = ''], i) =>
+              // bottom, left order; 0 for a side that paints nothing (an
+              // outer <svg> gets no 'box' entry for its borders).
+              const sides = (
+                outerSvg
+                  ? []
+                  : [
+                      ['border-top-style', 'border-top-width'],
+                      ['border-right-style', 'border-right-width'],
+                      ['border-bottom-style', 'border-bottom-width'],
+                      ['border-left-style', 'border-left-width'],
+                    ]
+              ).map(([borderStyle = '', borderWidth = ''], i) =>
                 visible &&
                 !['none', 'hidden'].includes(
                   style.getPropertyValue(borderStyle),
@@ -621,11 +692,11 @@ export function collect() {
     }
   } finally {
     // Whatever happened, the page goes back exactly as it was: spans, the
-    // injected style and the host marks all away.
+    // injected style and the host marks (and only those marks) all away.
     for (const span of spans) span.remove();
     if (hiding !== undefined) hiding.remove();
-    for (const host of seenHtml)
-      host.removeAttribute('data-collect-pseudo-host');
+    for (const host of markedHosts) host.removeAttribute(markName);
+    markedHosts.clear();
   }
   // KaTeX's MathML copy of a formula that the browser hides (T07-26), as the
   // print runtime's hiddenCopies() decides: a .katex-mathml span or div that

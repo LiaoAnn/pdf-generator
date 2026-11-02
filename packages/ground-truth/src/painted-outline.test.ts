@@ -145,6 +145,21 @@ describe('readGroundTruth: an outline is in its block’s box', () => {
     });
   }, 30_000);
 
+  test('an <svg> block’s own outline counts as an element’s does', async () => {
+    await withPage(async page => {
+      await paginate(
+        page,
+        `<div class="pad"><svg data-gt="image" data-gt-id="drawing" class="small"
+            style="display: block; outline: 2px solid #000" viewBox="0 0 40 30">
+            <rect width="40" height="30" fill="#00f"/></svg></div>`,
+        css,
+      );
+      const result = await readGroundTruth(page, source);
+      // Its border box 74..115 x 101..131 rounded, outlined 2 px.
+      expect(boxes(result)).toEqual({ drawing: [54, 74.25, 87.75, 99.75] });
+    });
+  }, 30_000);
+
   test('an inline element broken over lines is outlined on each line box: the block covers every one', async () => {
     await withPage(async page => {
       await paginate(
