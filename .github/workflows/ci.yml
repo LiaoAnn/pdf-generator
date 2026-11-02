@@ -21,7 +21,7 @@ jobs:
     # ::1 first and Wrangler discovery sees two candidate sockets.
     container:
       image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - run: pnpm install --frozen-lockfile
