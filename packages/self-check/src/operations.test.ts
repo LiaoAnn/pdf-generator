@@ -331,6 +331,32 @@ test('decoded content past the byte cap is refused even when it holds no operato
   expect(result.limit).toBe('content');
 });
 
+test('decoded bytes add up over the document’s streams: two streams each under the cap are refused once their sum is over it', async () => {
+  const half = Math.floor(maxContentBytes / 2);
+  const spaces = (n: number) => ({
+    dict: '/Filter /FlateDecode',
+    data: new Uint8Array(n).fill(0x20),
+  });
+  const under = await counted({
+    pages: [3],
+    objects: {
+      3: page('[4 0 R 5 0 R]'),
+      4: spaces(half),
+      5: spaces(maxContentBytes - half),
+    },
+  });
+  expect(under.contentBytes).toBe(maxContentBytes);
+  const over = await refused({
+    pages: [3],
+    objects: {
+      3: page('[4 0 R 5 0 R]'),
+      4: spaces(half),
+      5: spaces(maxContentBytes - half + 1),
+    },
+  });
+  expect(over.limit).toBe('content');
+});
+
 test('object numbers spelled inside another stream’s data are not taken for the document’s objects', async () => {
   // The image's bytes (a pack can embed a JPEG verbatim) spell a second,
   // empty definition of the page's content stream, after the real one.

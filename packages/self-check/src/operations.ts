@@ -411,7 +411,6 @@ class Counter {
   /** xref entries: object number → offset, `null` for free entries. */
   private readonly entries = new Map<number, number | null>();
   private readonly objects = new Map<number, PdfValue>();
-  private readonly parsing = new Set<number>();
   private readonly tokens = new Map<number, StreamTokens>();
   private readonly memo = new WeakMap<
     Map<string, PdfValue>,
@@ -622,14 +621,8 @@ class Counter {
     if (cached) return cached;
     const offset = this.entries.get(num);
     if (offset === undefined || offset === null) return undefined;
-    if (this.parsing.has(num))
-      refuse('structure', `circular reference to ${num}`);
-    this.parsing.add(num);
-    try {
-      return this.readObjectAt(num, offset, true);
-    } finally {
-      this.parsing.delete(num);
-    }
+    // readObjectAt resolves no reference, so it can't recurse into itself.
+    return this.readObjectAt(num, offset, true);
   }
 
   /** Resolves references to their object (one object, by number if indirect). */
