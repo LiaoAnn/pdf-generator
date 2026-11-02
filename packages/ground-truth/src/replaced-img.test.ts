@@ -221,7 +221,7 @@ describe('buildGroundTruth: replaced <img> elements of a hand-made measurement',
     expect(
       build([
         figure({
-          replaced: [
+          painted: [
             { kind: 'img', rect: a },
             { kind: 'img', rect: b },
           ],
@@ -237,7 +237,7 @@ describe('buildGroundTruth: replaced <img> elements of a hand-made measurement',
     const rect = { x: 74.25, y: 1301.421875, width: 40.5, height: 30.5 };
     expect(
       build(
-        [figure({ page: 1, rect, replaced: [{ kind: 'img', rect }] })],
+        [figure({ page: 1, rect, painted: [{ kind: 'img', rect }] })],
         [
           { x: 0, y: 0, width: 800, height: 1066.671875 },
           { x: 0, y: 1200.671875, width: 800, height: 1066.671875 },
@@ -253,14 +253,14 @@ describe('buildGroundTruth: replaced <img> elements of a hand-made measurement',
     const within = figure({
       id: 'within',
       rect: { x: 74.25, y: 100.75, width: 100.5, height: 60.5 },
-      replaced: [
+      painted: [
         { kind: 'img', rect: { x: 74.245, y: 100.75, width: 40, height: 30 } },
       ],
     });
     const outside = figure({
       id: 'outside',
       rect: { x: 74.25, y: 100.75, width: 100.5, height: 60.5 },
-      replaced: [
+      painted: [
         { kind: 'img', rect: { x: 74.23, y: 100.75, width: 40, height: 30 } },
       ],
     });
@@ -269,12 +269,12 @@ describe('buildGroundTruth: replaced <img> elements of a hand-made measurement',
     expect(result.outside?.[0]).toBe(55.69);
   });
 
-  test('an element with an empty or missing replaced list keeps its layout rect', () => {
+  test('an element with an empty or missing painted list keeps its layout rect', () => {
     const rect = { x: 74.25, y: 100.75, width: 40.5, height: 30.5 };
     expect(
       build([
         figure({ id: 'none', rect }),
-        figure({ id: 'empty', rect, replaced: [] }),
+        figure({ id: 'empty', rect, painted: [] }),
       ]),
     ).toEqual({
       none: [55.69, 75.56, 86.06, 98.44],

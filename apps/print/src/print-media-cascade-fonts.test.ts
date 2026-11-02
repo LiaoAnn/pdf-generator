@@ -194,13 +194,15 @@ test('font selection restores print media before pagination and preserves ground
   const gt = gtSchema.parse(result.gt);
   // Baseline from the runtime before cascade-aware font selection: screen
   // pagination puts two 400px blocks per page; print shrinks each to 100px.
+  // Each black block is laid out from the 20mm (75.59px) margin and painted
+  // on whole px of its page, 76..176 and 176..276 px (T08-3).
   expect(
     gt.blocks.map(({ page, bbox, order }) => ({ page, bbox, order })),
   ).toEqual([
-    { page: 1, bbox: [56.68, 56.68, 131.68, 131.68], order: 0 },
-    { page: 1, bbox: [56.68, 131.68, 131.68, 206.68], order: 1 },
-    { page: 2, bbox: [56.68, 56.68, 131.68, 131.68], order: 2 },
-    { page: 2, bbox: [56.68, 131.68, 131.68, 206.68], order: 3 },
+    { page: 1, bbox: [57, 57, 132, 132], order: 0 },
+    { page: 1, bbox: [57, 132, 132, 207], order: 1 },
+    { page: 2, bbox: [57, 57, 132, 132], order: 2 },
+    { page: 2, bbox: [57, 132, 132, 207], order: 3 },
   ]);
   expect(result.pageCount).toBe(2);
   expect(gt.pages).toEqual([

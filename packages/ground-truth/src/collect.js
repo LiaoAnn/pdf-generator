@@ -1,7 +1,7 @@
 // The in-browser collector of readGroundTruth. Plain JavaScript with JSDoc
 // types, checked by this package's own tsconfig (DOM lib, checkJs): callers
 // see only collect.d.ts, so their programs need no DOM lib.
-/** @import { ElementDetails, MeasuredElement, Measurement, Region } from './measurement.ts' */
+/** @import { ElementDetails, MeasuredElement, Measurement, PaintedBox, Region } from './measurement.ts' */
 
 /**
  * Runs in the browser, so it must stay self-contained: no imports and no
@@ -305,22 +305,25 @@ export function collect() {
             'area',
           rect: { x, y, width, height },
           // Chrome paints these on whole px of the page; build moves the box
-          // onto them (T08-2).
-          // An <svg> inside another one is drawn as part of the outer one.
-          replaced: [
+          // onto them. Replaced elements (T08-2): an <svg> inside another one
+          // is drawn as part of the outer one. Backgrounds (T08-3): one entry
+          // per client rect, so each line fragment of an inline element
+          // counts; an element that paints nothing (display: none or
+          // contents) contributes none. Document order throughout.
+          painted: [
             element,
-            ...Array.from(element.querySelectorAll('img, svg')),
-          ]
-            .filter(
-              inner =>
-                (inner instanceof HTMLImageElement ||
-                  (inner instanceof SVGSVGElement &&
-                    inner.parentElement?.closest('svg') == null)) &&
-                inner.getClientRects().length > 0,
-            )
-            .map(inner => {
+            ...Array.from(element.querySelectorAll('*')),
+          ].flatMap(inner => {
+            /** @type {PaintedBox[]} */
+            const boxes = [];
+            if (
+              (inner instanceof HTMLImageElement ||
+                (inner instanceof SVGSVGElement &&
+                  inner.parentElement?.closest('svg') == null)) &&
+              inner.getClientRects().length > 0
+            ) {
               const box = inner.getBoundingClientRect();
-              return {
+              boxes.push({
                 kind: /** @type {'img' | 'svg'} */ (
                   inner instanceof HTMLImageElement ? 'img' : 'svg'
                 ),
@@ -330,8 +333,46 @@ export function collect() {
                   width: box.width,
                   height: box.height,
                 },
-              };
-            }),
+              });
+            }
+            // A laid-out HTML element with a visible background, not inside
+            // an <svg>: visibility resolved on it (inherited as computed),
+            // and a background image or a background color with alpha > 0.
+            // alpha is what follows the '/' in the slash color syntax
+            // (rgb(0 0 0 / 0), lab(), color()) or rgba()'s fourth part.
+            if (
+              inner instanceof HTMLElement &&
+              inner.parentElement?.closest('svg') == null
+            ) {
+              const style = getComputedStyle(inner);
+              const color = style.backgroundColor;
+              const slash = color.lastIndexOf('/');
+              const parts = color.split(',');
+              const alpha =
+                slash >= 0
+                  ? Number.parseFloat(color.slice(slash + 1))
+                  : parts.length === 4
+                    ? Number.parseFloat(parts[3] ?? '')
+                    : 1;
+              if (
+                style.visibility === 'visible' &&
+                (style.backgroundImage !== 'none' || alpha > 0)
+              ) {
+                for (const rect of inner.getClientRects()) {
+                  boxes.push({
+                    kind: 'box',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                  });
+                }
+              }
+            }
+            return boxes;
+          }),
           text: element instanceof HTMLElement ? element.innerText : '',
           nested: element.parentElement?.closest('[data-gt]') != null,
           attributes: Object.fromEntries(
