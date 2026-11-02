@@ -8,6 +8,7 @@ import { getDocumentProxy } from 'unpdf';
 import {
   type PrintStore,
   type PublishedFiles,
+  publishBatchFiles,
   publishFiles,
 } from './pack-files.ts';
 import { scaledPages } from './pdf-scale.ts';
@@ -233,7 +234,10 @@ export interface RenderOptions<T> {
    * pack files (`/pack/…`), `/fonts/…` and Paged.js from.
    */
   assetOrigin: string;
-  /** Keeps the document and pack files while the tab loads them. */
+  /**
+   * Keeps the document and pack files while the tab loads them; a print by
+   * pack reference reads its batch's upload index from it.
+   */
   store: PrintStore;
   /**
    * Runs on the paginated tab once it is printed and passed every check, in
@@ -402,12 +406,24 @@ export async function renderPdf<T = undefined>(
   stopped.catch(() => undefined);
   let settle: (() => Promise<void>) | undefined;
   try {
-    files = await publishFiles(
-      options.store,
-      options.assetOrigin,
-      prepareHtml(request.html, { page: request.page }),
-      request.pack,
-    );
+    const prepared = prepareHtml(request.html, { page: request.page });
+    // A pack reference publishes only the document, under the pack's batch
+    // URL, next to the files the batch uploaded; inline files are published
+    // with the document under this print's own id, as before.
+    files =
+      request.pack && 'batch' in request.pack
+        ? await publishBatchFiles(
+            options.store,
+            options.assetOrigin,
+            prepared,
+            request.pack,
+          )
+        : await publishFiles(
+            options.store,
+            options.assetOrigin,
+            prepared,
+            request.pack,
+          );
     const requests = await blockOtherRequests(
       page,
       options.assetOrigin,

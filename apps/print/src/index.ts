@@ -1,7 +1,10 @@
 // The print Worker. Static assets (fonts, Paged.js, the print runtime) are
 // served before this handler runs. `POST /print` turns a document into a PDF;
-// `GET /pack/<id>/<path>` serves a print's document and pack files to its
-// browser tab; `DELETE /session/<id>` closes a kept-alive browser session.
+// `PUT /batch/<batch>/pack` stores a batch's pack once, content-addressed,
+// for its prints by reference; `GET /pack/<id>/<path>` serves a print's
+// document and pack files to its browser tab,
+// `GET /batch/<batch>/<digest>/<path>` a batch's pack files;
+// `DELETE /session/<id>` closes a kept-alive browser session.
 import { Buffer } from 'node:buffer';
 import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
@@ -15,7 +18,16 @@ import {
   renderPdf,
   servePackFile,
 } from './lib.ts';
-import { printRequestSchema } from './request.ts';
+import {
+  PackNotUploadedError,
+  serveBatchFile,
+  uploadBatchPack,
+} from './pack-files.ts';
+import {
+  batchIdSchema,
+  packUploadSchema,
+  printRequestSchema,
+} from './request.ts';
 
 interface PrintEnv extends Env {
   /** Bearer token callers of `/print` must send (a secret). */
@@ -125,7 +137,11 @@ async function print(
       })),
     );
   }
-  const sizeIssues = packSizeIssues(parsed.data.pack);
+  const sizeIssues = packSizeIssues(
+    parsed.data.pack && 'files' in parsed.data.pack
+      ? parsed.data.pack.files
+      : {},
+  );
   if (sizeIssues.length > 0) return tooLarge(sizeIssues);
   // X-Browser-Session: `new` or a session id keeps the browser for the next
   // request (a batch); the response names the session to send next time.
@@ -203,10 +219,58 @@ async function print(
         ),
       );
     }
+    if (error instanceof PackNotUploadedError) {
+      return refused(apiError(409, 'pack_not_uploaded', error.message));
+    }
     throw error;
   } finally {
     await close();
   }
+}
+
+async function uploadPack(
+  request: Request,
+  env: PrintEnv,
+  batch: string,
+): Promise<Response> {
+  const id = batchIdSchema.safeParse(batch);
+  if (!id.success) {
+    return apiError(400, 'invalid_request', `The batch id is not a batch id`);
+  }
+  const body = await readBody(request, packLimits.bodyBytes);
+  if (body === undefined) {
+    return tooLarge([
+      `the request body is more than the limit of ${packLimits.bodyBytes} bytes`,
+    ]);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(body);
+  } catch {
+    return apiError(400, 'invalid_request', 'Body is not valid JSON');
+  }
+  const parsed = packUploadSchema.safeParse(json);
+  if (!parsed.success) {
+    return apiError(
+      400,
+      'invalid_request',
+      'Body is not a pack upload',
+      parsed.error.issues.map(issue => ({
+        message: issue.message,
+        path: issue.path.filter(
+          (key): key is string | number => typeof key !== 'symbol',
+        ),
+      })),
+    );
+  }
+  const sizeIssues = packSizeIssues(parsed.data.files);
+  if (sizeIssues.length > 0) return tooLarge(sizeIssues);
+  const digest = await uploadBatchPack(
+    env.PACK_FILES,
+    id.data,
+    parsed.data.files,
+  );
+  return Response.json({ digest });
 }
 
 async function closeSession(env: PrintEnv, id: string): Promise<Response> {
@@ -226,6 +290,18 @@ export default {
       return (
         (await servePackFile(env.PACK_FILES, url)) ??
         apiError(404, 'not_found', `No file at ${pathname}`)
+      );
+    }
+    if (pathname.startsWith('/batch/') && request.method === 'GET') {
+      return (
+        (await serveBatchFile(env.PACK_FILES, url)) ??
+        apiError(404, 'not_found', `No file at ${pathname}`)
+      );
+    }
+    const batchUpload = /^\/batch\/([^/]+)\/pack$/.exec(pathname)?.[1];
+    if (batchUpload && request.method === 'PUT') {
+      return (
+        (await denied(request, env)) ?? uploadPack(request, env, batchUpload)
       );
     }
     const session = /^\/session\/([^/]+)$/.exec(pathname)?.[1];
