@@ -24,3 +24,56 @@ const pngs = await pdfToPng(pdfBytes, { scale: 2, gt }); // one PNG's bytes per 
 ```
 
 PDFs that rely on fonts they don't embed (the platform's prints embed theirs) may render with substitute glyphs: pdf.js gets no standard fonts or CMaps here.
+
+## dump-gt and compare-gt
+
+A ticket that changes print or ground-truth shows that every template's gt.json is still the same as on `main` (or lists what changed). `dump-gt` saves a batch's gt.json and self-check results from your local stack; `compare-gt` compares two dumps.
+
+Both need the local batch setup from `AGENTS.md` ("Batch locally"): the print and web dev servers running, `db:migrate:local` done. Run them in your stack, from the repo root, with output outside the worktree (the container's `/tmp`):
+
+```bash
+pnpm dump-gt --out /tmp/gt-main [--url <origin>] [--seed <s>] [--count <n>] [--poll-ms <ms>] [<pack dir>…]
+pnpm compare-gt /tmp/gt-main /tmp/gt-branch
+```
+
+### dump-gt
+
+- Uploads each pack folder (default: every `templates/*/pack`, in name order) through `POST /api/templates`, runs one batch per pack (`--seed`, default `dump-gt`; `--count`, default 10) and waits for it, polling every `--poll-ms` (default 2000) for up to 15 minutes. It uses only the public API routes, with the local Access stand-in's service token.
+- `--url` defaults to `http://127.0.0.1:8787` (the web dev server, seen from inside the stack). Only loopback origins are accepted: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`. Anything else is refused before any request, since a real Cloudflare account needs the user's OK each time — including a worktree URL `<route>-<wt>.<vm>.liaoann.net`, which also reaches other worktrees' stacks, while the tool runs inside its own stack where loopback is its own server.
+- `--out` must be missing or empty, so a dump never mixes with stale files.
+- Writes `<out>/<templateId>/<NNNN>/gt.json` and `check.json` for every completed fixture, and `<out>/summary.json` (seed, count, and each fixture's status, error and self-check from the batch's fixture list). gt.json loses `source.templateVersion`, which every re-upload bumps. All JSON is written with keys sorted, 2-space indented, with a trailing newline, and no batch ids, versions, URLs or times. Two dumps of the same code are therefore byte-identical (`diff -r` works too).
+- The output folder is named after the template id the upload returned. A modified copy of a pack (kept outside the worktree) therefore lands where the original would and compares against it.
+- Prints one line per template and a total, `total: <completed>/<n> completed, self-check <passed>/<n>`. Exit 0 when every fixture completed and passed its self-check, 1 otherwise (the files are still written) or when a request fails, 2 for usage errors and refusals.
+
+### compare-gt
+
+- Refuses (exit 2) a folder that is missing or has no `summary.json`, so a baseline that vanished is caught rather than compared as empty.
+- Matches fixtures by `<template>/<NNNN>` and blocks by `id`. gt.json is compared as JSON (key order and `source.templateVersion` ignored), and check.json likewise.
+- For each fixture that differs it prints `<template>/<NNNN>: changed`, `only in a` or `only in b`, then one line per difference, with old and new values as JSON:
+
+  ```text
+  minimal-example/0001: changed
+    pages: [...] → [...]
+    title-1: bbox [89.85,84,505.41,107.25] → [95.85,84,511.41,107.25]
+    paragraph-1: text "舊" → "新"
+    note-1: removed paragraph page 1 bbox [...] text "..."
+    table-1: table.rows 2 → 3
+    table-1 cell r1c1: bbox [...] → [...]
+    table-1 cell r2c0: added bbox [...] text "合計"
+    heading-9: added heading page 2 bbox [...] text "..."
+    self-check: ok true → false, differences 0 → 2
+  ```
+
+  Blocks present in both fixtures (matched by `id`) but in a different array order get one extra line after the pages/source lines, `block array order: ["id-1",...] → ["id-2",...]`, without counting as changed blocks. When a self-check's `ok` and difference count are unchanged but the differences themselves differ, a second line follows: `self-check differences: [...] → [...]`.
+  Block fields come in the order type, page, bbox, text, order, continues, checked, latex; cell fields bbox, text, rowSpan, colSpan, header, checkboxes. A different `seed` or `count` in the summaries is reported first.
+- Always ends with the counts:
+
+  ```text
+  fixtures: 60/60 identical, 0 changed, 0 only in a, 0 only in b
+  blocks: 0 changed, 0 added, 0 removed, of 1461 in a
+  self-check: a 60/60 passed, b 60/60 passed
+  ```
+
+- Exit 0 when nothing differs, 1 when anything does, 2 for usage and input errors.
+
+For a print or ground-truth ticket: with a clean tree, `git -C <path> switch --detach origin/main` on the VM, restart both dev servers and `dump-gt --out /tmp/gt-main`; switch back to your branch, restart them and `dump-gt --out /tmp/gt-branch`; then `compare-gt /tmp/gt-main /tmp/gt-branch`. Take the main dump right before the branch run, so both see the same stack.
