@@ -1129,3 +1129,12 @@
 - **驗收測試**：`pnpm typecheck` 涵蓋 `acceptance/run.ts`（故意放一個型別錯誤會失敗）；`pnpm verify` 全過；驗收腳本照常執行
 - **不做**：改驗收腳本的行為
 - **來源**：PR #96（T07-17）
+
+### T07-33 印 PDF：超出量測上限的 PDF 回 422 而不是 500
+- **目標**：T14-10 起，`readPdf` 對超出整份文件操作量上限的 PDF 丟出 `UnmeasurablePdfError`。print Worker 的缺字檢查（`missingText`）沒有接住它，所以這種樣板包的 `/print` 回 500。改成以 422 `pdf_unmeasurable` 拒絕，並在樣板頁面以中文說明（比照 T07-30 的 `text_zero_width`）
+- **Blocked by**：T14-10
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime 與 `lib.ts`；`apps/web/src/templates/explain.ts`；與其他改 print runtime 的 T07 票不要同時派
+- **驗收測試**：T14-10 的 r9、r10 樣板（VM 上 `/home/dev/repros/t14-9/`）列印回 422 `pdf_unmeasurable` 並有中文說明；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
+- **不做**：改 self-check 的上限
+- **來源**：PR #97（T14-10）
