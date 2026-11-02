@@ -1,7 +1,7 @@
 // The in-browser collector of readGroundTruth. Plain JavaScript with JSDoc
 // types, checked by this package's own tsconfig (DOM lib, checkJs): callers
 // see only collect.d.ts, so their programs need no DOM lib.
-/** @import { ElementDetails, MeasuredElement, Measurement, PaintedBox, Region } from './measurement.ts' */
+/** @import { ElementDetails, MeasuredElement, Measurement, PaintedBox, Rect, Region } from './measurement.ts' */
 
 /**
  * Runs in the browser, so it must stay self-contained: no imports and no
@@ -370,6 +370,88 @@ export function collect() {
               const background =
                 visible &&
                 (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
+              // T08-4: an outline paints a ring around each client rect
+              // when it is styled (not none), wider than 0, visible and not
+              // fully transparent (Chrome reports a width even for style
+              // none). offset and width are the computed values, already
+              // snapped by Chrome (2.5px → 2px, 3.3px → 3px).
+              const outlineWidth = Number.parseFloat(style.outlineWidth);
+              const outlineSlash = style.outlineColor.lastIndexOf('/');
+              const outlineParts = style.outlineColor.split(',');
+              const outlineAlpha =
+                outlineSlash >= 0
+                  ? Number.parseFloat(
+                      style.outlineColor.slice(outlineSlash + 1),
+                    )
+                  : outlineParts.length === 4
+                    ? Number.parseFloat(outlineParts[3] ?? '')
+                    : 1;
+              const outlines =
+                visible &&
+                style.outlineStyle !== 'none' &&
+                outlineWidth > 0 &&
+                outlineAlpha > 0
+                  ? {
+                      width: outlineWidth,
+                      offset: Number.parseFloat(style.outlineOffset),
+                    }
+                  : undefined;
+              // The rect an outline of this element paints inside: the
+              // intersection, over its ancestors up to and including its
+              // .pagedjs_page, of each one's padding box on every axis on
+              // which its overflow is not visible. Paged.js's .pagedjs_sheet
+              // has overflow hidden, so this always covers the page's edges.
+              /** @type {Rect | undefined} */
+              let clipBox;
+              if (outlines !== undefined) {
+                let x0 = -Infinity;
+                let y0 = -Infinity;
+                let x1 = Infinity;
+                let y1 = Infinity;
+                for (
+                  let at = inner.parentElement;
+                  at !== null;
+                  at = at.parentElement
+                ) {
+                  const ancestorStyle = getComputedStyle(at);
+                  const ancestorRect = at.getBoundingClientRect();
+                  if (ancestorStyle.overflowX !== 'visible') {
+                    x0 = Math.max(
+                      x0,
+                      ancestorRect.x +
+                        Number.parseFloat(ancestorStyle.borderLeftWidth),
+                    );
+                    x1 = Math.min(
+                      x1,
+                      ancestorRect.right -
+                        Number.parseFloat(ancestorStyle.borderRightWidth),
+                    );
+                  }
+                  if (ancestorStyle.overflowY !== 'visible') {
+                    y0 = Math.max(
+                      y0,
+                      ancestorRect.top +
+                        Number.parseFloat(ancestorStyle.borderTopWidth),
+                    );
+                    y1 = Math.min(
+                      y1,
+                      ancestorRect.bottom -
+                        Number.parseFloat(ancestorStyle.borderBottomWidth),
+                    );
+                  }
+                  if (at.classList.contains('pagedjs_page')) break;
+                }
+                // Infinite only off every page: no clip then (an infinite
+                // number doesn't survive the trip out of the browser).
+                if ([x0, y0, x1, y1].every(Number.isFinite)) {
+                  clipBox = {
+                    x: x0,
+                    y: y0,
+                    width: x1 - x0,
+                    height: y1 - y0,
+                  };
+                }
+              }
               // The width each visible border side paints, in top, right,
               // bottom, left order; 0 for a side that paints nothing.
               const sides = [
@@ -387,6 +469,20 @@ export function collect() {
                   : 0,
               );
               for (const rect of inner.getClientRects()) {
+                if (outlines !== undefined) {
+                  boxes.push({
+                    kind: 'outline',
+                    rect: {
+                      x: rect.x,
+                      y: rect.y,
+                      width: rect.width,
+                      height: rect.height,
+                    },
+                    width: outlines.width,
+                    offset: outlines.offset,
+                    ...(clipBox && { clip: clipBox }),
+                  });
+                }
                 if (background) {
                   boxes.push({
                     kind: 'box',

@@ -222,11 +222,14 @@ const flush = 0.01;
  * whole px of its page — a replaced element (T08-2), or a visible background
  * (T08-3) — so a side the box shares with one moves to where that one is
  * painted, and the box grows to cover them all. Ones that stick out of the
- * box (clipped, say) are left out.
+ * box (clipped, say) are left out. Decorations painted outside the border
+ * box (T08-4: outlines) skip this rule and apply afterwards, as pure
+ * growth: their visible ink only ever moves a side outwards, never inwards.
  */
 function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
   const inside = paintedBoxes
+    .filter(({ kind }) => kind !== 'outline')
     .map(({ kind, rect }) => ({ kind, layout: edges(rect, page) }))
     .filter(
       ({ layout }) =>
@@ -236,7 +239,11 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
         layout[3] <= box[3] + flush,
     )
     .map(({ kind, layout }) => ({ layout, paint: paint(kind, layout) }));
-  if (inside.length === 0) return rect;
+  // The visible ink of every outline ring, after its clip.
+  const growth = paintedBoxes
+    .filter(({ kind }) => kind === 'outline')
+    .flatMap(outline => outlineStrips(outline, page));
+  if (inside.length === 0 && growth.length === 0) return rect;
   const side = (i: 0 | 1 | 2 | 3): number => {
     const outer = i < 2 ? Math.min : Math.max;
     // A shared side is wherever they paint; any other side only grows.
@@ -248,8 +255,60 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
       shared ? (i < 2 ? Infinity : -Infinity) : box[i],
     );
   };
-  const [x0, y0, x1, y1] = [side(0), side(1), side(2), side(3)];
+  const sides: Bbox = [side(0), side(1), side(2), side(3)];
+  // Growth only: a strip never moves a side inwards.
+  for (const strip of growth) {
+    sides[0] = Math.min(sides[0], strip[0]);
+    sides[1] = Math.min(sides[1], strip[1]);
+    sides[2] = Math.max(sides[2], strip[2]);
+    sides[3] = Math.max(sides[3], strip[3]);
+  }
+  const [x0, y0, x1, y1] = sides;
   return { x: x0 + page.x, y: y0 + page.y, width: x1 - x0, height: y1 - y0 };
+}
+
+/**
+ * The strips of one outline ring that actually paint, in page px: the ring
+ * lies between the rect edges (each rounded page-relative on its own, as a
+ * `box`) grown by the computed outline-offset (inner edge) and grown by
+ * offset plus outline-width (outer edge), and it shows only inside the
+ * overflow clips around the element (clip edges rounded page-relative too).
+ * Four strips cover the ring; ones the clip or the ring's own negative
+ * width leave empty paint nothing.
+ */
+function outlineStrips(outline: PaintedBox, page: Rect): Bbox[] {
+  const [x0, y0, x1, y1] = edges(outline.rect, page).map(Math.round) as Bbox;
+  // Without a clip (an element on no page) only the page cuts it.
+  const [c0, c1, c2, c3] = edges(outline.clip ?? page, page).map(
+    Math.round,
+  ) as Bbox;
+  const offset = outline.offset ?? 0;
+  const width = outline.width ?? 0;
+  const inner: Bbox = [x0 - offset, y0 - offset, x1 + offset, y1 + offset];
+  const outer: Bbox = [
+    inner[0] - width,
+    inner[1] - width,
+    inner[2] + width,
+    inner[3] + width,
+  ];
+  return (
+    [
+      [outer[0], outer[1], outer[2], inner[1]],
+      [outer[0], inner[3], outer[2], outer[3]],
+      [outer[0], inner[1], inner[0], inner[3]],
+      [inner[2], inner[1], outer[2], inner[3]],
+    ] as Bbox[]
+  )
+    .map(
+      strip =>
+        [
+          Math.max(strip[0], c0),
+          Math.max(strip[1], c1),
+          Math.min(strip[2], c2),
+          Math.min(strip[3], c3),
+        ] as Bbox,
+    )
+    .filter(strip => strip[2] > strip[0] && strip[3] > strip[1]);
 }
 
 /**

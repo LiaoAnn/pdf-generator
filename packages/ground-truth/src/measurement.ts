@@ -34,7 +34,8 @@ export interface MeasuredElement {
   /**
    * What it is or holds that Chrome paints on whole CSS px of the printed
    * page, in document order: replaced elements (T08-2), backgrounds and
-   * borders (T08-3).
+   * borders (T08-3), decorations painted outside the border box (T08-4: so
+   * far outlines, later box-shadows and generated content).
    */
   painted?: PaintedBox[];
   /** Its `innerText`. */
@@ -52,15 +53,36 @@ export interface MeasuredElement {
   details?: unknown;
 }
 
-/** Something painted on whole px inside (or being) a measured element. */
+/**
+ * Something painted on whole px inside (or being) a measured element. `img`,
+ * `svg` and `box` paint near or inside the border box; `outline` (and later
+ * box-shadow and generated content) paints a ring or shape that may extend
+ * past it, so it only ever grows the block's box, cut to the overflow clips
+ * around it and to its page.
+ */
 export interface PaintedBox {
   /**
-   * An `<img>`, an `<svg>` not inside another `<svg>`, or the background and
-   * borders of an element (`box`).
+   * An `<img>`, an `<svg>` not inside another `<svg>`, the background and
+   * borders of an element (`box`), or an element's outline (`outline`).
    */
-  kind: 'img' | 'svg' | 'box';
-  /** For an img or svg its border box; for a box the area its decoration covers. */
+  kind: 'img' | 'svg' | 'box' | 'outline';
+  /**
+   * For an img or svg its border box; for a box the area its decoration
+   * covers; for an outline the outlined rect (one client rect of the
+   * outlined element, so an inline element broken over lines adds one entry
+   * per line box).
+   */
   rect: Rect;
+  /** Outline only: the computed outline-width in CSS px. */
+  width?: number;
+  /** Outline only: the computed outline-offset in CSS px. */
+  offset?: number;
+  /**
+   * Outline only: the rect it paints inside, in viewport coordinates: the
+   * intersection of the padding box of every ancestor whose overflow clips
+   * that axis, up to its `.pagedjs_page`.
+   */
+  clip?: Rect;
 }
 
 /** A `.pagedjs_page` border box. */
