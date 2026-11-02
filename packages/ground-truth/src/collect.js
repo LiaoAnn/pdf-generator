@@ -306,10 +306,10 @@ export function collect() {
           rect: { x, y, width, height },
           // Chrome paints these on whole px of the page; build moves the box
           // onto them. Replaced elements (T08-2): an <svg> inside another one
-          // is drawn as part of the outer one. Backgrounds (T08-3): one entry
-          // per client rect, so each line fragment of an inline element
-          // counts; an element that paints nothing (display: none or
-          // contents) contributes none. Document order throughout.
+          // is drawn as part of the outer one. Backgrounds and borders
+          // (T08-3): one entry per client rect, so each line fragment of an
+          // inline element counts; an element that paints nothing (display:
+          // none or contents) contributes none. Document order throughout.
           painted: [
             element,
             ...Array.from(element.querySelectorAll('*')),
@@ -335,30 +335,59 @@ export function collect() {
                 },
               });
             }
-            // A laid-out HTML element with a visible background, not inside
-            // an <svg>: visibility resolved on it (inherited as computed),
-            // and a background image or a background color with alpha > 0.
-            // alpha is what follows the '/' in the slash color syntax
-            // (rgb(0 0 0 / 0), lab(), color()) or rgba()'s fourth part.
+            // A laid-out HTML element with a visible background or border,
+            // not inside an <svg>: visibility resolved on it (inherited as
+            // computed). The background (an image, or a color with alpha > 0)
+            // paints each whole client rect; without one, the painted area is
+            // the union of the visible border sides' strips on each client
+            // rect, a side being visible when its style is not none/hidden,
+            // its width is positive and its color's alpha > 0. alpha is what
+            // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
+            // lab(), color()) or rgba()'s fourth part.
             if (
               inner instanceof HTMLElement &&
               inner.parentElement?.closest('svg') == null
             ) {
               const style = getComputedStyle(inner);
-              const color = style.backgroundColor;
-              const slash = color.lastIndexOf('/');
-              const parts = color.split(',');
-              const alpha =
-                slash >= 0
+              const visible = style.visibility === 'visible';
+              // alpha of the background color and the four border colors, in
+              // top, right, bottom, left order.
+              const alpha = [
+                style.backgroundColor,
+                style.borderTopColor,
+                style.borderRightColor,
+                style.borderBottomColor,
+                style.borderLeftColor,
+              ].map(color => {
+                const slash = color.lastIndexOf('/');
+                const parts = color.split(',');
+                return slash >= 0
                   ? Number.parseFloat(color.slice(slash + 1))
                   : parts.length === 4
                     ? Number.parseFloat(parts[3] ?? '')
                     : 1;
-              if (
-                style.visibility === 'visible' &&
-                (style.backgroundImage !== 'none' || alpha > 0)
-              ) {
-                for (const rect of inner.getClientRects()) {
+              });
+              const background =
+                visible &&
+                (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
+              // The width each visible border side paints, in top, right,
+              // bottom, left order; 0 for a side that paints nothing.
+              const sides = [
+                ['border-top-style', 'border-top-width'],
+                ['border-right-style', 'border-right-width'],
+                ['border-bottom-style', 'border-bottom-width'],
+                ['border-left-style', 'border-left-width'],
+              ].map(([borderStyle = '', borderWidth = ''], i) =>
+                visible &&
+                !['none', 'hidden'].includes(
+                  style.getPropertyValue(borderStyle),
+                ) &&
+                (alpha[i + 1] ?? 0) > 0
+                  ? Number.parseFloat(style.getPropertyValue(borderWidth))
+                  : 0,
+              );
+              for (const rect of inner.getClientRects()) {
+                if (background) {
                   boxes.push({
                     kind: 'box',
                     rect: {
@@ -366,6 +395,105 @@ export function collect() {
                       y: rect.y,
                       width: rect.width,
                       height: rect.height,
+                    },
+                  });
+                  continue;
+                }
+                // With border-collapse: collapse a cell's outer half-border
+                // lies inside the table's own border box: the outer cells'
+                // client rects sit half a border width inside the table's
+                // rect (measured: cell [75.063, 101.25, 124.813, 121.563]
+                // in a table [74.563, 100.75, 175.063, 142.375] for a 1px
+                // border), so a visible border on such a cell paints an ink
+                // line right on the table's edge, one the cell's own strips
+                // never reach. Count it as a strip on that side of the
+                // table's own client rect, of the line's full width.
+                const cellWidths =
+                  inner instanceof HTMLTableElement &&
+                  style.borderCollapse === 'collapse'
+                    ? Array.from(inner.querySelectorAll('td, th')).reduce(
+                        (widths, cell) => {
+                          const cellStyle = getComputedStyle(cell);
+                          if (cellStyle.visibility !== 'visible') {
+                            return widths;
+                          }
+                          const cellRect = cell.getBoundingClientRect();
+                          const perSide = [
+                            cellRect.top - rect.y,
+                            rect.x + rect.width - cellRect.right,
+                            rect.y + rect.height - cellRect.bottom,
+                            cellRect.left - rect.x,
+                          ];
+                          for (const i of [0, 1, 2, 3]) {
+                            const prop = ['top', 'right', 'bottom', 'left'][i];
+                            if (
+                              ['none', 'hidden'].includes(
+                                cellStyle.getPropertyValue(
+                                  `border-${prop}-style`,
+                                ),
+                              )
+                            ) {
+                              continue;
+                            }
+                            const color = cellStyle.getPropertyValue(
+                              `border-${prop}-color`,
+                            );
+                            const slash = color.lastIndexOf('/');
+                            const parts = color.split(',');
+                            const alpha =
+                              slash >= 0
+                                ? Number.parseFloat(color.slice(slash + 1))
+                                : parts.length === 4
+                                  ? Number.parseFloat(parts[3] ?? '')
+                                  : 1;
+                            const width = Number.parseFloat(
+                              cellStyle.getPropertyValue(
+                                `border-${prop}-width`,
+                              ),
+                            );
+                            if (
+                              width > 0 &&
+                              alpha > 0 &&
+                              (perSide[i] ?? width) <= width / 2 + 0.01
+                            ) {
+                              widths[i] = Math.max(widths[i] ?? 0, width);
+                            }
+                          }
+                          return widths;
+                        },
+                        /** @type {number[]} */ ([0, 0, 0, 0]),
+                      )
+                    : [0, 0, 0, 0];
+                const x1 = rect.x + rect.width;
+                const y1 = rect.y + rect.height;
+                // The visible sides' strips, [x0, y0, x1, y1] each (a NaN
+                // width never passes its `> 0` test): the element's own
+                // border and, for a collapsed-border table, the line an
+                // outer cell's border paints on the table's edge.
+                const [wTop = 0, wRight = 0, wBottom = 0, wLeft = 0] =
+                  sides.map((width, i) => Math.max(width, cellWidths[i] ?? 0));
+                const strips = [
+                  ...(wTop > 0 ? [[rect.x, rect.y, x1, rect.y + wTop]] : []),
+                  ...(wRight > 0 ? [[x1 - wRight, rect.y, x1, y1]] : []),
+                  ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
+                  ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
+                ];
+                if (strips.length > 0) {
+                  const x0 = Math.min(...strips.map(strip => strip[0] ?? 0));
+                  const y0 = Math.min(...strips.map(strip => strip[1] ?? 0));
+                  const right0 = Math.max(
+                    ...strips.map(strip => strip[2] ?? 0),
+                  );
+                  const bottom0 = Math.max(
+                    ...strips.map(strip => strip[3] ?? 0),
+                  );
+                  boxes.push({
+                    kind: 'box',
+                    rect: {
+                      x: x0,
+                      y: y0,
+                      width: right0 - x0,
+                      height: bottom0 - y0,
                     },
                   });
                 }
