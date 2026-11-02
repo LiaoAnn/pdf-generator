@@ -37,7 +37,7 @@ try {
   // anything else, never send it anywhere but a local origin.
   if (values.url === undefined || !isLocalOrigin(values.url)) {
     refuse(
-      `${usage}\nerror: --url must be a local origin (localhost, 127.0.0.0/8, [::1] or a worktree's <app>.<project>.liaoann.net)`,
+      `${usage}\nerror: --url must be a local origin (localhost, 127.0.0.0/8 or [::1]; a worktree's <app>.<project>.liaoann.net is refused: it reaches other worktrees' stacks too)`,
     );
   }
   const url = values.url;

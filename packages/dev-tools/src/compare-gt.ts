@@ -195,6 +195,17 @@ function changedFixtureLines(
   const blocksB = asBlocks(gtB);
   const byIdA = new Map(blocksA.map(block => [String(block.id), block]));
   const byIdB = new Map(blocksB.map(block => [String(block.id), block]));
+  // Blocks present in both, in a different array order: not a changed
+  // block, but worth one line before the per-block lines.
+  const orderA = blocksA
+    .map(block => String(block.id))
+    .filter(id => byIdB.has(id));
+  const orderB = blocksB
+    .map(block => String(block.id))
+    .filter(id => byIdA.has(id));
+  if (!jsonEqual(orderA, orderB)) {
+    lines.push(`  block array order: ${json(orderA)} → ${json(orderB)}`);
+  }
   for (const blockA of blocksA) {
     const id = String(blockA.id);
     const blockB = byIdB.get(id);
@@ -301,9 +312,23 @@ function changedFixtureLines(
           : undefined;
       return Array.isArray(d) ? d.length : undefined;
     };
+    const raw = (check: unknown): unknown =>
+      typeof check === 'object' && check !== null
+        ? (check as { differences?: unknown }).differences
+        : undefined;
     lines.push(
       `  self-check: ok ${value(ok(a.check))} → ${value(ok(b.check))}, differences ${value(differences(a.check))} → ${value(differences(b.check))}`,
     );
+    // When ok and the count are unchanged, the line above says nothing:
+    // show the differences themselves.
+    if (
+      jsonEqual(ok(a.check), ok(b.check)) &&
+      jsonEqual(differences(a.check), differences(b.check))
+    ) {
+      lines.push(
+        `  self-check differences: ${value(raw(a.check))} → ${value(raw(b.check))}`,
+      );
+    }
   }
   return { lines, changed, added, removed };
 }

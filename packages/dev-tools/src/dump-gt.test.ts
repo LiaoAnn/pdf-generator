@@ -63,6 +63,10 @@ interface Api {
   finalStatus?: (templateId: string) => Batch['status'];
   /** Answers POST /api/templates with this error instead. */
   uploadError?: { status: number; body: unknown };
+  /** Answers POST /api/templates with a redirect to this path instead. */
+  uploadRedirect?: string;
+  /** Answers POST /api/templates with this template id instead. */
+  uploadId?: string;
 }
 
 const accessHeaders = {
@@ -139,15 +143,22 @@ function startApi(): Promise<{ api: Api; server: Server }> {
         send(api.uploadError.status, api.uploadError.body);
         return;
       }
+      if (api.uploadRedirect) {
+        response.writeHead(307, {
+          location: `${api.url}${api.uploadRedirect}`,
+        });
+        response.end();
+        return;
+      }
       const decoded = Object.fromEntries(
         Object.entries(files).map(([name, bytes]) => [
           name,
           Buffer.from(bytes).toString('utf8'),
         ]),
       );
-      const { id } = JSON.parse(decoded['manifest.json'] ?? '{}') as {
-        id: string;
-      };
+      const id =
+        api.uploadId ??
+        (JSON.parse(decoded['manifest.json'] ?? '{}') as { id: string }).id;
       api.uploads[id] = decoded;
       const version = (versions.get(id) ?? 0) + 1;
       versions.set(id, version);
@@ -524,6 +535,37 @@ describe('dump-gt', () => {
     expect(result.stderr).toContain('invalid_manifest');
   });
 
+  it('exits 1 when a fixture completes but fails its self-check', async () => {
+    api.fixture = (templateId, index) =>
+      templateId === 'beta' && index === 1
+        ? { check: { passed: false, differences: 1 } }
+        : {};
+    const out = join(scratch, 'out');
+    const result = await run(
+      flags(out, '--count', '2', await pack('alpha'), await pack('beta')),
+    );
+    expect(result.code).toBe(1);
+    expect(result.stdout).toMatch(/self-check 3\/4/);
+    expect(Object.keys(await tree(out))).toHaveLength(9);
+  });
+
+  it('follows no redirect, so the token never leaves the origin it was given', async () => {
+    api.uploadRedirect = '/elsewhere';
+    const result = await run(flags(join(scratch, 'out'), await pack('alpha')));
+    expect(result.code).toBe(1);
+    expect(api.requests).toEqual([{ method: 'POST', path: '/api/templates' }]);
+  });
+
+  it('refuses a template id that is not a slug, writing nothing outside --out', async () => {
+    api.uploadId = '../escaped';
+    const out = join(scratch, 'out');
+    const result = await run(flags(out, '--count', '1', await pack('alpha')));
+    expect(result.code).toBe(1);
+    expect(result.stderr).toContain('../escaped');
+    expect(await readdir(scratch)).not.toContain('escaped');
+    expect(await tree(out)).toEqual({});
+  });
+
   it('refuses a non-local --url before any request', async () => {
     const out = join(scratch, 'out');
     const result = await run([
@@ -569,8 +611,6 @@ describe('isLocalOrigin', () => {
     'http://127.0.0.2:8787/',
     'http://localhost:8787',
     'http://[::1]:8787',
-    'https://app-t14-12-dump-gt.pdf-generator.liaoann.net',
-    'https://app-t07-5-batch-pack-cache.pdf-generator.liaoann.net/',
   ])('accepts %s', url => {
     expect(isLocalOrigin(url)).toBe(true);
   });
@@ -578,6 +618,10 @@ describe('isLocalOrigin', () => {
   it.each([
     'https://pdf-generator-web.example.workers.dev',
     'https://example.com',
+    // Worktree URLs reach any worktree's stack, not only this one's: the
+    // tool runs inside its own stack, where loopback is its own server.
+    'https://app-t14-12-dump-gt.pdf-generator.liaoann.net',
+    'https://app-t07-5-batch-pack-cache.pdf-generator.liaoann.net/',
     'https://liaoann.net',
     'https://pdf-generator.liaoann.net',
     'https://a.b.c.liaoann.net',

@@ -39,7 +39,7 @@ pnpm compare-gt /tmp/gt-main /tmp/gt-branch
 ### dump-gt
 
 - Uploads each pack folder (default: every `templates/*/pack`, in name order) through `POST /api/templates`, runs one batch per pack (`--seed`, default `dump-gt`; `--count`, default 10) and waits for it, polling every `--poll-ms` (default 2000) for up to 15 minutes. It uses only the public API routes, with the local Access stand-in's service token.
-- `--url` defaults to `http://127.0.0.1:8787` (the web dev server, seen from inside the stack). Only local origins are accepted: `localhost`, `127.0.0.0/8`, `[::1]`, or a worktree URL `<route>-<wt>.<vm>.liaoann.net`. Anything else is refused before any request, since a real Cloudflare account needs the user's OK each time.
+- `--url` defaults to `http://127.0.0.1:8787` (the web dev server, seen from inside the stack). Only loopback origins are accepted: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`. Anything else is refused before any request, since a real Cloudflare account needs the user's OK each time — including a worktree URL `<route>-<wt>.<vm>.liaoann.net`, which also reaches other worktrees' stacks, while the tool runs inside its own stack where loopback is its own server.
 - `--out` must be missing or empty, so a dump never mixes with stale files.
 - Writes `<out>/<templateId>/<NNNN>/gt.json` and `check.json` for every completed fixture, and `<out>/summary.json` (seed, count, and each fixture's status, error and self-check from the batch's fixture list). gt.json loses `source.templateVersion`, which every re-upload bumps. All JSON is written with keys sorted, 2-space indented, with a trailing newline, and no batch ids, versions, URLs or times. Two dumps of the same code are therefore byte-identical (`diff -r` works too).
 - The output folder is named after the template id the upload returned. A modified copy of a pack (kept outside the worktree) therefore lands where the original would and compares against it.
@@ -64,6 +64,7 @@ pnpm compare-gt /tmp/gt-main /tmp/gt-branch
     self-check: ok true → false, differences 0 → 2
   ```
 
+  Blocks present in both fixtures (matched by `id`) but in a different array order get one extra line after the pages/source lines, `block array order: ["id-1",...] → ["id-2",...]`, without counting as changed blocks. When a self-check's `ok` and difference count are unchanged but the differences themselves differ, a second line follows: `self-check differences: [...] → [...]`.
   Block fields come in the order type, page, bbox, text, order, continues, checked, latex; cell fields bbox, text, rowSpan, colSpan, header, checkboxes. A different `seed` or `count` in the summaries is reported first.
 - Always ends with the counts:
 

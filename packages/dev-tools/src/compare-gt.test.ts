@@ -355,6 +355,50 @@ describe('compare-gt', () => {
     );
   });
 
+  it('reports blocks that only moved in the array', async () => {
+    const a = await dump('a', base());
+    const changed = base();
+    const fixture = changed['alpha/0000'];
+    if (!fixture) throw new Error('missing fixture');
+    const [title, body, tableBlock] = fixture.gt.blocks;
+    if (!title || !body || !tableBlock) throw new Error('missing block');
+    // Same blocks, same order fields; only their place in the array moved.
+    fixture.gt.blocks = [body, title, tableBlock];
+    const b = await dump('b', changed);
+    const result = await run([a, b]);
+    expect(result.code).toBe(1);
+    expect(result.stdout.split('\n').slice(0, 3)).toEqual([
+      'alpha/0000: changed',
+      '  block array order: ["title-1","paragraph-1","table-1"] → ["paragraph-1","title-1","table-1"]',
+      'fixtures: 3/4 identical, 1 changed, 0 only in a, 0 only in b',
+    ]);
+    expect(result.stdout).toContain(
+      'blocks: 0 changed, 0 added, 0 removed, of 12 in a\n',
+    );
+  });
+
+  it('shows the self-check differences when only their content changed', async () => {
+    const before = { kind: 'font', page: 1, font: 'Times', text: '內' };
+    const after = { kind: 'font', page: 1, font: 'Arial', text: '內' };
+    const failing = (difference: object): Record<string, DumpFixture> => {
+      const fixtures = base();
+      const fixture = fixtures['beta/0000'];
+      if (!fixture) throw new Error('missing fixture');
+      fixture.check = { ok: false, differences: [difference] };
+      return fixtures;
+    };
+    const a = await dump('a', failing(before));
+    const b = await dump('b', failing(after));
+    const result = await run([a, b]);
+    expect(result.code).toBe(1);
+    expect(result.stdout.split('\n').slice(0, 4)).toEqual([
+      'beta/0000: changed',
+      '  self-check: ok false → false, differences 1 → 1',
+      '  self-check differences: [{"font":"Times","kind":"font","page":1,"text":"內"}] → [{"font":"Arial","kind":"font","page":1,"text":"內"}]',
+      'fixtures: 3/4 identical, 1 changed, 0 only in a, 0 only in b',
+    ]);
+  });
+
   it('reports fixtures and templates only in one dump, and a different seed or count', async () => {
     const a = await dump('a', base(), { count: 2 });
     const changed = base();

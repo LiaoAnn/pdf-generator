@@ -12,6 +12,7 @@ import type {
   FixtureList,
   TemplateSummary,
 } from '@pdf-generator/contract';
+import { slugSchema } from '@pdf-generator/contract';
 import { zipSync } from 'fflate';
 
 export interface DumpGtOptions {
@@ -25,8 +26,9 @@ export interface DumpGtOptions {
 }
 
 /** True when url may receive the local Access token: http(s) on localhost,
- * 127.0.0.0/8, [::1], or exactly two labels before liaoann.net (a worktree
- * URL like app-<wt>.pdf-generator.liaoann.net). Anything else is refused. */
+ * an IPv4 in 127.0.0.0/8, or [::1]. Anything else is refused — a worktree
+ * URL (<route>-<wt>.<vm>.liaoann.net) reaches other worktrees' stacks too,
+ * and the tool runs inside its own stack, where loopback is its own server. */
 export function isLocalOrigin(url: string): boolean {
   let parsed: URL;
   try {
@@ -37,9 +39,7 @@ export function isLocalOrigin(url: string): boolean {
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
   const host = parsed.hostname;
   if (host === 'localhost' || host === '[::1]') return true;
-  if (/^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(host)) return true;
-  const labels = host.split('.');
-  return labels.length === 4 && labels[2] === 'liaoann' && labels[3] === 'net';
+  return /^127\.(?:\d{1,3}\.){2}\d{1,3}$/.test(host);
 }
 
 const accessHeaders = {
@@ -47,13 +47,16 @@ const accessHeaders = {
   'CF-Access-Client-Secret': 'local-dev-secret',
 };
 
-/** fetch one API route; throws unless the answer is 2xx. */
+/** fetch one API route; throws unless the answer is 2xx. No redirect is
+ * followed: the local Access token must never leave the origin it was
+ * given, so a redirect fails the run without a request to its target. */
 async function api(
   base: string,
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
   const response = await fetch(`${base}${path}`, {
+    redirect: 'manual',
     ...init,
     headers: { ...accessHeaders, ...init.headers },
   });
@@ -138,6 +141,12 @@ export async function dumpGt(options: DumpGtOptions): Promise<number> {
         body: (await packZip(pack)) as Uint8Array<ArrayBuffer>,
       })
     ).json()) as TemplateSummary;
+    // The id becomes an output folder name: only a contract slug is safe.
+    if (!slugSchema.safeParse(uploaded.id).success) {
+      throw new Error(
+        `POST /api/templates returned an id that is not a slug: ${JSON.stringify(uploaded.id)}`,
+      );
+    }
     const batch = (await (
       await api(base, '/api/batches', {
         method: 'POST',
@@ -168,6 +177,13 @@ export async function dumpGt(options: DumpGtOptions): Promise<number> {
     const list = (await (
       await api(base, `/api/batches/${batch.id}/fixtures`)
     ).json()) as FixtureList;
+    for (const fixture of list.fixtures) {
+      if (!Number.isSafeInteger(fixture.index) || fixture.index < 0) {
+        throw new Error(
+          `GET /api/batches/${batch.id}/fixtures: index is not a non-negative safe integer: ${JSON.stringify(fixture.index)}`,
+        );
+      }
+    }
     templates[uploaded.id] = { fixtures: list.fixtures };
     let done = 0;
     let good = 0;
