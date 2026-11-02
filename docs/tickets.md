@@ -1116,8 +1116,9 @@
 - **目標**：T08-3 判斷背景或框線「有畫出來」時，沒有考慮 `opacity: 0`、`clip-path`、`background-clip`，所以看不見的相接背景仍會把 gt 框對齊到整數 px；摺疊表格儲存格框線的透明度判斷也沒有自己的測試。改成依實際是否畫出判斷，並補上測試
 - **Blocked by**：T08-3
 - **Blocks**：—
-- **撞車風險**：`packages/ground-truth`；與 T08-4 不要同時派
-- **驗收測試**：`opacity: 0`、被 `clip-path` 遮住、`background-clip: content-box` 的背景不改變 gt 框；半透明框線照常；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
+- **撞車風險**：`packages/ground-truth`；與 T08-6 不要同時派
+- **另外（T08-4 review）**：當成框線用的內陰影（沒有 border 的盒子上的 inset `box-shadow`）沒有像框線一樣對齊整數 px；overflow 裁切沒有考慮 `overflow-clip-margin` 與 `contain: paint`
+- **驗收測試**：`opacity: 0`、被 `clip-path` 遮住、`background-clip: content-box` 的背景不改變 gt 框；半透明框線照常；inset 陰影當框線時對齊實際畫出的 px；`overflow-clip-margin` 與 `contain: paint` 的裁切照實際；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
 - **不做**：改共用契約
 - **來源**：PR #95（T08-3）Correctness Hardening
 
@@ -1157,3 +1158,12 @@
 - **驗收測試**：重疊上傳且一次失敗時索引維持完成；檔案刪除失敗後清掃仍會刪掉它們；session 結束後對照表沒有它的項目；批次 10 份照常且 PDF 位元組與 main 相同
 - **不做**：改快取策略
 - **來源**：PR #99（T07-5）review 的 Hardening
+
+### T08-6 標準答案：子元素超出區塊的內容
+- **目標**：T08-4 之後，區塊的 outline、陰影與 `::before`/`::after` 都算進 gt 框，但區塊內子元素自己的背景、框線或圖片若超出區塊（例如負 margin、絕對定位），仍不算進去（T08-3 的規則只看區塊本身）。改成把子元素實際畫出、超出區塊的部分也算進 gt 框
+- **Blocked by**：T08-4
+- **Blocks**：—
+- **撞車風險**：`packages/ground-truth`；與 T08-5 不要同時派
+- **驗收測試**：子元素背景、框線、圖片超出區塊時 gt 框蓋住它們的墨跡（≤ 0.125 pt）；被 overflow 裁掉的部分不算；6 個樣板各 10 份 gt.json 與 main 相同（`pnpm dump-gt`／`compare-gt`）、自我檢查 60/60
+- **不做**：改共用契約；文字本身的溢出
+- **來源**：PR #100（T08-4）
