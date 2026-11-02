@@ -125,7 +125,7 @@ Coordinator thread ID: <this thread's id from orchestrator_capabilities.parentTh
 
 Merge a PR only when all of these hold. Check each yourself:
 
-1. **CI green**: `gh pr checks <n>`. Before T01 adds CI, the worker's recorded checks stand in; say so in the merge note.
+1. **CI green**: `gh pr checks <n>`, the `ci` gate check green (it needs `check` and every `test (n/4)` shard; T01-3). Before T01 adds CI, the worker's recorded checks stand in; say so in the merge note.
 2. **Up to date**: `mergeable` is `MERGEABLE`, and the branch is rebased on the current `main`.
 3. **Acceptance observed**: every 驗收測試 item has observed or executed evidence in the PR body; an item reported inconclusive doesn't block the merge if a later ticket or check will cover it and nothing in the PR depends on it; name it in the merge note and your report. If the ticket's core outcome is inconclusive, send the PR back instead.
 4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by GPT-6.1-Sol or its fallback (Opus 5.5 medium), the last round had no Blockers, the worker wrote the tests and Kimi K3 the implementation (the PR names any Kimi fallback and every small fix the worker made). If the worker implemented and Opus also reviewed, say so in the merge note.

@@ -48,7 +48,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 - Shared tool versions (`typescript`, `vitest`, `wrangler`) live in the `catalog:` of `pnpm-workspace.yaml`; a package lists them as `"catalog:"`. Vitest stays on 4.x so `@cloudflare/vitest-pool-workers` can be added when a Worker needs tests inside workerd.
 - Each Worker app has its own `wrangler.jsonc` and generated `worker-configuration.d.ts` (`pnpm cf-typegen`).
-- `.devcontainer/`: the per-worktree environment (Dev Container + compose; no host ports). `.github/workflows/ci.yml`: CI runs install, typecheck, lint, knip and test on every PR and on `main`.
+- `.devcontainer/`: the per-worktree environment (Dev Container + compose; no host ports). `.github/workflows/ci.yml`: CI runs on every PR and on `main` as jobs `check` (install, typecheck, lint, knip, the dev-container script tests), `test (1/4)`…`test (4/4)` (`vitest run --shard`) and `ci`, a gate that passes only when all of them did; `ci` is the check to watch (T01-3). Locally `pnpm test` and `pnpm verify` still run everything in one go.
 
 ## Commands
 
