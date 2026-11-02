@@ -946,7 +946,8 @@ class Counter {
   }
 
   private async inflate(data: Uint8Array, num: number): Promise<Uint8Array> {
-    const stream = new Blob([data])
+    // A copy: Blob takes only ArrayBuffer-backed views (workers types).
+    const stream = new Blob([data.slice()])
       .stream()
       .pipeThrough(new DecompressionStream('deflate'));
     const reader = stream.getReader();

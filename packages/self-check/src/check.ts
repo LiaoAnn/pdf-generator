@@ -1,6 +1,12 @@
 import type { GroundTruth, GtBlock } from '@pdf-generator/contract';
 import { type InkBudget, maxInkWork, measureInk } from './ink.ts';
-import { type PdfPage, type PdfTextItem, readPdf } from './pdf.ts';
+import {
+  type PdfDocument,
+  type PdfPage,
+  type PdfTextItem,
+  readPdf,
+  UnmeasurablePdfError,
+} from './pdf.ts';
 import { normaliseText } from './text.ts';
 
 /** `[x0, y0, x1, y1]` in PDF points from the page's top-left corner. */
@@ -95,6 +101,16 @@ export type Difference = { message: string } & (
     }
   /** Text printed in a font that is not one of `CheckOptions.fonts`. */
   | { kind: 'font'; page: number; font: string; text: string }
+  /**
+   * `readPdf` refused the document before pdf.js opened it: too many
+   * operators, too deep a nesting or too many content bytes
+   * (`UnmeasurablePdfError`, T14-10). Always the only difference: nothing was
+   * read, so no other check ran. A file it can't read at all throws instead.
+   */
+  | {
+      kind: 'unmeasurable';
+      limit: Exclude<UnmeasurablePdfError['limit'], 'structure'>;
+    }
 );
 
 export interface SelfCheckReport {
@@ -432,7 +448,26 @@ export async function checkPdf(
   gt: GroundTruth,
   options: CheckOptions = {},
 ): Promise<SelfCheckReport> {
-  const { pages } = await readPdf(pdf);
+  let document: PdfDocument;
+  try {
+    document = await readPdf(pdf);
+  } catch (error) {
+    // A document over the budget is "can't measure", not a thrown exception;
+    // a file the scan can't read at all stays an error, as pdf.js's were.
+    if (!(error instanceof UnmeasurablePdfError) || error.limit === 'structure')
+      throw error;
+    return {
+      ok: false,
+      differences: [
+        {
+          kind: 'unmeasurable',
+          limit: error.limit,
+          message: `The self-check can't measure this PDF: ${error.message}`,
+        },
+      ],
+    };
+  }
+  const { pages } = document;
   const allowedFonts = options.fonts ? new Set(options.fonts) : undefined;
   const differences: Difference[] = [];
   // One work budget for every textless block of the document.

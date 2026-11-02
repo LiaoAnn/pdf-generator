@@ -22,5 +22,6 @@ export {
   type PdfTextItem,
   type PdfTile,
   readPdf,
+  UnmeasurablePdfError,
 } from './pdf.ts';
 export { type ExpectedBlock, missingText, normaliseText } from './text.ts';
