@@ -94,7 +94,7 @@ A fresh worktree's stack has no `node_modules`: run `T3CODE_WORKTREE_PATH=<path>
 | --- | --- | --- |
 | Coordinator | Claude Opus 5.5, effort medium | none |
 | Worker (flow, planning, test author, small fixes) | Claude Opus 5.5, effort high | none |
-| Implementer | Kimi K3 (pi), thinking high | the worker implements itself |
+| Implementer; runner of long jobs (probes, `pnpm verify`, acceptance batches, PR draft) | Kimi K3 (pi), thinking high | the worker does it itself |
 | Every review lens | GPT-6.1-Sol (Codex), reasoning medium | Claude Opus 5.5, effort medium |
 
 The tests, the implementation and the review come from different models, so a misunderstanding isn't shared between the code and its checks (set 2026-11-02; before that Opus implemented and Codex wrote the tests). Keep your own context short (`| tail -n 40` on long output, `git diff --stat` before a full diff): most of the Claude spend is workers rereading their own long histories. `cross-model-delegate` says how to call them and when to fall back.

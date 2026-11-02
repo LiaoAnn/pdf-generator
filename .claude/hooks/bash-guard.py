@@ -56,10 +56,25 @@ def main() -> int:
         event = json.load(sys.stdin)
     except ValueError:
         return 0
-    command = (event.get("tool_input") or {}).get("command") or ""
+    tool_input = event.get("tool_input") or {}
+    command = tool_input.get("command") or ""
     # Commit messages and PR bodies may quote these shapes.
     if re.match(r"\s*(?:git|gh)\s", command):
         return 0
+    # Each foreground poll rereads the whole conversation: on 2026-11-02
+    # wt-wait polls were 277 of 1,002 worker tool calls.
+    if (
+        re.search(r"(?:^|[;&|(]|\n)\s*wt-wait\s", command)
+        and not tool_input.get("run_in_background")
+    ):
+        print(
+            "bash-guard: don't poll wt-wait in the foreground. Run "
+            "`wt-wait <path> <name> --max 1500` with run_in_background: true and "
+            "end your turn; you are woken when it exits. Better: let Kimi run "
+            "long jobs (cross-model-delegate's runner brief).",
+            file=sys.stderr,
+        )
+        return 2
     for matches, reason in RULES:
         if matches(command):
             print(f"bash-guard: {reason}", file=sys.stderr)

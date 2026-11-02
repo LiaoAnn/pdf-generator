@@ -5,7 +5,7 @@ description: Use when handing a slice's implementation or a review lens to a dif
 
 # Cross-Model Delegate
 
-You (the worker, Opus 5.5 high) run the flow and write the tests; Kimi K3 implements each slice; GPT-6.1-Sol reviews the whole ticket. Three models, so a misunderstanding in one isn't copied into the others' checks (set by the user 2026-11-02; before that Opus implemented and Codex wrote the tests). This skill says which model, how to call it, what the brief holds, the rules for your tests, and what to do when a call fails.
+You (the worker, Opus 5.5 high) run the flow and write the tests; Kimi K3 implements each slice and runs the long jobs (probes, `pnpm verify`, acceptance batches, re-checks after a rebase, the PR draft), so your own conversation stays short; GPT-6.1-Sol reviews the whole ticket. Three models, so a misunderstanding in one isn't copied into the others' checks (set by the user 2026-11-02; before that Opus implemented and Codex wrote the tests). This skill says which model, how to call it, what the brief holds, the rules for your tests, and what to do when a call fails.
 
 ## Targets
 
@@ -13,7 +13,7 @@ Call T3's `delegate_task` (it may appear as `mcp__t3-code__delegate_task`). Don'
 
 | Role | Primary `target` | Fallback |
 | --- | --- | --- |
-| Implementer (`role: "implementation"`) | `{"providerInstanceId": "pi", "model": "litellm/Kimi-K3-NVFP4", "options": {"thinking": "high"}}` | You implement the slice yourself and record it in the slice report and the PR. |
+| Implementer and runner (`role: "implementation"`, `"research"` for a probe) | `{"providerInstanceId": "pi", "model": "litellm/Kimi-K3-NVFP4", "options": {"thinking": "high"}}` | You implement the slice yourself and record it in the slice report and the PR. |
 | Review lens (`role: "review"`) | `{"providerInstanceId": "codex", "model": "gpt-6.1-sol", "options": {"reasoningEffort": "medium"}}` | `{"providerInstanceId": "claudeAgent", "model": "claude-opus-5-5", "options": {"effort": "medium"}}`, a fresh Opus with only the brief |
 
 Before the first call in a thread, run `orchestrator_capabilities` once (with `search: "kimi"` too, to list pi's model) and check every model above is listed. If an ID changed, use the closest listed equivalent and say so in your report.
@@ -76,13 +76,32 @@ Make these tests pass with the smallest change inside the Boundary. Don't edit, 
 Run every project command in the stack: `T3CODE_WORKTREE_PATH=/data/worktrees/pdf-generator/<wt> wt-exec <cmd…>`. A whole package's suite or a browser test takes the heavy lock: `wt-exec --heavy …`, or for anything over about 2 minutes `wt-bg /data/worktrees/pdf-generator/<wt> <name> --heavy --timeout 20m -- <cmd…>` and `wt-wait /data/worktrees/pdf-generator/<wt> <name> --max 110` until it exits 0. Steps with `cd`, pipes, `rm` or quotes go in a script file under /tmp/<wt>/ run with `wt-bg … --script <file>`, never inside a `bash -c "…"` string.
 Determinism (AGENTS.md "Quality bar"): no unseeded randomness, wall-clock time or uncontrolled iteration order in the generation path.
 Don't: commit or run any git command that writes (read-only `git -C /data/worktrees/pdf-generator/<wt> diff` / `status` is fine); install, upgrade or relink packages unless the Approach says so; touch the shared contract, docs/tickets.md, AGENTS.md or .claude/; call any real external service (Cloudflare account, `--remote`, deploys); `pkill`/`kill` by name in the container; leave a dev server or tmux session running.
-Before you report, run the package typecheck and `T3CODE_WORKTREE_PATH=… wt-exec pnpm exec biome check --write <files you changed>`.
-Report: the files you changed and why each, the test command and the tail of its output, typecheck and lint results, and anything you couldn't do or suspect is wrong.
+Before you report, run the package typecheck and `T3CODE_WORKTREE_PATH=… wt-exec pnpm exec biome check --write <files you changed>`, then the full `pnpm verify`: `wt-bg /data/worktrees/pdf-generator/<wt> verify --heavy --timeout 20m -- pnpm verify` and `wt-wait … verify --max 110` until it exits 0.
+Report: the files you changed and why each, the test command and the tail of its output, typecheck and lint results, the `pnpm verify` exit line and its log path (~/.local/state/wt/jobs/<wt>/verify.log), and anything you couldn't do or suspect is wrong.
 ```
+
+## Runner brief (Kimi K3: probes, acceptance runs, re-checks, PR draft)
+
+Hand Kimi any job that is long or mostly waiting: a probe of how Chrome or pdf.js behaves, an acceptance batch, the 6-template gt.json comparison against a main baseline, `pnpm verify` after a rebase or a small fix, drafting the PR body. You design the job and its pass criterion; Kimi runs it and reports. One runner or implementer at a time in your worktree unless the jobs can't touch the same files or dev servers.
+
+```text
+You are a runner for ticket <TNN> in /data/worktrees/pdf-generator/<wt> (worktree name <wt>).
+Read AGENTS.md in that folder first; ~/.config/devvm/AGENTS.md (already loaded) says how to run things on this VM.
+
+Job: <what to run or find out, step by step: commands, inputs, seeds, which templates, the baseline to compare against>
+Pass criterion: <what result counts as pass, and what to report if it isn't>
+Outputs: put logs and outputs under /tmp/<wt>/<job>/ in the container (or ~/.local/state/wt/jobs/<wt>/ for wt-bg logs), never in the worktree.
+
+Run every project command in the stack (`T3CODE_WORKTREE_PATH=... wt-exec`, heavy ones with `wt-bg ... --heavy` and `wt-wait ... --max 110` until it exits 0). Steps with `cd`, pipes, `rm` or quotes go in a script file under /tmp/<wt>/, run with `wt-bg ... --script <file>` (it drops the file's extension: a Node .mjs script must be written and run by a bash script). Start dev servers only if the job needs them, as `tmux new -d -s <wt>-<role> -- env T3CODE_WORKTREE_PATH=... wt-exec <cmd...>`, and stop them with `tmux kill-session` before you report.
+Don't change any file in the worktree (a probe may use scratch files under /tmp only); don't commit or run git commands that write; don't call any real external service; don't kill processes by name.
+Report, short: each command you ran and its exit code, the numbers the pass criterion asks for, PASS or FAIL against it, and the path of every log and output file. Quote at most a few lines of output; I will read the files.
+```
+
+For a PR draft, the job is "write /tmp/<wt>/pr-body.md from these slice reports and evidence paths, in the PR format below", with the format pasted from `work-ticket` step 4.4.
 
 ## After the implementer reports
 
-- Its claims are leads, not facts (`verification-evidence`). Read its diff (`git diff --stat`, then the diff), check it stayed in the Boundary and didn't touch a test, and rerun the tests yourself.
+- Its claims are leads, not facts (`verification-evidence`). Read its diff (`git diff --stat`, then the diff), check it stayed in the Boundary and didn't touch a test, rerun the slice's tests yourself (short), and read the tail of its `pnpm verify` log. A runner's report gets the same treatment: open the files it names and check the numbers that decide pass or fail.
 - **Fixes.** A failing test, an out-of-Boundary change or a design problem goes back to Kimi in a new round: the original brief, what it changed, the problem with evidence. You may fix it yourself only when the fix is small (about 10 lines of production code or less: lint, a typo, a missed case a test already pins); list every such fix (file, what, why) in the slice report and the PR.
 - **Test objections.** You own the tests. When Kimi says a test is wrong, check its evidence: fix the test (note it in the slice report) or keep it and tell Kimi why in the next round. A dispute that touches the ticket's scope goes to the coordinator as an `ASK`.
 
