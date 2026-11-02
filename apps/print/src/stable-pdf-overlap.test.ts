@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { stablePdf } from './stable-pdf.ts';
 

@@ -1,6 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, relative } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { extractText, getDocumentProxy, getResolvedPDFJS } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import {

@@ -1,4 +1,4 @@
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { defineProject } from 'vitest/config';
 
 // wrangler's local Browser Rendering downloads Chrome to

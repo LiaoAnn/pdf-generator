@@ -1,5 +1,5 @@
 // Starts the print Worker for a test, on a free local port.
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, URL } from 'node:url';
 import { unstable_startWorker } from 'wrangler';
 
 export type PrintWorker = Awaited<ReturnType<typeof unstable_startWorker>>;

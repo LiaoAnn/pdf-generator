@@ -5,6 +5,7 @@
 // same way with text_zero_height. A fake page stands in for the
 // browser: these tests pin how renderPdf treats the runtime's report.
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { expect, test, vi } from 'vitest';
 import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';

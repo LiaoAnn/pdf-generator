@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { patchCmap, readCmap } from './fonts/sfnt.ts';
 import { fontTables, metrics, sum32 } from './test-fixtures/read-cff.ts';
