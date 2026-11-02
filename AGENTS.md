@@ -52,7 +52,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 ## Commands
 
-Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Start each dev server in its own tmux session without a quoted command string, `tmux new -d -s <wt>-<role> -- env T3CODE_WORKTREE_PATH=<path> wt-exec pnpm dev:print --ip 0.0.0.0`, and stop it with `tmux kill-session -t <wt>-<role>`: that stops its container processes too (wrangler, `workerd`, Chrome). Don't `pkill` in the container: delegated children (test authors, reviewers) share it. Long or heavy commands (`pnpm verify`, `pnpm test`, browser tests, batches) run with `wt-bg <path> <name> --heavy -- …` and `wt-wait` (`~/.config/devvm/AGENTS.md`). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
+Run every project command inside your worktree's stack (see "Environment"), never on the VM host. Start each dev server in its own tmux session without a quoted command string, `tmux new -d -s <wt>-<role> -- env T3CODE_WORKTREE_PATH=<path> wt-exec pnpm dev:print --ip 0.0.0.0`, and stop it with `tmux kill-session -t <wt>-<role>`: that stops its container processes too (wrangler, `workerd`, Chrome). Don't `pkill` in the container: delegated children (implementers, reviewers) share it. Long or heavy commands (`pnpm verify`, `pnpm test`, browser tests, batches) run with `wt-bg <path> <name> --heavy -- …` and `wt-wait` (`~/.config/devvm/AGENTS.md`). Run them from the repo root; `pnpm --filter @pdf-generator/<dir> <script>` runs one package's script.
 
 A fresh worktree's stack has no `node_modules`: run `T3CODE_WORKTREE_PATH=<path> wt-exec bash -lc "pnpm install --frozen-lockfile"` once before any other project command (until then `tsc` reports `Cannot find module 'zod'` and the like for every dependency). `wrangler dev` (`pnpm dev:print`) rebuilds on every save, and if it rebuilds a half-done edit it exits for good (`The Workers runtime failed to start … Uncaught ReferenceError`) instead of waiting for the next save: after multi-step edits check it still answers (`tmux capture-pane -p -t <wt>-print | tail`; a request failing with `ECONNREFUSED 127.0.0.1:8788`) and start it again. Biome lints every file in the worktree, even ones `.git/info/exclude` ignores: keep scratch output (`.scratch/` and the like) outside the worktree, for example in the container's `/tmp`. Template acceptance scripts take flags directly: `node src/acceptance.ts --url …` from the template's folder; `pnpm --filter … acceptance -- --url …` fails, because pnpm passes the `--` through to `parseArgs`.
 
@@ -80,22 +80,24 @@ A fresh worktree's stack has no `node_modules`: run `T3CODE_WORKTREE_PATH=<path>
 - **One ticket = one T3 thread = one worktree = one branch = one PR.** Ticket sizes were settled when the tickets were cut; don't stop or split a ticket because its diff is large. State the size in the PR (production code, tests, fixtures, generated files).
 - A **coordinator** thread (the user's main conversation, in the main checkout) tracks every ticket, starts **worker** threads, relays their questions to the user, and merges PRs. Workers never talk to the user directly; they talk to the coordinator.
 - A ticket may start once every ticket in its **Blocked by** has merged. Anything else it needs that isn't merged yet is replaced by a **stub** behind the same interface. Don't wait for it, and don't build it.
-- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, red tests first (written by a different model) → implement → verify on the real stack; after the last slice, one code review of the whole ticket (by a different model) → PR. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
+- Every ticket runs the same loop: `/plan-it` → 3–5 slices → per slice, red tests first (written by the worker) → implement (by a different model) → verify on the real stack; after the last slice, one code review of the whole ticket (by a third model) → PR. Workers run it as slash commands, starting with `/work-ticket`, which names the rest.
 
 | Skill | Who uses it |
 | --- | --- |
 | `coordinate-tickets` | The coordinator: status, dispatch, relaying, merging. |
 | `work-ticket` | A worker thread, from its first message to the merged PR. |
-| `cross-model-delegate` | Anyone handing tests or reviews to a different model. |
+| `cross-model-delegate` | Anyone handing an implementation or a review to a different model. |
 
 ### Models
 
 | Role | Model | Fallback when its credit or quota runs out |
 | --- | --- | --- |
-| Coordinator, worker (planning, implementation) | Claude Opus 5.5, effort medium | none |
-| Test author, every review lens | GPT-6.1-Sol (Codex), reasoning medium | Grok 4.7, reasoning high; then Claude Sonnet 5.5, effort high |
+| Coordinator | Claude Opus 5.5, effort medium | none |
+| Worker (flow, planning, test author, small fixes) | Claude Opus 5.5, effort high | none |
+| Implementer | Kimi K3 (pi), thinking high | the worker implements itself |
+| Every review lens | GPT-6.1-Sol (Codex), reasoning medium | Claude Opus 5.5, effort medium |
 
-The test author and reviewers are always a different model from the implementer, so a misunderstanding isn't shared between the code and its tests. Keep your own context short (`| tail -n 40` on long output, `git diff --stat` before a full diff): most of the Claude spend is workers rereading their own long histories. `cross-model-delegate` says how to call them and when to fall back.
+The tests, the implementation and the review come from different models, so a misunderstanding isn't shared between the code and its checks (set 2026-11-02; before that Opus implemented and Codex wrote the tests). Keep your own context short (`| tail -n 40` on long output, `git diff --stat` before a full diff): most of the Claude spend is workers rereading their own long histories. `cross-model-delegate` says how to call them and when to fall back.
 
 ## Rules
 
