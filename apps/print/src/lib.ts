@@ -2,7 +2,7 @@
 // Worker's routes and for T08 (ground truth), which reads boxes on the same
 // tab through `inspect`, in print media once the PDF is printed (T03 Must 3,
 // T07-20).
-import type { Browser, Page } from '@cloudflare/puppeteer';
+import type { Browser, BrowserContext, Page } from '@cloudflare/puppeteer';
 import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
 import { getDocumentProxy } from 'unpdf';
 import {
@@ -245,6 +245,15 @@ export interface RenderOptions<T> {
    */
   inspect?: (page: PrintPage) => Promise<T>;
   timeoutMs?: number;
+  /**
+   * An opaque key naming a browser context the prints it reaches share, kept
+   * on this browser between requests: each runs on its own tab of it, with
+   * the HTTP cache on, and closes only its tab. Without it each print runs
+   * in a fresh context of its own. The key must name
+   * everything a cached response could leak across (the caller builds it):
+   * the browser session, the asset origin, and the batch and pack digest.
+   */
+  sharedContext?: string;
 }
 
 export interface RenderResult<T> {
@@ -281,6 +290,7 @@ async function blockOtherRequests(
   page: Page,
   origin: string,
   files: PublishedFiles,
+  cacheEnabled: boolean,
   onBlocked: (url: string) => void,
 ): Promise<{
   settle: () => Promise<void>;
@@ -297,8 +307,18 @@ async function blockOtherRequests(
     if (!(parsed?.origin === origin && isFavicon(parsed))) onBlocked(url);
     return false;
   };
-  // As puppeteer's interception did: a cached response skips Fetch.
-  await page.setCacheEnabled(false);
+  // A response served from the cache skips Fetch interception, so the
+  // cache is on only for prints by pack reference, in a fresh context or a
+  // shared one: a shared context's key scopes it to one session, origin,
+  // batch and digest, so every response it can serve is one this same
+  // allow-list already admitted (the pack files of this batch+digest, the
+  // platform's /fonts/ and runtime files), and the print documents are
+  // no-store. It is on also when such a print runs alone, so a fixture
+  // prints the same bytes in a fresh context as in a shared one: the cache
+  // changes the PDF of some documents by itself (T07-5: two @font-face
+  // rules on one font file embed one font subset with the cache on, two
+  // with it off; same text and glyphs).
+  await page.setCacheEnabled(cacheEnabled);
   const cdp = await page.createCDPSession();
   const answering = new Set<Promise<unknown>>();
   cdp.on('Fetch.requestPaused', event => {
@@ -361,7 +381,10 @@ const refusingProxy = 'http://127.0.0.1:9';
  * covers connections without a request, such as <link rel=preconnect>.
  * `<-loopback>` stops Chrome from bypassing the proxy for loopback hosts.
  */
-function printContext(browser: Browser, origin: string) {
+function printContext(
+  browser: Browser,
+  origin: string,
+): Promise<BrowserContext> {
   // A rule without scheme and port would let every port of the host through.
   const { protocol, hostname, port } = new URL(origin);
   const effectivePort = port || (protocol === 'https:' ? '443' : '80');
@@ -375,8 +398,64 @@ function printContext(browser: Browser, origin: string) {
 }
 
 /**
- * Prints one document on a new tab of `browser`, in a context of its own,
- * then closes both and deletes the print's files from the store. A tab that requested anything
+ * The browser contexts prints sent the same `sharedContext` key share, kept
+ * on their browser between requests: the key to the promise of the
+ * context's id. The context itself is found back through
+ * `browser.browserContexts()` each time: it survives this connection's
+ * disconnect (puppeteer lists contexts that already existed when it
+ * connected), while a context object kept here would not survive a
+ * reconnect to the same browser session.
+ */
+const sharedContexts = new Map<string, Promise<string>>();
+
+/**
+ * The context prints with `sharedContext` key `key` share on `browser`,
+ * created with `printContext` on first use (one creation for concurrent
+ * prints, through the memoized promise). If it is gone (the browser session
+ * it lived on was replaced), a new one replaces its entry.
+ */
+async function sharedPrintContext(
+  browser: Browser,
+  origin: string,
+  key: string,
+): Promise<BrowserContext> {
+  const known = sharedContexts.get(key);
+  if (known) {
+    const id = await known.catch((error: unknown) => {
+      if (sharedContexts.get(key) === known) sharedContexts.delete(key);
+      throw error;
+    });
+    const context = browser.browserContexts().find(c => c.id === id);
+    if (context) return context;
+    // The session the context was on is gone; forget the entry so the key
+    // doesn't pile it up, and create a new context below.
+    if (sharedContexts.get(key) === known) sharedContexts.delete(key);
+  }
+  const created = printContext(browser, origin).then(context => {
+    if (context.id === undefined) {
+      throw new Error('The browser gave a print context without an id');
+    }
+    return context.id;
+  });
+  sharedContexts.set(key, created);
+  const id = await created.catch((error: unknown) => {
+    if (sharedContexts.get(key) === created) sharedContexts.delete(key);
+    throw error;
+  });
+  const context = browser.browserContexts().find(c => c.id === id);
+  if (!context) {
+    if (sharedContexts.get(key) === created) sharedContexts.delete(key);
+    throw new Error('A just-created print context is not listed');
+  }
+  return context;
+}
+
+/**
+ * Prints one document on a new tab of `browser`. Without `sharedContext`
+ * the print runs in a context of its own with the cache off, and both are
+ * closed when it ends; with one, it runs on a new tab of the context that
+ * key shares (its cache on), and only the tab is closed. Either way the
+ * print's files are deleted from the store. A tab that requested anything
  * but its files fails with `request_blocked`, whatever else happened.
  */
 export async function renderPdf<T = undefined>(
@@ -384,8 +463,14 @@ export async function renderPdf<T = undefined>(
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
-  const context = await printContext(browser, options.assetOrigin);
+  const sharedKey = options.sharedContext;
+  const context = sharedKey
+    ? await sharedPrintContext(browser, options.assetOrigin, sharedKey)
+    : await printContext(browser, options.assetOrigin);
   const page = await context.newPage().catch(async (error: unknown) => {
+    // A shared context a page can't be made in may be half-broken: forget
+    // and close it, so the key's next print gets a new one.
+    if (sharedKey) sharedContexts.delete(sharedKey);
     await context.close().catch(() => undefined);
     throw error;
   });
@@ -428,6 +513,7 @@ export async function renderPdf<T = undefined>(
       page,
       options.assetOrigin,
       files,
+      request.pack !== undefined && 'batch' in request.pack,
       url => {
         blocked.add(url);
         stop(blockedError());
@@ -460,7 +546,8 @@ export async function renderPdf<T = undefined>(
     await settle?.();
     await page.close().catch(() => undefined);
     await files?.remove();
-    await context.close().catch(() => undefined);
+    // A shared context stays: the prints of its batch keep it cached.
+    if (!sharedKey) await context.close().catch(() => undefined);
   }
 }
 

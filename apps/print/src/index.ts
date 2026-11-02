@@ -164,11 +164,22 @@ async function print(
   // could close its browser: close it here.
   let close = discard;
   try {
+    const assetOrigin = env.ASSET_ORIGIN ?? new URL(request.url).origin;
+    const pack = parsed.data.pack;
+    // In a kept-alive session, prints of one batch share one browser
+    // context (the pack's cacheable files load once per session). The key
+    // scopes what the cache can leak across to this browser, origin, batch
+    // and digest; one-request browsers and inline packs never share.
+    const sharedContext =
+      sessionId && pack && 'batch' in pack
+        ? `${sessionId}\n${assetOrigin}\n${pack.batch}\n${pack.digest}`
+        : undefined;
     // With a source, the ground truth is read on the paginated tab that
     // printed the PDF, in print media (T03 Must 3, T07-20).
     const result = await renderPdf(browser, parsed.data, {
-      assetOrigin: env.ASSET_ORIGIN ?? new URL(request.url).origin,
+      assetOrigin,
       store: env.PACK_FILES,
+      ...(sharedContext ? { sharedContext } : {}),
       ...(source ? { inspect: page => readGroundTruth(page, source) } : {}),
     });
     close = release;
