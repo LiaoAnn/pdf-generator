@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
+import { URL } from 'node:url';
 import { getDocumentProxy } from 'unpdf';
 import { expect, test } from 'vitest';
 import { stablePdf } from './stable-pdf.ts';

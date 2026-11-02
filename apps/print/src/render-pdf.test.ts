@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { afterEach, expect, test, vi } from 'vitest';
 import { fakeBrowserContext, fakeFetch } from './fake-fetch.ts';
 import { RenderError, renderPdf } from './lib.ts';

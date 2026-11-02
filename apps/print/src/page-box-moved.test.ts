@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { URL } from 'node:url';
 import { apiErrorSchema } from '@pdf-generator/contract';
 import { getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test, vi } from 'vitest';

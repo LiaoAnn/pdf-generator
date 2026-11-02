@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 
 // Read the committed binaries independently of the production font patcher.

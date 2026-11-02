@@ -620,9 +620,11 @@ async function print<T>(
           'What print media loads did not finish loading',
         ),
     );
+  // Runs in the print browser, where innerWidth/innerHeight exist; the
+  // Worker types have no DOM lib, so assert them (type-only).
   const paginated = await page.evaluate(() => ({
-    width: globalThis.innerWidth,
-    height: globalThis.innerHeight,
+    width: (globalThis as unknown as { innerWidth: number }).innerWidth,
+    height: (globalThis as unknown as { innerHeight: number }).innerHeight,
   }));
   const pageViewport = ready.pageSize
     ? floor(ready.pageSize.width, ready.pageSize.height)

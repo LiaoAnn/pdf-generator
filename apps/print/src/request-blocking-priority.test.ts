@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { URL } from 'node:url';
 import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
 import { apiErrorSchema } from '../../../packages/contract/src/index.ts';
 import { type PrintWorker, startPrintWorker } from './test-worker.ts';

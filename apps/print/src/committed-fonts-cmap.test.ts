@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { readCmap } from './fonts/sfnt.ts';
 
