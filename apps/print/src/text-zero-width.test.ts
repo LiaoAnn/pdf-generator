@@ -5,8 +5,10 @@
 // such text escaped the check: with visibility:hidden it printed nothing and
 // the PDF still came out. Its glyphs can't be located from the DOM (each
 // character's rect is offset from where the glyph is drawn), so the print is
-// refused with text_zero_width. Text that prints nothing at all (only
-// zero-width characters, a zero font size) stays skipped.
+// refused with text_zero_width. T07-31: text laid out with zero height (a
+// zero font size, scaleY(0), scale(0)) was skipped the same way while gt.json
+// still records it, so it is refused with text_zero_height. Text that prints
+// nothing at all (only zero-width characters) stays skipped.
 import { readdir, readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
@@ -128,6 +130,83 @@ test.each([
   expect(error.details?.map(item => item.message)).toEqual([detail]);
 });
 
+// T07-31: zero-height text is laid out (gt.json records its text) but its
+// rects have no height, so the text check skipped it and the PDF printed.
+test.each([
+  {
+    name: 'text at font-size 0',
+    markup:
+      '<p data-gt="paragraph">可見文字<span style="font-size:0">零號字</span></p>',
+    detail: 'page 1: 零號字',
+  },
+  {
+    name: 'hidden text at font-size 0',
+    markup:
+      '<p data-gt="paragraph">可見文字<span style="font-size:0;visibility:hidden">零號藏字</span></p>',
+    detail: 'page 1: 零號藏字',
+  },
+  {
+    name: 'text flattened by transform:scaleY(0)',
+    markup:
+      '<p data-gt="paragraph"><span style="display:inline-block;transform:scaleY(0)">壓平文字戊</span></p>',
+    detail: 'page 1: 壓平文字戊',
+  },
+  {
+    // Zero width and zero height at once: refused as zero height.
+    name: 'text shrunk to a point by transform:scale(0)',
+    markup:
+      '<p data-gt="paragraph"><span style="display:inline-block;transform:scale(0)">縮成一點己</span></p>',
+    detail: 'page 1: 縮成一點己',
+  },
+  {
+    // Zero-width characters among printing ones don't exempt the node.
+    name: 'text at font-size 0 mixing letters and U+200B',
+    markup:
+      '<p data-gt="paragraph">可見文字<span style="font-size:0">零​號混字</span></p>',
+    detail: 'page 1: 零​號混字',
+  },
+  {
+    // The detail names the page the text is on (break in a stylesheet: see
+    // the word-spacing case above).
+    name: 'Latin text flattened by scaleY(0) on page 2',
+    markup:
+      '<p data-gt="paragraph" class="next-page"><span style="display:inline-block;transform:scaleY(0)">FLATTENED</span></p>',
+    head: '<style>.next-page { break-before: page; }</style>',
+    detail: 'page 2: FLATTENED',
+  },
+])('refuses $name as text_zero_height', async ({ markup, detail, head }) => {
+  const response = await print(document(markup, head));
+  expect(
+    response.status,
+    response.status === 200
+      ? 'unexpected PDF success: zero-height data-gt text was skipped'
+      : await response.clone().text(),
+  ).toBe(422);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(error.code).toBe('text_zero_height');
+  expect(error.details?.map(item => item.message)).toEqual([detail]);
+});
+
+// Every zero-height node is listed, not just the first (Test Quality review
+// of T07-31): the details are the author's list of what to fix.
+test('lists every zero-height data-gt text node', async () => {
+  const response = await print(
+    document(
+      '<p data-gt="paragraph">甲<span style="font-size:0">零號一</span>乙<span style="display:inline-block;transform:scaleY(0)">壓平二</span></p>',
+    ),
+  );
+  expect(
+    response.status,
+    response.status === 422 ? '' : await response.clone().text(),
+  ).toBe(422);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(error.code).toBe('text_zero_height');
+  expect(error.details?.map(item => item.message)).toEqual([
+    'page 1: 零號一',
+    'page 1: 壓平二',
+  ]);
+});
+
 test.each([
   {
     // KaTeX's .vlist-s holds U+200B; the others are default-ignorable too.
@@ -136,9 +215,21 @@ test.each([
       '<p data-gt="paragraph">甲<span>\u200b\u2060\u00ad\ufeff</span>乙</p>',
   },
   {
-    name: 'text at font-size 0',
+    // Zero height doesn't make zero-width characters print something.
+    name: 'zero-width characters at font-size 0',
     markup:
-      '<p data-gt="paragraph">可見文字<span style="font-size:0">零號字</span></p>',
+      '<p data-gt="paragraph">甲<span style="font-size:0">\u200b\u2060</span>乙</p>',
+  },
+  {
+    name: 'zero-width characters flattened by transform:scale(0)',
+    markup:
+      '<p data-gt="paragraph">甲<span style="display:inline-block;transform:scale(0)">\u200b</span>乙</p>',
+  },
+  {
+    // Not laid out at all (no client rects): gt.json doesn't record it either.
+    name: 'text under display:none',
+    markup:
+      '<p data-gt="paragraph">甲<span style="display:none">不顯示的字</span>乙</p>',
   },
 ])('prints $name, which prints nothing, as before', async ({ markup }) => {
   const response = await print(document(markup));

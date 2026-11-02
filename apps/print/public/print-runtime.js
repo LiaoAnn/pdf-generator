@@ -1023,14 +1023,28 @@
   // the glyphs, and each character's rect is then offset from where its glyph
   // is drawn, so the text can't be matched in the PDF. Such a node is not
   // skipped: it is reported in `zeroWidthText` (T07-30) and lib.ts refuses
-  // the print. A node that truly prints nothing — only default-ignorable or
-  // control characters (a zero-width space node, KaTeX's .vlist-s), a zero
-  // font size (its rects have zero height) — stays skipped.
+  // the print. The same goes for zero-height text (T07-31): a zero font
+  // size or a scaleY(0)/scale(0) transform flattens every rect, so the text
+  // check can't locate it either, yet gt.json still records its text, so it
+  // is reported in `zeroHeightText` and lib.ts refuses the print with
+  // text_zero_height. A node that truly prints nothing — only
+  // default-ignorable or control characters (a zero-width space node,
+  // KaTeX's .vlist-s) — or that has no rects at all (display:none, which
+  // gt.json doesn't record) stays skipped.
   function expectedText() {
     const ptPerPx = 0.75;
     const hidden = hiddenCopies();
     /** @type {string[]} */
     const zeroWidth = [];
+    /** @type {string[]} */
+    const zeroHeight = [];
+    /**
+     * Whether the text holds printing characters (not only default-ignorable
+     * or control ones).
+     * @param {string} text
+     */
+    const holdsPrinting = text =>
+      text.replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '') !== '';
     const pages = pagedPages().map((page, index) => {
       const origin = page.getBoundingClientRect();
       /** @type {Map<Element, { text: string, boxes: { x0: number, y0: number, x1: number, y1: number }[] }[]>} */
@@ -1059,13 +1073,26 @@
           // sub-pixel residue (up to ~0.02px seen for letter-spacing:-1em),
           // so "zero width" means narrower than half a pixel. Text that
           // prints nothing — default-ignorable or control characters only
-          // (KaTeX's .vlist-s zero-width-space node), a font size of 0 (its
-          // rect height is 0) — stays skipped, as before.
-          if (
-            text.replace(/[\p{Default_Ignorable_Code_Point}\p{Cc}]/gu, '') !==
-            ''
-          ) {
+          // (KaTeX's .vlist-s zero-width-space node) — stays skipped, as
+          // before. Zero-height text is the next branch's (T07-31).
+          if (holdsPrinting(text)) {
             zeroWidth.push(`page ${index + 1}: ${text.slice(0, 40)}`);
+          }
+          continue;
+        }
+        if (raw.length > 0 && raw.every(rect => rect.height < 0.5)) {
+          // Zero-height printing text (T07-31): a zero font size or a
+          // scaleY(0)/scale(0) transform flattens every rect (scale(0) also
+          // zeroes the width, but it needs a rect with height > 0 to land in
+          // the zero-width branch above), so the text check can't locate
+          // it, while gt.json still records its text: lib.ts refuses the
+          // print with text_zero_height. "Zero height" means shorter than
+          // half a pixel, the same sub-pixel threshold as the width branch.
+          // A node with no rects at all (display:none) isn't laid out and
+          // gt.json doesn't record it; text that prints nothing stays
+          // skipped too.
+          if (holdsPrinting(text)) {
+            zeroHeight.push(`page ${index + 1}: ${text.slice(0, 40)}`);
           }
           continue;
         }
@@ -1085,7 +1112,11 @@
       }
       return [...blocks.values()].map(texts => ({ texts }));
     });
-    return { expectedText: pages, zeroWidthText: zeroWidth };
+    return {
+      expectedText: pages,
+      zeroWidthText: zeroWidth,
+      zeroHeightText: zeroHeight,
+    };
   }
 
   // Writes each page's number and the page count into the page-number slots
@@ -1363,8 +1394,9 @@
         .slice(0, 50),
       clippedContent: await clippedContent(),
       plainInk: plainInk(),
-      // expectedText, and zeroWidthText: text that prints with a zero-width
-      // rect, which lib.ts refuses with text_zero_width (T07-30).
+      // expectedText; zeroWidthText: text that prints with a zero-width
+      // rect, refused with text_zero_width (T07-30); zeroHeightText: text
+      // with no rect height, refused with text_zero_height (T07-31).
       ...expectedText(),
     };
   }
