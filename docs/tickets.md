@@ -1120,3 +1120,12 @@
 - **驗收測試**：`opacity: 0`、被 `clip-path` 遮住、`background-clip: content-box` 的背景不改變 gt 框；半透明框線照常；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
 - **不做**：改共用契約
 - **來源**：PR #95（T08-3）Correctness Hardening
+
+### T07-32 印 PDF：`acceptance/run.ts` 納入型別檢查
+- **目標**：T07-17 把 `apps/print` 拆成 Worker、Node 測試、瀏覽器三個 tsconfig program 後，`apps/print/acceptance/run.ts` 仍不在任何 program 裡（main 上本來就沒有），型別錯誤不會被 `pnpm typecheck` 抓到。把它納入 Node program（或自己的 program），修掉因此冒出的型別錯誤
+- **Blocked by**：T07-17
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 tsconfig 與 `acceptance/`
+- **驗收測試**：`pnpm typecheck` 涵蓋 `acceptance/run.ts`（故意放一個型別錯誤會失敗）；`pnpm verify` 全過；驗收腳本照常執行
+- **不做**：改驗收腳本的行為
+- **來源**：PR #96（T07-17）
