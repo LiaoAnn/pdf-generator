@@ -220,13 +220,19 @@ const flush = 0.01;
 /**
  * The box as Chrome prints it: it paints each painted box inside the box on
  * whole px of its page — a replaced element (T08-2), or a visible background
- * (T08-3) — so a side the box shares with one moves to where that one is
- * painted, and the box grows to cover them all. Ones that stick out of the
- * box (clipped, say) are left out.
+ * (T08-3), or a rebuilt ::before/::after box that lies inside it (T08-4) —
+ * so a side the box shares with one moves to where that one is painted, and
+ * the box grows to cover them all. Ones that stick out of the box (clipped,
+ * say) are left out; a pseudo-element's box that lies outside grows it
+ * instead, cut to its overflow clips. Decorations painted outside the border
+ * box (T08-4: outlines and outer box-shadows) skip the inside rule and
+ * apply afterwards, as pure growth: their visible ink only ever moves a
+ * side outwards, never inwards.
  */
 function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
   const inside = paintedBoxes
+    .filter(({ kind }) => kind !== 'outline' && kind !== 'shadow')
     .map(({ kind, rect }) => ({ kind, layout: edges(rect, page) }))
     .filter(
       ({ layout }) =>
@@ -236,7 +242,22 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
         layout[3] <= box[3] + flush,
     )
     .map(({ kind, layout }) => ({ layout, paint: paint(kind, layout) }));
-  if (inside.length === 0) return rect;
+  // The visible ink of every outline ring and box-shadow shape, after its
+  // clip, and of every `pseudo` box that lies outside (ones inside already
+  // counted above).
+  const growth = paintedBoxes
+    .filter(
+      ({ kind }) =>
+        kind === 'outline' || kind === 'shadow' || kind === 'pseudo',
+    )
+    .flatMap(entry =>
+      entry.kind === 'outline'
+        ? outlineStrips(entry, page)
+        : entry.kind === 'shadow'
+          ? shadowStrips(entry, page)
+          : pseudoStrips(entry, box, page),
+    );
+  if (inside.length === 0 && growth.length === 0) return rect;
   const side = (i: 0 | 1 | 2 | 3): number => {
     const outer = i < 2 ? Math.min : Math.max;
     // A shared side is wherever they paint; any other side only grows.
@@ -248,14 +269,143 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
       shared ? (i < 2 ? Infinity : -Infinity) : box[i],
     );
   };
-  const [x0, y0, x1, y1] = [side(0), side(1), side(2), side(3)];
+  const sides: Bbox = [side(0), side(1), side(2), side(3)];
+  // Growth only: a strip never moves a side inwards.
+  for (const strip of growth) {
+    sides[0] = Math.min(sides[0], strip[0]);
+    sides[1] = Math.min(sides[1], strip[1]);
+    sides[2] = Math.max(sides[2], strip[2]);
+    sides[3] = Math.max(sides[3], strip[3]);
+  }
+  const [x0, y0, x1, y1] = sides;
   return { x: x0 + page.x, y: y0 + page.y, width: x1 - x0, height: y1 - y0 };
 }
 
 /**
- * Where Chrome paints something laid out at `layout` (page px): an <img> or
- * a background (`box`) with each edge rounded; an <svg> from its rounded
- * origin at its own size, clipped to its rounded box.
+ * The strips of a ring that actually paint, in page px: an outer rect minus
+ * an inner hole (what an outline or a box-shadow paints around its rect),
+ * cut to the overflow clips around the element. Four strips cover the ring;
+ * ones the clip or the ring's own negative width leave empty paint nothing.
+ */
+function ringStrips(outer: Bbox, inner: Bbox, clip: Bbox): Bbox[] {
+  return (
+    [
+      // Above, below, left of and right of the hole, each within the outer
+      // rect (a moved shadow need not surround its hole).
+      [outer[0], outer[1], outer[2], Math.min(inner[1], outer[3])],
+      [outer[0], Math.max(inner[3], outer[1]), outer[2], outer[3]],
+      [
+        outer[0],
+        Math.max(inner[1], outer[1]),
+        Math.min(inner[0], outer[2]),
+        Math.min(inner[3], outer[3]),
+      ],
+      [
+        Math.max(inner[2], outer[0]),
+        Math.max(inner[1], outer[1]),
+        outer[2],
+        Math.min(inner[3], outer[3]),
+      ],
+    ] as Bbox[]
+  )
+    .map(
+      strip =>
+        [
+          Math.max(strip[0], clip[0]),
+          Math.max(strip[1], clip[1]),
+          Math.min(strip[2], clip[2]),
+          Math.min(strip[3], clip[3]),
+        ] as Bbox,
+    )
+    .filter(strip => strip[2] > strip[0] && strip[3] > strip[1]);
+}
+
+/**
+ * The strips of one outline ring that actually paint, in page px: the ring
+ * lies between the rect edges (each rounded page-relative on its own, as a
+ * `box`) grown by the computed outline-offset (inner edge) and grown by
+ * offset plus outline-width (outer edge), and it shows only inside the
+ * overflow clips around the element (clip edges rounded page-relative too).
+ */
+function outlineStrips(outline: PaintedBox, page: Rect): Bbox[] {
+  const [x0, y0, x1, y1] = edges(outline.rect, page).map(Math.round) as Bbox;
+  // Without a clip (an element on no page) only the page cuts it.
+  const clip = edges(outline.clip ?? page, page).map(Math.round) as Bbox;
+  const offset = outline.offset ?? 0;
+  const width = outline.width ?? 0;
+  const inner: Bbox = [x0 - offset, y0 - offset, x1 + offset, y1 + offset];
+  const outer: Bbox = [
+    inner[0] - width,
+    inner[1] - width,
+    inner[2] + width,
+    inner[3] + width,
+  ];
+  return ringStrips(outer, inner, clip);
+}
+
+/**
+ * The strip one rebuilt ::before/::after box (T08-4) paints where it lies
+ * outside the block's box, in page px: the rect edges rounded page-relative
+ * on their own (as a `box`), cut to the overflow clips around the
+ * pseudo-element (clip edges rounded page-relative too); one lying inside
+ * the box instead counted with the `box` entries, and an empty one paints
+ * nothing.
+ */
+function pseudoStrips(pseudo: PaintedBox, box: Bbox, page: Rect): Bbox[] {
+  const layout = edges(pseudo.rect, page);
+  // One lying inside the box counted with the `box` entries above.
+  if (
+    layout[0] >= box[0] - flush &&
+    layout[1] >= box[1] - flush &&
+    layout[2] <= box[2] + flush &&
+    layout[3] <= box[3] + flush
+  ) {
+    return [];
+  }
+  const clip = edges(pseudo.clip ?? page, page).map(Math.round) as Bbox;
+  const [x0, y0, x1, y1] = layout.map(Math.round) as Bbox;
+  const cut: Bbox = [
+    Math.max(x0, clip[0]),
+    Math.max(y0, clip[1]),
+    Math.min(x1, clip[2]),
+    Math.min(y1, clip[3]),
+  ];
+  return cut[2] > cut[0] && cut[3] > cut[1] ? [cut] : [];
+}
+
+/**
+ * The strips of one outer box-shadow that actually paint, in page px: the
+ * shadow's shape is the rect edges (each rounded page-relative on its own,
+ * as a `box`) moved by the shadow's offset and grown on every side by its
+ * spread (negative spread shrinks) plus 1.5 × its blur radius (the printed
+ * reach of the Gaussian CSS defines: 3σ with σ = blur/2) — offset, spread
+ * and blur are not rounded. The shadow paints only outside the rect, so the
+ * hole is the rect itself, and on a side the rect lost to a
+ * box-decoration-break: slice cut the shape's edge is the rect's own, so
+ * nothing paints past it. The overflow clips around the element cut what
+ * shows (clip edges rounded page-relative).
+ */
+function shadowStrips(shadow: PaintedBox, page: Rect): Bbox[] {
+  const [x0, y0, x1, y1] = edges(shadow.rect, page).map(Math.round) as Bbox;
+  // Without a clip (an element on no page) only the page cuts it.
+  const clip = edges(shadow.clip ?? page, page).map(Math.round) as Bbox;
+  const grow = (shadow.spread ?? 0) + 1.5 * (shadow.blur ?? 0);
+  const [dx = 0, dy = 0] = [shadow.offsetX, shadow.offsetY];
+  const sliced = shadow.sliced ?? [];
+  const outer: Bbox = [
+    sliced.includes('left') ? x0 : x0 + dx - grow,
+    y0 + dy - grow,
+    sliced.includes('right') ? x1 : x1 + dx + grow,
+    y1 + dy + grow,
+  ];
+  return ringStrips(outer, [x0, y0, x1, y1], clip);
+}
+
+/**
+ * Where Chrome paints something laid out at `layout` (page px): an <img>, a
+ * background (`box`) or a ::before/::after box (`pseudo`) with each edge
+ * rounded; an <svg> from its rounded origin at its own size, clipped to its
+ * rounded box.
  */
 function paint(kind: PaintedBox['kind'], layout: Bbox): Bbox {
   const [x0, y0, x1, y1] = layout.map(Math.round) as Bbox;
