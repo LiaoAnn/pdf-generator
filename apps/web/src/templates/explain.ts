@@ -107,6 +107,8 @@ const packIssues: Record<string, string> = {
     'CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的邊界、內距、框線、定位或變形。這會讓 PDF 印出的位置和標準答案對不上。請用 @page 設定頁邊界，html／body 的這些屬性維持 0 或 none。',
   'css-import-cycle':
     'CSS 檔案用 @import 繞成一圈（例如 a.css 引用 b.css，b.css 又引用 a.css，或檔案引用自己）。Paged.js 會一直重複載入，印到逾時也印不出來。每個位置是圈上的一個 @import，原始訊息依序列出整圈的檔案；請拿掉其中一個 @import 打斷循環。',
+  'css-import-expansion':
+    '樣板包的 @import 展開後，載入的樣式表超過 64 份，或 CSS 加起來超過 1 MB：瀏覽器和 Paged.js 每遇到一個 @import 就會重複載入那份樣式表，同一個檔案被引用多次就載入多次，列印會卡住或變得極慢。請減少重複的 @import，讓每個檔案只被引用一次，或把樣式表合併成少數幾份。',
   'font-unused':
     '宣告了 @font-face 卻沒有任何地方用到這個字型。列印時仍會下載它，請刪掉宣告或在 font-family 用它。',
 };
