@@ -21,14 +21,46 @@ jobs:
     # ::1 first and Wrangler discovery sees two candidate sockets.
     container:
       image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
-    timeout-minutes: 25
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm knip
+      # The .devcontainer script tests need the Dev Container image (see the
+      # comment on `container` above), which is why this job keeps it.
+      - run: pnpm test:cron
+
+  test:
+    name: test (${{ matrix.shard }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/devcontainers/typescript-node:24-trixie
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v7
+      - run: pnpm install --frozen-lockfile
       # Headless Chromium for the ground-truth tests, at the revision of the
       # pinned playwright-core.
       - run: pnpm --filter @pdf-generator/ground-truth exec playwright-core install --with-deps --only-shell chromium
-      - run: pnpm test
+      # Vitest splits the test files across shards by a hash of their path;
+      # each shard still runs apps/print's files one at a time, so only the
+      # wall time changes, and `pnpm test` locally still runs everything. The
+      # shard count is strategy.job-total, not a literal, so adding a shard to
+      # the matrix can't leave files unrun.
+      - run: pnpm exec vitest run --shard=${{ matrix.shard }}/${{ strategy.job-total }}
+
+  # The one check to watch / require; it stays the same when the shard count
+  # changes.
+  ci:
+    needs: [check, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: test "${{ needs.check.result }}" = success && test "${{ needs.test.result }}" = success
