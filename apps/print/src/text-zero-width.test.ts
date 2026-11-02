@@ -187,6 +187,26 @@ test.each([
   expect(error.details?.map(item => item.message)).toEqual([detail]);
 });
 
+// Every zero-height node is listed, not just the first (Test Quality review
+// of T07-31): the details are the author's list of what to fix.
+test('lists every zero-height data-gt text node', async () => {
+  const response = await print(
+    document(
+      '<p data-gt="paragraph">甲<span style="font-size:0">零號一</span>乙<span style="display:inline-block;transform:scaleY(0)">壓平二</span></p>',
+    ),
+  );
+  expect(
+    response.status,
+    response.status === 422 ? '' : await response.clone().text(),
+  ).toBe(422);
+  const { error } = apiErrorSchema.parse(await response.json());
+  expect(error.code).toBe('text_zero_height');
+  expect(error.details?.map(item => item.message)).toEqual([
+    'page 1: 零號一',
+    'page 1: 壓平二',
+  ]);
+});
+
 test.each([
   {
     // KaTeX's .vlist-s holds U+200B; the others are default-ignorable too.
