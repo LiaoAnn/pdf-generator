@@ -167,7 +167,7 @@ describe('the collector reports outermost svgs only', () => {
       // of the same barcode, and pull edges flush with it onto a wrong place.
       expect(measured.elements).toHaveLength(1);
       expect(
-        measured.elements[0]?.replaced?.map(({ kind, rect }) => [
+        measured.elements[0]?.painted?.map(({ kind, rect }) => [
           kind,
           rect.width,
           rect.height,
@@ -209,8 +209,8 @@ describe('buildGroundTruth: replaced <svg> elements of a hand-made measurement',
     const rect = { x: 74.25, y: 100.75, width: 40.375, height: 30.375 };
     expect(
       build([
-        figure({ id: 'as-img', rect, replaced: [{ kind: 'img', rect }] }),
-        figure({ id: 'as-svg', rect, replaced: [{ kind: 'svg', rect }] }),
+        figure({ id: 'as-img', rect, painted: [{ kind: 'img', rect }] }),
+        figure({ id: 'as-svg', rect, painted: [{ kind: 'svg', rect }] }),
       ]),
     ).toEqual({
       // img: 74..115 x 101..131 px. svg: x ends at 74 + 40.375 = 114.375.
@@ -228,8 +228,8 @@ describe('buildGroundTruth: replaced <svg> elements of a hand-made measurement',
     const vector = { kind: 'svg' as const, rect: { x: 40, width: 10, ...y } };
     expect(
       build([
-        figure({ id: 'svg-first', replaced: [vector, image] }),
-        figure({ id: 'img-first', replaced: [image, vector] }),
+        figure({ id: 'svg-first', painted: [vector, image] }),
+        figure({ id: 'img-first', painted: [image, vector] }),
       ]),
     ).toEqual({
       'svg-first': [7.5, 75, 75, 98.25],
@@ -249,7 +249,7 @@ describe('buildGroundTruth: replaced <svg> elements of a hand-made measurement',
       build([
         figure({
           rect: { x: 73.625, width: 41, ...y },
-          replaced: [
+          painted: [
             { kind: 'svg', rect: { x: 74.25, width: 40.375, ...y } },
             { kind: 'svg', rect: { x: 73.625, width: 40.9375, ...y } },
           ],
@@ -268,7 +268,7 @@ describe('buildGroundTruth: replaced <svg> elements of a hand-made measurement',
       build([
         figure({
           rect: { ...rect, width: 40.125 },
-          replaced: [{ kind: 'svg', rect }],
+          painted: [{ kind: 'svg', rect }],
         }),
       ]),
     ).toEqual({ figure: [56.25, 75, 86.25, 97.97] });

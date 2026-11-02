@@ -7,9 +7,9 @@ import {
 import type {
   MeasuredElement,
   Measurement,
+  PaintedBox,
   Rect,
   Region,
-  ReplacedBox,
 } from './measurement.ts';
 
 type Bbox = [number, number, number, number];
@@ -181,7 +181,7 @@ export function buildGroundTruth(
       id,
       type: element.type,
       page: element.page + 1,
-      bbox: bbox(painted(element.rect, element.replaced ?? [], page), page),
+      bbox: bbox(painted(element.rect, element.painted ?? [], page), page),
       order: blocks.length,
       text: element.text.trim(),
       ...(origin === undefined ? {} : { continues: origin.id }),
@@ -214,18 +214,19 @@ export function buildGroundTruth(
   return result.data;
 }
 
-/** How far a replaced element may sit outside a side and still share it, in px. */
+/** How far a painted box may sit outside a side and still share it, in px. */
 const flush = 0.01;
 
 /**
- * The box as Chrome prints it (T08-2): it paints each replaced element inside
- * the box on whole px of its page, so a side the box shares with one moves to
- * where that one is painted, and the box grows to cover them all. Ones that
- * stick out of the box (clipped, say) are left out.
+ * The box as Chrome prints it: it paints each painted box inside the box on
+ * whole px of its page — a replaced element (T08-2), or a visible background
+ * (T08-3) — so a side the box shares with one moves to where that one is
+ * painted, and the box grows to cover them all. Ones that stick out of the
+ * box (clipped, say) are left out.
  */
-function painted(rect: Rect, replaced: ReplacedBox[], page: Rect): Rect {
+function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
-  const inside = replaced
+  const inside = paintedBoxes
     .map(({ kind, rect }) => ({ kind, layout: edges(rect, page) }))
     .filter(
       ({ layout }) =>
@@ -252,20 +253,20 @@ function painted(rect: Rect, replaced: ReplacedBox[], page: Rect): Rect {
 }
 
 /**
- * Where Chrome paints a replaced element laid out at `layout` (page px): an
- * <img> with each edge rounded; an <svg> from its rounded origin at its own
- * size, clipped to its rounded box.
+ * Where Chrome paints something laid out at `layout` (page px): an <img> or
+ * a background (`box`) with each edge rounded; an <svg> from its rounded
+ * origin at its own size, clipped to its rounded box.
  */
-function paint(kind: ReplacedBox['kind'], layout: Bbox): Bbox {
+function paint(kind: PaintedBox['kind'], layout: Bbox): Bbox {
   const [x0, y0, x1, y1] = layout.map(Math.round) as Bbox;
-  return kind === 'img'
-    ? [x0, y0, x1, y1]
-    : [
+  return kind === 'svg'
+    ? [
         x0,
         y0,
         Math.min(x0 + layout[2] - layout[0], x1),
         Math.min(y0 + layout[3] - layout[1], y1),
-      ];
+      ]
+    : [x0, y0, x1, y1];
 }
 
 /** `[x0, y0, x1, y1]` of a rect relative to the page, in px. */

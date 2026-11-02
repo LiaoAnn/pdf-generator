@@ -32,10 +32,11 @@ export interface MeasuredElement {
   /** Its border box. */
   rect: Rect;
   /**
-   * The replaced elements it is or holds that are laid out, in document
-   * order: Chrome paints these on whole CSS px of the printed page (T08-2).
+   * What it is or holds that Chrome paints on whole CSS px of the printed
+   * page, in document order: replaced elements (T08-2), backgrounds and
+   * borders (T08-3).
    */
-  replaced?: ReplacedBox[];
+  painted?: PaintedBox[];
   /** Its `innerText`. */
   text: string;
   /** True when it lies inside another `data-gt` element. */
@@ -51,11 +52,14 @@ export interface MeasuredElement {
   details?: unknown;
 }
 
-/** A replaced element inside (or being) a measured element. */
-export interface ReplacedBox {
-  /** An `<img>`, or an `<svg>` not inside another `<svg>`. */
-  kind: 'img' | 'svg';
-  /** Its border box. */
+/** Something painted on whole px inside (or being) a measured element. */
+export interface PaintedBox {
+  /**
+   * An `<img>`, an `<svg>` not inside another `<svg>`, or the background and
+   * borders of an element (`box`).
+   */
+  kind: 'img' | 'svg' | 'box';
+  /** For an img or svg its border box; for a box the area its decoration covers. */
   rect: Rect;
 }
 

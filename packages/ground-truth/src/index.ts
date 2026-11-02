@@ -15,8 +15,8 @@ export type {
   MeasuredPage,
   MeasuredRow,
   Measurement,
+  PaintedBox,
   Rect,
   Region,
-  ReplacedBox,
 } from './measurement.ts';
 export { type EvaluatingPage, readGroundTruth } from './read.ts';
