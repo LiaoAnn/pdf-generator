@@ -17,6 +17,11 @@ import {
   type Html,
   type TemplateHtml,
 } from './html.ts';
+import {
+  importExpansion,
+  maxStylesheetBytes,
+  maxStylesheetLoads,
+} from './import-expansion.ts';
 import type { PackIssue } from './issues.ts';
 import { pageBoxProblems } from './page-box.ts';
 import { isRefused } from './policy.ts';
@@ -182,6 +187,13 @@ export function assetIssues(
   /** Stylesheets checked or queued, so each is read once (imports cycle). */
   const sheets = new Set(styles.map(style => style.file));
   const reached: string[] = [];
+  /**
+   * Every reference that loads a stylesheet directly: the manifest's styles
+   * in manifest order, then the template's <link> and <style> @imports in
+   * document order. Chrome loads a stylesheet again for each of these, so
+   * they are counted per reference, without the `sheets` dedupe.
+   */
+  const roots = styles.map(style => style.file);
   /** `@import`s between stylesheets, where Paged.js follows them. */
   const imports: { source: Source; at: number; path: string }[] = [];
 
@@ -262,8 +274,9 @@ export function assetIssues(
     } else {
       // Paged.js loads the template's own stylesheets once, but follows an
       // @import from inside a stylesheet without remembering what it loaded.
-      if (kind === 'stylesheet' && source !== template) {
-        imports.push({ source, at, path: problem.path });
+      if (kind === 'stylesheet') {
+        if (source === template) roots.push(problem.path);
+        else imports.push({ source, at, path: problem.path });
       }
       if (
         (kind !== 'stylesheet' && !/\.css$/i.test(problem.path)) ||
@@ -470,6 +483,28 @@ export function assetIssues(
       more.at,
       `${cycles.length - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
     );
+  }
+  // Each sheet loaded once, with no @import between sheets: nothing expands,
+  // and the upload caps (64 KB a text file, 256 KB a pack) keep that far
+  // below the limits, so only repeated loads can get past them.
+  const repeated = imports.length > 0 || new Set(roots).size < roots.length;
+  const expansion = repeated
+    ? importExpansion(roots, imports, path => read(path)?.byteLength ?? 0)
+    : undefined;
+  if (expansion !== undefined) {
+    const past = [
+      ...(expansion.loads > maxStylesheetLoads
+        ? [`more than ${maxStylesheetLoads} stylesheet loads`]
+        : []),
+      ...(expansion.bytes > maxStylesheetBytes
+        ? [`more than ${maxStylesheetBytes / 1024 / 1024} MiB of CSS`]
+        : []),
+    ];
+    issues.push({
+      code: 'css-import-expansion',
+      file: expansion.file,
+      message: `the @imports expand to ${past.join(' and ')}: Chrome and Paged.js load an imported stylesheet again for every @import of it; import each sheet once, or merge the sheets`,
+    });
   }
 
   // The weight and style combinations the pack prints: regular upright
