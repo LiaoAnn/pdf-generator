@@ -52,6 +52,7 @@ You are the test author. Run `/tdd` for the cycle and follow its test judgment, 
 - Don't `toEqual` multi-MB buffers (fonts, PDFs): Vitest's diff of a failing comparison ran out of heap (T07-13). Compare a hash, the length or the bytes you care about.
 - A timing test compares against a baseline timed in the same run (for example a frozen reference implementation on the same input, interleaved), never a fixed bound in ms: GitHub runners and the shared VM swing about 2× between runs, and T15-4's 300 ms bound turned `main`'s CI red (T15-5).
 - In a print fixture, a style override in a `data-pagedjs-ignore` sheet loses to the pack's own rule of equal specificity: Paged.js re-inserts the pack's processed `<style>` sheets after the ignored ones. Raise the override's specificity (a class, or `!important`) and check that it took effect, or the test passes for the wrong reason (T07-22).
+- Paged.js applies `break-before`/`break-after` only from stylesheet rules, not from a `style` attribute: put a fixture's page breaks in its `<style>` and check the element really lands on the page you meant (T07-30's page-2 case stayed on page 1).
 - Watch a new or changed fixture's effect on tests that copy it: a test that copied a fixture's font 65,540 times needed ≈12 GB once the font was real (T06-1).
 
 Don't commit red tests (`AGENTS.md`): the slice's commit holds its tests and its implementation together.
