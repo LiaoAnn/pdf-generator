@@ -9,6 +9,7 @@ import {
   multiply,
   type Rect,
 } from './geometry.ts';
+import { countOperations, type OperationCount } from './operations.ts';
 import {
   type ImagePixels,
   maxPaintPoints,
@@ -212,6 +213,25 @@ export interface PdfDocument {
   pages: PdfPage[];
 }
 
+/**
+ * Thrown by `readPdf` (and so `missingText`) for a document over the
+ * document budget (`countOperations`): it can't be measured, so it is
+ * refused before pdf.js reads it.
+ */
+export class UnmeasurablePdfError extends Error {
+  readonly limit: Extract<OperationCount, { ok: false }>['limit'];
+  constructor(refused: Extract<OperationCount, { ok: false }>) {
+    // An unreadable file reads as pdf.js's own refusal did ("Invalid PDF").
+    super(
+      refused.limit === 'structure'
+        ? `Invalid PDF structure: ${refused.reason}`
+        : refused.reason,
+    );
+    this.name = 'UnmeasurablePdfError';
+    this.limit = refused.limit;
+  }
+}
+
 // Chrome embeds each face as a subset, `ABCDEF+<PostScript name>`.
 const subsetTag = /^[A-Z]{6}\+/;
 
@@ -224,6 +244,10 @@ interface TextContentItem {
 
 /** Reads every page's size and text items (with positions and font names). */
 export async function readPdf(pdf: Uint8Array): Promise<PdfDocument> {
+  // The document budget comes first (T14-10): a document over it is refused
+  // before pdf.js opens it.
+  const count = await countOperations(pdf);
+  if (!count.ok) throw new UnmeasurablePdfError(count);
   // A plain Uint8Array copy: pdf.js refuses Buffers (what puppeteer returns)
   // and may detach the array it is given. fontExtraProperties keeps each
   // font's name; images come as decoded pixels, not bitmaps.

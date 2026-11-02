@@ -17,6 +17,18 @@ if (!report.ok) for (const difference of report.differences) console.log(differe
 
 The package also exports `readPdf` (each page's MediaBox and text items with positions and font names, and the direction of rotated text) and `missingText`, the print Worker's check that every `data-gt` text is in the PDF (T03 Must 4), which moved here from `apps/print`. The print runtime reports each `data-gt` element's box (its border box and its visible text) with its texts, and `missingText` looks for them only in the PDF items whose anchor height (as below) lies in that box and whose x range overlaps it, both give or take 1 pt (an untagged print holds adjacent same-font spans as one item, which counts for each block it crosses), longest text first, so a formula's single letters can't use up another block's letters (T07-6).
 
+## The document budget
+
+Before pdf.js opens a PDF, `readPdf` scans its raw bytes (`countOperations`, `src/operations.ts`) and refuses the document when it can't be measured within a Worker's time and 128 MB (T14-10). The scan reads the classic xref table and the Flate-compressed content streams. It counts the operators pdf.js will produce for the whole document: every form, soft mask, tiling pattern and annotation appearance again at each use, and each Type 3 font's glyphs once. The count is never below pdf.js's operator list, which `readMarks` and the paint reader then walk. Three limits apply, each for the whole document:
+
+| Limit | Value | The 6 packs' largest fixture |
+| --- | --- | --- |
+| `maxOperations` | 262,144 operators | 15,300 (financial-statement, 3 pages) |
+| `maxNesting` | forms 64 deep (pdf.js's work grows with the square of the depth) | 0 |
+| `maxContentBytes` | 16 MiB of decoded content | 169 KB |
+
+A document over a limit makes `readPdf` and `missingText` throw `UnmeasurablePdfError` (its `limit` says which), and `checkPdf` return one `unmeasurable` difference and nothing else: it never passes. The scan also refuses what it can't read: object or xref streams, filters other than Flate, a form that draws itself, a file without pages or xref table. For those, `limit` is `structure`, the message starts with "Invalid PDF structure" as pdf.js's own did, and `checkPdf` throws too, so a batch fails that fixture instead of storing a report. The scan takes at most about 30 ms on the packs' fixtures. On T14-9's repros it refuses 300,000 rects in 0.5 s and 68 trees of 480 nested groups in 0.3 s, where pdf.js took 46 s on the latter. The per-structure caps (`maxPaints`, `maxPaintPoints`, `maxStructures`, `maxInkWork`) still apply within the budget.
+
 ## How it compares
 
 - **Which block a text item belongs to.** The item's anchor is its horizontal centre, 0.35 em above its baseline (T03 §1). It belongs to the block on its page whose box contains the anchor. If several boxes do, a block whose text contains the item's text wins, then the smallest box. In a table, items go to cells the same way.
