@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { readCmap } from './fonts/sfnt.ts';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 const faces = [
   'NotoSansTC-Regular.otf',
@@ -14,9 +14,7 @@ const faces = [
 test.each(faces)(
   'committed %s gives every mapped code point its own glyph without deleting printable characters or restoring T03 aliases',
   async name => {
-    const mapping = readCmap(
-      await readFile(new URL(`../public/fonts/${name}`, import.meta.url)),
-    );
+    const mapping = readCmap(await readFile(wholeFont(name)));
     const lxgw = name.startsWith('LXGW');
     const required = lxgw
       ? '⼀一清淸青靑真眞教敎值値溫温刪删宮宫鄉郷尚尙告吿侶侣〈～∙·∼~'

@@ -4,6 +4,7 @@ import { extractText, getDocumentProxy } from 'unpdf';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { patchCmap } from './fonts/sfnt.ts';
 import { withSharedCmap } from './test-fixtures/shared-cmap.ts';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 import { type PrintWorker, startPrintWorker } from './test-worker.ts';
 
 const token = 'shared-glyph-local-test-token';
@@ -26,10 +27,7 @@ test.each([
   '%s preserves shared-glyph code points in one-line and wrapped data-gt PDF text',
   async name => {
     const trueType = name.endsWith('.ttf');
-    const original = withSharedCmap(
-      await readFile(new URL(`../public/fonts/${name}`, import.meta.url)),
-      trueType,
-    );
+    const original = withSharedCmap(await readFile(wholeFont(name)), trueType);
     const { font } = patchCmap(original);
     // Include both surviving members: testing only the higher code point can
     // miss a ToUnicode collision when Chrome subsets the font.

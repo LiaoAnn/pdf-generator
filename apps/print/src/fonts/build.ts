@@ -1,8 +1,10 @@
-// Rebuilds public/fonts from the upstream files T03 tested (sha256-checked),
-// with the Noto CJK and LXGW WenKai cmaps patched (T03 §2.5; every code point
-// gets its own glyph, T07-13) and the Noto CJK `locl` feature emptied
-// (T07-11). Run with
-// `pnpm --filter @pdf-generator/print fonts`; commit the result.
+// Rebuilds the platform fonts from the upstream files T03 tested
+// (sha256-checked), with the Noto CJK and LXGW WenKai cmaps patched
+// (T03 §2.5; every code point gets its own glyph, T07-13) and the Noto CJK
+// `locl` feature emptied (T07-11). A split (`split`) font's whole file is
+// written, unserved, to apps/print/fonts (T07-37) and its unicode-range
+// chunks to public/fonts; the other files go whole to public/fonts.
+// Run with `pnpm --filter @pdf-generator/print fonts`; commit the result.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -93,6 +95,8 @@ const sources: Source[] = [
 
 const cache = join(import.meta.dirname, '../../node_modules/.cache/fonts');
 const out = join(import.meta.dirname, '../../public/fonts');
+// Whole files of split fonts: unserved, the input of their chunks (T07-37).
+const wholeOut = join(import.meta.dirname, '../../fonts');
 const sha256 = (bytes: Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
 
@@ -110,6 +114,7 @@ async function source(file: string, url: string): Promise<Uint8Array> {
 
 await mkdir(cache, { recursive: true });
 await mkdir(out, { recursive: true });
+await mkdir(wholeOut, { recursive: true });
 for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
   const bytes = await source(file, url);
   const actual = sha256(bytes);
@@ -119,7 +124,7 @@ for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
   const patched = cmap ? patchCmap(bytes) : undefined;
   const emptied = locl ? disableLocl(patched?.font ?? bytes) : undefined;
   const font = emptied?.font ?? patched?.font ?? bytes;
-  await writeFile(join(out, file), font);
+  await writeFile(join(split ? wholeOut : out, file), font);
   if (split) {
     for (const chunk of await splitFont(font, file)) {
       await writeFile(join(out, chunk.file), chunk.font);
@@ -135,7 +140,7 @@ for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
     emptied && `${emptied.features} locl features emptied`,
   ].filter(Boolean);
   console.log(
-    `public/fonts/${file} sha256 ${sha256(font)}` +
+    `${split ? 'fonts' : 'public/fonts'}/${file} sha256 ${sha256(font)}` +
       (notes.length > 0 ? ` (${notes.join(', ')})` : ''),
   );
 }

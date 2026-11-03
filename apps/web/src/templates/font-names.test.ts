@@ -168,7 +168,7 @@ test('duplicate platform records decode at most one string per platform instead 
 });
 
 test.each([
-  '../../../print/public/fonts/LXGWWenKaiTC-Regular.ttf',
+  '../../../print/fonts/LXGWWenKaiTC-Regular.ttf',
   '../../../print/src/test-fixtures/pack-font/report.woff2',
 ])('decompression and record limits preserve the real font %s', async path => {
   expect(postScriptName(await readFile(new URL(path, import.meta.url)))).toBe(

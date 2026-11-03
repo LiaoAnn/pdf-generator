@@ -6,25 +6,52 @@
 // Must 5, and the text the PDF must contain. It also makes tables repeat
 // their header and keep rows whole.
 (() => {
-  /** @type {Record<string, { family: string, regular: string, bold?: string }>} */
+  /** One source of a face: a whole file, or a unicode-range chunk of one. */
+  /**
+   * @typedef {object} FontSource
+   * @property {string} url
+   * @property {string} [unicodeRange] set only on a chunk of a split font
+   */
+  // The chunk plan of a split font (src/fonts/split.ts, T07-37): part0
+  // takes everything but the ideographs, part1–part3 split them. Split
+  // fonts are over Chrome's batch-cache limit, so only these chunks are
+  // served and each variant is declared from them, one FontFace per chunk.
+  /**
+   * The four chunk sources of a split font, by its file name.
+   * @param {string} file
+   * @returns {FontSource[]}
+   */
+  const chunksOf = file =>
+    [
+      'U+0-33FF, U+4DC0-4DFF, U+A000-F8FF, U+FB00-1FFFF, U+40000-10FFFF',
+      'U+3400-4DBF, U+4E00-69FF',
+      'U+6A00-87FF',
+      'U+8800-9FFF, U+F900-FAFF, U+20000-3FFFF',
+    ].map((unicodeRange, part) => ({
+      url: `/fonts/${file.replace(/(\.(?:otf|ttf))$/, `.part${part}$1`)}`,
+      unicodeRange,
+    }));
+  /**
+   * @type {Record<string, { family: string, regular: FontSource[], bold?: FontSource[] }>}
+   */
   const platformFonts = {
     'noto sans tc': {
       family: 'Noto Sans TC',
-      regular: '/fonts/NotoSansTC-Regular.otf',
-      bold: '/fonts/NotoSansTC-Bold.otf',
+      regular: [{ url: '/fonts/NotoSansTC-Regular.otf' }],
+      bold: [{ url: '/fonts/NotoSansTC-Bold.otf' }],
     },
     'noto serif tc': {
       family: 'Noto Serif TC',
-      regular: '/fonts/NotoSerifTC-Regular.otf',
-      bold: '/fonts/NotoSerifTC-Bold.otf',
+      regular: chunksOf('NotoSerifTC-Regular.otf'),
+      bold: chunksOf('NotoSerifTC-Bold.otf'),
     },
     'lxgw wenkai tc': {
       family: 'LXGW WenKai TC',
-      regular: '/fonts/LXGWWenKaiTC-Regular.ttf',
+      regular: chunksOf('LXGWWenKaiTC-Regular.ttf'),
     },
     'noto sans symbols 2': {
       family: 'Noto Sans Symbols 2',
-      regular: '/fonts/NotoSansSymbols2-Regular.ttf',
+      regular: [{ url: '/fonts/NotoSansSymbols2-Regular.ttf' }],
     },
   };
 
@@ -291,18 +318,29 @@
     await stylesheetsSettled();
     findUsedInPrintStyles();
     await findUsedInAtRules();
-    const faces = [...used].sort().map(entry => {
+    // One FontFace per source: a split variant is its four chunks, each
+    // with its unicode-range so the document's text still resolves to the
+    // same glyphs the whole font has. Faces are sorted by `used` entry,
+    // then part order, so the order added is deterministic. A chunk that
+    // fails to load stays in document.fonts with status "error".
+    const faces = [...used].sort().flatMap(entry => {
       const [key = '', variant] = entry.split('|');
       const font = platformFonts[key];
       if (!font) throw new Error(`unknown platform font ${key}`);
       const bold = variant === 'bold' && font.bold !== undefined;
-      const face = new FontFace(
-        font.family,
-        `url("${bold ? font.bold : font.regular}")`,
-        { weight: bold ? '700' : '400', style: 'normal' },
-      );
-      document.fonts.add(face);
-      return face;
+      const sources = bold ? font.bold : font.regular;
+      if (!sources) throw new Error(`unknown platform font ${key}`);
+      return sources.map(source => {
+        const face = new FontFace(font.family, `url("${source.url}")`, {
+          weight: bold ? '700' : '400',
+          style: 'normal',
+          ...(source.unicodeRange === undefined
+            ? {}
+            : { unicodeRange: source.unicodeRange }),
+        });
+        document.fonts.add(face);
+        return face;
+      });
     });
     await Promise.all(faces.map(face => face.load().catch(() => undefined)));
   }

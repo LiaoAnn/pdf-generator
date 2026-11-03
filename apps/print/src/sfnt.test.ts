@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
 import { expect, test } from 'vitest';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 // Independent binary fixtures: no font downloads, font libraries, or production builder.
 type Group = readonly [start: number, end: number, glyph: number];
@@ -234,9 +234,7 @@ test.each([
   'committed %s keeps 一 while removing the radical that corrupts PDF extraction',
   async name => {
     const { readCmap } = await import('./fonts/sfnt.ts');
-    const font = await readFile(
-      new URL(`../public/fonts/${name}`, import.meta.url),
-    );
+    const font = await readFile(wholeFont(name));
     const mapping = readCmap(font);
     expect(mapping.has(0x2f00)).toBe(false);
     expect(mapping.get(0x4e00)).toBeGreaterThan(0);

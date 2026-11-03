@@ -7,6 +7,7 @@ import { readFile } from 'node:fs/promises';
 import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { splitFont } from './fonts/split.ts';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 const fonts = (name: string) =>
   readFile(new URL(`../public/fonts/${name}`, import.meta.url));
@@ -20,7 +21,10 @@ test.each([
   'NotoSerifTC-Bold.otf',
   'LXGWWenKaiTC-Regular.ttf',
 ])('committed chunks of %s are its split, each under 6 MiB', async name => {
-  const chunks = await splitFont(new Uint8Array(await fonts(name)), name);
+  const chunks = await splitFont(
+    new Uint8Array(await readFile(wholeFont(name))),
+    name,
+  );
   expect(chunks).toHaveLength(4);
   for (const chunk of chunks) {
     const committed = await fonts(chunk.file);
