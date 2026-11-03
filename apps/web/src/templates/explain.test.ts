@@ -169,8 +169,10 @@ describe('template author error explanations', () => {
     'asset-missing',
     'asset-data',
     'asset-dynamic',
+    'asset-stylesheet-type',
     'css-escape',
     'css-import-cycle',
+    'css-import-expansion',
     'css-page-box',
     'font-unused',
   ];
@@ -644,6 +646,23 @@ describe('template author error explanations', () => {
     });
     expect(new Set(titles).size).toBe(codes.length);
     expect(invalid([]).issues).toEqual([]);
+  });
+
+  test('import-expansion guidance names both limits, says repeated imports load again, and tells authors to cut repeated @imports', () => {
+    const guidance = invalid([
+      {
+        code: 'css-import-expansion',
+        file: 'styles/a.css',
+        message: 'more than 64 stylesheet loads',
+      },
+    ]).issues[0]?.explanation;
+    expect(guidance).toMatch(cjk);
+    expect(guidance).not.toBe(fallback());
+    expect(guidance).toContain('@import');
+    expect(guidance).toMatch(/\b64\b/);
+    expect(guidance).toMatch(/1 MB|1 MiB/);
+    expect(guidance).toMatch(/重複|每一次|每次/);
+    expect(guidance).toMatch(/減少|拿掉|移除|刪除|合併/);
   });
 });
 

@@ -17,6 +17,11 @@ import {
   type Html,
   type TemplateHtml,
 } from './html.ts';
+import {
+  importExpansion,
+  maxStylesheetBytes,
+  maxStylesheetLoads,
+} from './import-expansion.ts';
 import type { PackIssue } from './issues.ts';
 import { pageBoxProblems } from './page-box.ts';
 import { isRefused } from './policy.ts';
@@ -84,6 +89,14 @@ const urlEnd = (url: string) => {
   while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
   return i;
 };
+
+/**
+ * Extensions the upload reads as binary (keep in sync with `binary` in
+ * apps/web/src/templates/limits.ts): their bytes never reach this check,
+ * yet print serves them and Paged.js reads them as CSS, so a stylesheet
+ * stored in one would go unchecked.
+ */
+const binaryFile = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
 
 /**
  * The candidate URLs of a srcset, with their offsets in it, as the HTML spec
@@ -182,6 +195,19 @@ export function assetIssues(
   /** Stylesheets checked or queued, so each is read once (imports cycle). */
   const sheets = new Set(styles.map(style => style.file));
   const reached: string[] = [];
+  /**
+   * Every reference that loads a stylesheet directly: the manifest's styles
+   * in manifest order, then the template's <link> and <style> @imports in
+   * document order. Chrome loads a stylesheet again for each of these, so
+   * they are counted per reference, without the `sheets` dedupe.
+   */
+  const roots = styles.map(style => style.file);
+  /**
+   * Roots the template references inside an {{#each}}: filling the
+   * template loads them once per item, so the reference counted once here
+   * repeats without a limit the check can count.
+   */
+  const repeating = new Set<string>();
   /** `@import`s between stylesheets, where Paged.js follows them. */
   const imports: { source: Source; at: number; path: string }[] = [];
 
@@ -259,11 +285,29 @@ export function assetIssues(
         at,
         `${url} points to ${problem.path}, which is not in the pack`,
       );
+    } else if (kind === 'stylesheet' && binaryFile.test(problem.path)) {
+      // The upload hands this file to the check as empty bytes, but print
+      // serves it and Paged.js reads it as CSS, so what it imports would
+      // go unchecked. A stylesheet stored in an image or font file is
+      // never legitimate; don't follow it.
+      issue(
+        'asset-stylesheet-type',
+        source,
+        at,
+        `${url} points to ${problem.path}, an image or font file: a stylesheet must be a text file such as .css; the upload reads image and font files as binary, so what it imports would go unchecked`,
+      );
     } else {
       // Paged.js loads the template's own stylesheets once, but follows an
       // @import from inside a stylesheet without remembering what it loaded.
-      if (kind === 'stylesheet' && source !== template) {
-        imports.push({ source, at, path: problem.path });
+      if (kind === 'stylesheet') {
+        if (source === template) {
+          roots.push(problem.path);
+          // 0 is the document's start, outside every block; the reference
+          // repeats when a block between it and there is an {{#each}}.
+          if (template.html.printedCount(0, [at]).max === Infinity) {
+            repeating.add(problem.path);
+          }
+        } else imports.push({ source, at, path: problem.path });
       }
       if (
         (kind !== 'stylesheet' && !/\.css$/i.test(problem.path)) ||
@@ -470,6 +514,38 @@ export function assetIssues(
       more.at,
       `${cycles.length - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
     );
+  }
+  // Each sheet loaded once, with no @import between sheets: nothing expands,
+  // and the upload caps (64 KB a text file, 256 KB a pack) keep that far
+  // below the limits, so only repeated loads can get past them.
+  const repeated =
+    imports.length > 0 ||
+    new Set(roots).size < roots.length ||
+    repeating.size > 0;
+  const expansion = repeated
+    ? importExpansion(
+        roots,
+        imports,
+        path => read(path)?.byteLength ?? 0,
+        repeating,
+      )
+    : undefined;
+  if (expansion !== undefined) {
+    const past = [
+      ...(expansion.loads > maxStylesheetLoads
+        ? [`more than ${maxStylesheetLoads} stylesheet loads`]
+        : []),
+      ...(expansion.bytes > maxStylesheetBytes
+        ? [`more than ${maxStylesheetBytes / 1024 / 1024} MiB of CSS`]
+        : []),
+    ];
+    issues.push({
+      code: 'css-import-expansion',
+      file: expansion.file,
+      message: repeating.has(expansion.file)
+        ? `${expansion.file} is loaded inside {{#each}}, once per item, so the @imports expand without limit: Chrome and Paged.js load a stylesheet again for every reference to it; move it out of the {{#each}}`
+        : `the @imports expand to ${past.join(' and ')}: Chrome and Paged.js load an imported stylesheet again for every @import of it; import each sheet once, or merge the sheets`,
+    });
   }
 
   // The weight and style combinations the pack prints: regular upright

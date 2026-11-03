@@ -101,12 +101,16 @@ const packIssues: Record<string, string> = {
     '樣板引用了 data: 網址的內容。請把檔案放進樣板包，用相對路徑引用。',
   'asset-dynamic':
     '檔案路徑是用 Handlebars 動態組出來的，平台無法確認檔案存在。請改用固定的路徑。',
+  'asset-stylesheet-type':
+    '<link> 或 @import 載入的樣式表是圖片或字型檔（例如 .png、.woff2）。上傳時這些檔案不會被當成文字檢查，平台無法確認它載入了什麼。請把 CSS 放在 .css 檔案裡再引用。',
   'css-escape':
     'CSS 裡有反斜線跳脫字元，平台無法確認它引用的檔案。請改成不用跳脫的寫法。',
   'css-page-box':
     'CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的邊界、內距、框線、定位或變形。這會讓 PDF 印出的位置和標準答案對不上。請用 @page 設定頁邊界，html／body 的這些屬性維持 0 或 none。',
   'css-import-cycle':
     'CSS 檔案用 @import 繞成一圈（例如 a.css 引用 b.css，b.css 又引用 a.css，或檔案引用自己）。Paged.js 會一直重複載入，印到逾時也印不出來。每個位置是圈上的一個 @import，原始訊息依序列出整圈的檔案；請拿掉其中一個 @import 打斷循環。',
+  'css-import-expansion':
+    '樣板包的 @import 展開後，載入的樣式表超過 64 份，或 CSS 加起來超過 1 MB：瀏覽器和 Paged.js 每遇到一個 @import 就會重複載入那份樣式表，同一個檔案被引用多次就載入多次，列印會卡住或變得極慢。請減少重複的 @import，讓每個檔案只被引用一次，或把樣式表合併成少數幾份。',
   'font-unused':
     '宣告了 @font-face 卻沒有任何地方用到這個字型。列印時仍會下載它，請刪掉宣告或在 font-family 用它。',
 };
