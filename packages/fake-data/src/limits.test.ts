@@ -60,6 +60,37 @@ const relativeGenerationTiming = `
     compareWork(() => generate(rules, seed), () => generate(reference, seed), limit, label);
 `;
 
+// Count the record reads one derived fill makes, instead of timing it: the
+// count is the same on any machine under any load. Every object the fill
+// reaches is read through one cached counting proxy (so identity-keyed caches
+// still hit), and the fill stops as soon as it exceeds its budget, so a
+// quadratic walk fails fast with the count instead of timing out.
+const countedDerivedReads = `
+  const { derivedOrder, fillDerived } = await import(${JSON.stringify(new URL('./derived.ts', import.meta.url).href)});
+  const countFillReads = (record, rules, budget, label) => {
+    let reads = 0;
+    const proxies = new WeakMap();
+    const counted = value => {
+      if (typeof value !== 'object' || value === null) return value;
+      let proxy = proxies.get(value);
+      if (proxy === undefined) {
+        proxy = new Proxy(value, {
+          get(target, key, receiver) {
+            if (++reads > budget) {
+              throw new Error(label + ': more than ' + budget + ' record reads');
+            }
+            return counted(Reflect.get(target, key, receiver));
+          },
+        });
+        proxies.set(value, proxy);
+      }
+      return proxy;
+    };
+    assert.deepEqual(fillDerived(counted(record), rules, derivedOrder(rules).order), []);
+    return reads;
+  };
+`;
+
 function guardedDerivedBudget(body: string, timeout = 10_000) {
   guardedGeneration(
     `
@@ -661,27 +692,38 @@ test('distinct sums share the empty-array prefix across 20000 rows and 5000 colu
         'sum_' + key, { type: 'sum', of: ['rows[].empty[].' + key] },
       ])),
     });
-    ${relativeGenerationTiming}
-    // A 500-column timing probe keeps the uncached mutant cheap enough to
-    // reach the ratio assertion. The full 5,000-column record is checked below.
-    const timedColumns = columns.slice(0, 500);
-    const probe = rulesFor({
+    ${countedDerivedReads}
+    const rulesWith = keys => rulesFor({
       rows: array(20_000, object({
-        empty: array(0, object(Object.fromEntries(timedColumns.map(key => [key, constant(1)])))),
+        empty: array(0, object(Object.fromEntries(keys.map(key => [key, constant(1)])))),
       })),
-      ...Object.fromEntries(timedColumns.map(key => ['sum_' + key, rules.fields['sum_' + key]])),
+      ...Object.fromEntries(keys.map(key => ['sum_' + key, rules.fields['sum_' + key]])),
     });
-    // 100× fewer rows: sharing pays for paths + rows, not paths × rows.
-    const reference = structuredClone(probe);
-    reference.fields.rows.minItems = reference.fields.rows.maxItems = 200;
-    const measured = compareGeneration(probe, reference, 'shared-empty-prefix', 12,
+    const assertSums = (record, keys, when) => {
+      assert.equal(record.rows.length, 20_000);
+      for (const row of record.rows) assert.deepEqual(row, { empty: [] });
+      for (const key of keys) assert.equal(record['sum_' + key], 0, when + ': ' + key);
+    };
+    // A 500-column probe keeps an uncached mutant's own (uncounted) generate
+    // cheap enough to reach the count. The full 5,000-column record is
+    // checked below. The reference is the same 20,000 rows with one column:
+    // sharing pays for paths + rows, not paths × rows.
+    const countedColumns = columns.slice(0, 500);
+    const probe = rulesWith(countedColumns);
+    const reference = rulesWith(columns.slice(0, 1));
+    const oneColumnReads = countFillReads(generate(reference, 'shared-empty-prefix'),
+      reference, Infinity, 'one-column reference');
+    // Shared, each further column reads 1 value (its sum's own slot), 499
+    // over the reference. Twice that is the budget; one walk of the rows per
+    // column would cost about one reference (≥ 120,000 reads) each.
+    const measured = generate(probe, 'shared-empty-prefix');
+    const reads = countFillReads(measured, probe, oneColumnReads + 2 * 499,
       'shared empty prefix');
-    assert.equal(measured.rows.length, 20_000);
-    for (const key of timedColumns) assert.equal(measured['sum_' + key], 0, key);
-    const record = generate(rules, 'shared-empty-prefix');
-    assert.equal(record.rows.length, 20_000);
-    for (const row of record.rows) assert.deepEqual(row, { empty: [] });
-    for (const key of columns) assert.equal(record['sum_' + key], 0, key);
+    // The reference walks every row and its empty array: the counter sees the fill.
+    assert.ok(oneColumnReads >= 2 * 20_000, 'one-column reference read ' + oneColumnReads + ' times');
+    assert.ok(reads > oneColumnReads, 'every column reads its sum');
+    assertSums(measured, countedColumns, 'refilled probe');
+    assertSums(generate(rules, 'shared-empty-prefix'), columns, 'generated');
   `,
     30_000,
   );
@@ -702,11 +744,11 @@ test('distinct sums and percentages share populated column prefixes across 2000 
         }],
       ])),
     });
-    ${relativeGenerationTiming}
-    // Generation/arithmetic mask the shallow c prefix. Amplify its depth in
-    // a bounded probe: 800 rows, 29 objects, 40 columns (<100,000 values).
-    // The flat reference reads the same 32,000 values and computes the same
-    // sums/percentages, without a shared object prefix to rediscover.
+    ${countedDerivedReads}
+    // Amplify the shallow c prefix's depth in a bounded probe: 800 rows,
+    // 29 objects, 40 columns (<100,000 values). The flat reference reads the
+    // same 32,000 values and computes the same sums/percentages, without a
+    // shared object prefix to rediscover.
     let deep = object(Object.fromEntries(columns.map(([key, value]) => [key, constant(value)])));
     for (let i = 1; i < 29; i++) deep = object({ child: deep });
     const prefix = 'rows[].c.' + 'child.'.repeat(28);
@@ -724,20 +766,19 @@ test('distinct sums and percentages share populated column prefixes across 2000 
         ['ratio_' + key, { type: 'percentage', part: key + '[]', whole: 'v0[]', decimals: 2 }],
       ])),
     });
-    // Time derived traversal alone, so generating the extra wrappers does not
-    // hide lost prefix sharing. Each fill creates fresh evaluation caches.
-    const { derivedOrder, fillDerived } = await import(${JSON.stringify(new URL('./derived.ts', import.meta.url).href)});
-    const probeRecord = generate(probe, 'shared-populated-prefix');
-    const referenceRecord = generate(reference, 'shared-populated-prefix');
-    const probeOrder = derivedOrder(probe).order;
-    const referenceOrder = derivedOrder(reference).order;
-    const measured = compareWork(() => {
-      assert.deepEqual(fillDerived(probeRecord, probe, probeOrder), []);
-      return probeRecord;
-    }, () => {
-      assert.deepEqual(fillDerived(referenceRecord, reference, referenceOrder), []);
-      return referenceRecord;
-    }, 2.5, 'shared populated prefix');
+    // Count derived traversal alone; each fill creates fresh evaluation caches.
+    const measured = generate(probe, 'shared-populated-prefix');
+    const flatReads = countFillReads(generate(reference, 'shared-populated-prefix'),
+      reference, Infinity, 'flat reference');
+    // Shared, the 800 rows' prefix (c and 28 child objects) is walked once:
+    // about 48,000 reads (2 per object step), less what the reference spends
+    // walking its 40 column arrays. The budget allows two such walks over
+    // the reference; one walk per column would cost about 40 × 48,000.
+    const deepReads = countFillReads(measured, probe, flatReads + 2 * (2 * 800 * 30),
+      'shared populated prefix');
+    // Each sum reads all 800 values of its column: the counter sees the fill.
+    assert.ok(flatReads >= 40 * 800, 'flat reference read ' + flatReads + ' times');
+    assert.ok(deepReads > flatReads, 'the deep rules read their wrappers');
     for (const [key, value] of columns) {
       assert.equal(measured['sum_' + key], 800 * value);
       assert.equal(measured['ratio_' + key], Math.round(value * 10_000 / 3) / 100);
@@ -774,7 +815,7 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
         ])),
       })),
     });
-    ${relativeGenerationTiming}
+    ${countedDerivedReads}
     // Same rows, values, balances and additions, without the 28 single-child
     // wrappers. Sharing adds O(rows × depth), not
     // O(rows × balances × columns × depth).
@@ -785,15 +826,29 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
       reference.fields.rows.items.fields['b' + b].add =
         values.map((_, i) => 'rows[].deep.v' + i);
     }
-    const record = compareGeneration(rules, reference, 'shared-deep-row-prefix', 3,
-      'shared deep row prefix');
-    assert.equal(record.rows.length, 1_000);
     const increment = values.reduce((sum, value) => sum + value, 0);
-    for (const [i, row] of record.rows.entries()) {
-      for (let b = 0; b < 20; b++) {
-        assert.equal(row['b' + b], 17 + (i + 1) * increment, 'row ' + i + ', balance ' + b);
+    const assertBalances = (record, when) => {
+      assert.equal(record.rows.length, 1_000);
+      for (const [i, row] of record.rows.entries()) {
+        for (let b = 0; b < 20; b++) {
+          assert.equal(row['b' + b], 17 + (i + 1) * increment,
+            when + ': row ' + i + ', balance ' + b);
+        }
       }
-    }
+    };
+    const record = generate(rules, 'shared-deep-row-prefix');
+    assertBalances(record, 'generated');
+    const flatReads = countFillReads(generate(reference, 'shared-deep-row-prefix'),
+      reference, Infinity, 'flat reference');
+    // Shared, each row walks its 28 wrappers once: 2 reads per step (test,
+    // then descend), 56,000 reads over the reference. Twice that is the
+    // budget; one walk per balance would add 1,120,000, one per path 44.8M.
+    const deepReads = countFillReads(record, rules, flatReads + 2 * (2 * 1_000 * 28),
+      'shared deep row prefix');
+    // Every balance reads each of its row's 40 values: the counter sees the fill.
+    assert.ok(flatReads >= 1_000 * 20 * 40, 'flat reference read ' + flatReads + ' times');
+    assert.ok(deepReads > flatReads, 'the deep rules read their wrappers');
+    assertBalances(record, 'refilled');
   `,
     30_000,
   );
