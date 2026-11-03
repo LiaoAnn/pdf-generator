@@ -91,13 +91,14 @@ const countedDerivedReads = `
   };
 `;
 
-// Running balances below the same row share one walk of it, however many
-// balances and paths read it. Counted against a reference that pays every
-// balance's own reads (its row, opening and target) but walks nothing, the
-// fill may add one lookup per balance and path (it reads the row), the
-// values the balances read, and a few reads per container on the shared
-// walk (check, then descend: 2 to 4 measured, 3 counted); the budget is twice
-// that. A walk per balance or per path multiplies the container term instead.
+// Running balances share each walk of the record, however many balances and
+// paths take it: the walk of their rows, and the walk below each row.
+// Counted against a reference that pays every balance's own reads (its row,
+// opening and target) but walks nothing, the fill may add one lookup per
+// balance and path (it reads the row), the values the balances read, and a
+// few reads per container on the shared walk (check, then descend: 2 to 4
+// measured, 3 counted); the budget is twice that. A walk per balance or per
+// path multiplies the container term instead.
 const countedSharedWalk = `
   ${countedDerivedReads}
   // The same rules with every running balance adding and subtracting nothing.
@@ -997,7 +998,8 @@ test.each([
 );
 
 test('running balances deep inside nested arrays stay fast for 33000 rows × 10 paths × 31 levels', () => {
-  guardedGeneration(`
+  guardedGeneration(
+    `
     // 13 single-item wrappers + the rows array put each balance at level 31
     // and its z leaves at level 32: 99,028 values, 330,000 derived steps.
     const prefix = Array(14).fill('a[]').join('.');
@@ -1009,10 +1011,11 @@ test('running balances deep inside nested arrays stay fast for 33000 rows × 10 
     }));
     for (let i = 0; i < 13; i++) nest = array(1, object({ a: nest }));
     const rules = rulesFor({ o: constant(0), a: nest });
-    const start = performance.now();
+    ${countedSharedWalk}
     const record = generate(rules, 'deep-balance-lookup');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 3_000, 'deep balance lookups took ' + elapsed.toFixed(1) + ' ms');
+    // No values: every z is empty. Each row's 10 paths share its z.
+    assertSharedWalk(record, rules, withoutPaths(rules),
+      { lookups: 330_000, values: 0, containers: 33_000 }, 'deep balance lookups');
     let rows = record.a;
     for (let i = 0; i < 13; i++) {
       assert.equal(rows.length, 1);
@@ -1020,11 +1023,14 @@ test('running balances deep inside nested arrays stay fast for 33000 rows × 10 
     }
     assert.equal(rows.length, 33_000);
     for (const [i, row] of rows.entries()) assert.equal(row.bal, 0, 'row ' + i);
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test('running balances deep inside nested arrays keep every prefix over non-empty inner arrays', () => {
-  guardedGeneration(`
+  guardedGeneration(
+    `
     const prefix = Array(14).fill('a[]').join('.');
     const paths = Array.from({ length: 10 }, (_, i) => prefix + '.z[].v' + i);
     let nest = array(7_000, object({
@@ -1034,10 +1040,11 @@ test('running balances deep inside nested arrays keep every prefix over non-empt
     }));
     for (let i = 0; i < 13; i++) nest = array(1, object({ a: nest }));
     const rules = rulesFor({ o: constant(0), a: nest });
-    const start = performance.now();
+    ${countedSharedWalk}
     const record = generate(rules, 'deep-balance-prefixes');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 3_000, 'deep balance prefixes took ' + elapsed.toFixed(1) + ' ms');
+    // Each row's 10 paths read its 10 values and share its z and z's item.
+    assertSharedWalk(record, rules, withoutPaths(rules),
+      { lookups: 70_000, values: 70_000, containers: 14_000 }, 'deep balance prefixes');
     let rows = record.a;
     for (let i = 0; i < 13; i++) {
       assert.equal(rows.length, 1);
@@ -1047,8 +1054,10 @@ test('running balances deep inside nested arrays keep every prefix over non-empt
     for (const [i, row] of rows.entries()) {
       assert.equal(row.bal, 10 * (i + 1), 'wrong balance at row ' + i);
     }
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test.each([
   ['empty', 1_000, 0, 0],
@@ -1077,20 +1086,26 @@ test.each([
           ])),
         })),
       });
-      const start = performance.now();
+      ${countedSharedWalk}
       const record = generate(rules, 'shared-deep-array-balance-path');
-      const elapsed = performance.now() - start;
+      // The 500 balances read every v and share one walk below the row: a,
+      // its items, and per item 12 single-item a arrays and the last a with
+      // its items. One walk per balance multiplies the containers by 500.
+      assertSharedWalk(record, rules, withoutPaths(rules), {
+        lookups: 500,
+        values: 500 * ${outerCount} * ${leafCount},
+        containers: 1 + ${outerCount} * (26 + ${leafCount}),
+      }, 'shared deep ${_regression} array path');
       assert.equal(record.opening, 0);
       assert.equal(record.rows.length, 1);
       for (let b = 0; b < 500; b++) {
         assert.equal(record.rows[0]['b' + b], ${expected}, 'balance ' + b);
       }
-      assert.ok(elapsed < 1_500, 'shared deep ${_regression} array path took ' + elapsed.toFixed(1) + ' ms');
     `,
-      10_000,
+      30_000,
     );
   },
-  15_000,
+  35_000,
 );
 
 test('running balances share 49000 empty rows arrays across 4000 balances promptly', () => {
@@ -1117,15 +1132,18 @@ test('running balances share 49000 empty rows arrays across 4000 balances prompt
       assert.equal(outer.b.length, 100);
       for (const inner of outer.b) assert.deepEqual(inner.empty, []);
     }
-    const start = performance.now();
+    ${countedSharedWalk}
     const record = generate(rules, 'shared-empty-rows');
-    const elapsed = performance.now() - start;
+    // Against the constants, which fill nothing: the 4,000 balances share one
+    // walk of their rows, a, its 490 items, their b arrays, the 49,000 items
+    // and their empty arrays. One walk per balance multiplies it by 4,000.
+    assertSharedWalk(record, rules, constantRules,
+      { lookups: 0, values: 0, containers: 98_981 }, 'shared empty rows arrays');
     assert.deepEqual(record, expected);
-    assert.ok(elapsed < 1_500, 'shared empty rows arrays took ' + elapsed.toFixed(1) + ' ms');
   `,
-    10_000,
+    30_000,
   );
-}, 15_000);
+}, 35_000);
 
 test('running balances sharing populated rows arrays keep every prefix independent across groups', () => {
   guardedGeneration(
