@@ -163,7 +163,8 @@ describe('financial-detail row percentages through the public engine', () => {
     expect(filledTargets).toBeGreaterThan(0);
     expect(nullInputs).toBeGreaterThan(0);
     expect(zeroWholes).toBeGreaterThan(0);
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it.each([
     ['ancestor group', 'groups[].k', 'base'],

@@ -155,7 +155,8 @@ describe('date-sorted arrays through the public engine', () => {
         expect(row.depositShare).toBe(share);
       }
     }
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it('moves whole rows in stable date order, keeping tied dates, blank dates and null items in draw order', () => {
     const rules: Rules = {
