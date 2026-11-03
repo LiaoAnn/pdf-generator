@@ -268,6 +268,7 @@ test.each(['array', 'object'] as const)(
       ]),
     });
   },
+  10_000,
 );
 
 test.each([0, 1])(
@@ -295,6 +296,7 @@ test.each([0, 1])(
       ]),
     });
   },
+  10_000,
 );
 
 test('budget counts all 30 nested wrappers at exactly 100000 values and rejects one more', () => {
@@ -333,7 +335,9 @@ test('budget counts all 30 nested wrappers at exactly 100000 values and rejects 
       }),
     ]),
   });
-});
+  // Room for 100,000 values in process plus the child's 5 s timeout: a hang
+  // guard, not a speed check.
+}, 30_000);
 
 test.each(['object', 'scalar'] as const)(
   'array %s rows use separate random streams rather than repeating one value',

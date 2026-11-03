@@ -197,6 +197,8 @@ describe('pack-supplied text phrases through the public engine', () => {
       });
       expect(outputs[0]).not.toBe(outputs[1]);
     },
+    // Room for all four child runs' 10 s timeouts: a hang guard, not a speed check.
+    60_000,
   );
 
   it('preserves pinned JSON bytes for built-in zh, en and mixed text, including array items', () => {
