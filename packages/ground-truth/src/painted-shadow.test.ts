@@ -6,7 +6,8 @@
 // A blur is printed as an image reaching 1.4–1.6 × the blur radius past the
 // shape (probed on local Chromium for blurs of 1 to 30 px); the box counts
 // it to 1.5 × the blur radius, three standard deviations of the Gaussian CSS
-// defines (σ = blur / 2). An inset or transparent shadow adds nothing. An
+// defines (σ = blur / 2). A transparent shadow adds nothing, nor does an
+// inset one outside the box (T08-5 counts it inside, as a border). An
 // inline element broken over lines is shadowed as one box sliced at the line
 // ends (box-decoration-break: slice): no shadow past a fragment's sliced
 // sides. A shadow shows only inside the overflow clips around it.
@@ -131,7 +132,6 @@ describe('readGroundTruth: an outer box-shadow is in its block’s box', () => {
   test.each([
     ['no spread, offset or blur', '0 0 0 0 #000'],
     ['a negative spread', '0 0 0 -2px #000'],
-    ['an inset shadow', 'inset 0 0 0 20px #000'],
     ['a transparent shadow', '0 0 0 30px transparent'],
     ['zero alpha in slash syntax', '0 0 0 30px rgb(0 0 0 / 0)'],
   ])(
@@ -146,13 +146,15 @@ describe('readGroundTruth: an outer box-shadow is in its block’s box', () => {
 
   test('of several shadows, each one that paints counts and the others don’t', async () => {
     await withPage(async page => {
-      // Only the last paints outside: shape 77.25..118.25 x 101..131 px.
+      // The inset one paints the whole box on whole px, 74..115 x 101..131
+      // (T08-5), the transparent one nothing, and only the last paints
+      // outside: shape 77.25..118.25 x 101..131 px.
       expect(
         await shadowed(
           page,
           'inset 0 0 0 20px #000, 0 0 0 30px rgba(0, 0, 0, 0), 3.25px 0 0 0 #000',
         ),
-      ).toEqual([55.69, 75.56, 88.69, 98.44]);
+      ).toEqual([55.5, 75.75, 88.69, 98.25]);
     });
   }, 30_000);
 

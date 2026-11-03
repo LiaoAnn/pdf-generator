@@ -103,6 +103,8 @@ export function collect() {
     'visibility',
     'background-color',
     'background-image',
+    // T08-5: also decides what it paints (the background's clip box).
+    'background-clip',
     'border-top-style',
     'border-top-width',
     'border-top-color',
@@ -123,9 +125,26 @@ export function collect() {
     'box-shadow',
     'overflow-x',
     'overflow-y',
+    // T08-5: all three decide the overflow clip around it.
+    'overflow-clip-margin',
+    'contain',
+    'content-visibility',
     'box-decoration-break',
     '-webkit-box-decoration-break',
     'direction',
+    // T08-5: both also decide what it paints.
+    'opacity',
+    'clip-path',
+    // T08-5: the boxes a clip-path, background-clip or overflow clip is
+    // measured from (content-box, margin-box).
+    'padding-top',
+    'padding-right',
+    'padding-bottom',
+    'padding-left',
+    'margin-top',
+    'margin-right',
+    'margin-bottom',
+    'margin-left',
   ];
   // What the guard compares: the blocks, everything in them and their
   // ancestors (whose overflow clips what the blocks paint).
@@ -316,6 +335,141 @@ export function collect() {
           inner => {
             /** @type {PaintedBox[]} */
             const boxes = [];
+            // T08-5: opacity 0 on the element or any ancestor up to the
+            // document root paints nothing at all (opacity 0.01 still
+            // does), so it contributes no entries.
+            let transparent = false;
+            for (
+              let /** @type {Element | null} */ at = inner;
+              at !== null;
+              at = at.parentElement
+            ) {
+              if (Number.parseFloat(getComputedStyle(at).opacity) === 0) {
+                transparent = true;
+                break;
+              }
+            }
+            if (transparent) return boxes;
+            // T08-5: a clip-path — the element's own or any ancestor's —
+            // cuts what it paints at the clip region's exact, unrounded
+            // edges. Only an inset() basic shape on an element with
+            // exactly one client rect gives a region: a reference box
+            // keyword before or after it (border-box without one;
+            // padding-box and content-box shrink the border box by the
+            // computed borders and borders plus paddings, margin-box grows
+            // it by the margins, and fill-box, stroke-box and view-box
+            // count as border-box), 1–4 px or % lengths in
+            // margin-shorthand order (% of the reference box's height for
+            // top/bottom, width for left/right) and an optional `round
+            // ...` (rounded corners don't move the bounding rect). Its
+            // region is the reference box inset by those lengths, and the
+            // regions intersect; an empty one (inset(50%)) paints nothing.
+            // Anything else (circle(), ellipse(), polygon(), path(),
+            // url(), calc() inside inset(), several client rects) is
+            // unknown: it puts no constraint on what the element paints.
+            /** @type {number[]} */
+            let region = [-Infinity, -Infinity, Infinity, Infinity];
+            let clipped = false;
+            for (
+              let /** @type {Element | null} */ at = inner;
+              at !== null;
+              at = at.parentElement
+            ) {
+              const atStyle = getComputedStyle(at);
+              const value = atStyle.clipPath.trim();
+              if (value === 'none') continue;
+              const match =
+                /^(?:(margin-box|border-box|padding-box|content-box|fill-box|stroke-box|view-box)\s+)?inset\(([^()]*)\)(?:\s+(margin-box|border-box|padding-box|content-box|fill-box|stroke-box|view-box))?$/i.exec(
+                  value,
+                );
+              if (match === null || at.getClientRects().length !== 1) {
+                continue;
+              }
+              const pieces = (match[2] ?? '').trim().split(/\s+/);
+              const roundAt = pieces.findIndex(
+                piece => piece.toLowerCase() === 'round',
+              );
+              const lengths = (
+                roundAt < 0 ? pieces : pieces.slice(0, roundAt)
+              ).filter(piece => piece !== '');
+              if (
+                lengths.length === 0 ||
+                lengths.length > 4 ||
+                lengths.some(piece => !/^-?[\d.]+(?:px|%)$/.test(piece))
+              ) {
+                continue;
+              }
+              // The reference box, inset by the lengths.
+              const borderBox = at.getBoundingClientRect();
+              let refX = borderBox.x;
+              let refY = borderBox.y;
+              let refW = borderBox.width;
+              let refH = borderBox.height;
+              const reference = (match[1] ?? match[3] ?? '').toLowerCase();
+              if (reference === 'padding-box' || reference === 'content-box') {
+                refX += Number.parseFloat(atStyle.borderLeftWidth);
+                refY += Number.parseFloat(atStyle.borderTopWidth);
+                refW -=
+                  Number.parseFloat(atStyle.borderLeftWidth) +
+                  Number.parseFloat(atStyle.borderRightWidth);
+                refH -=
+                  Number.parseFloat(atStyle.borderTopWidth) +
+                  Number.parseFloat(atStyle.borderBottomWidth);
+              }
+              if (reference === 'content-box') {
+                refX += Number.parseFloat(atStyle.paddingLeft);
+                refY += Number.parseFloat(atStyle.paddingTop);
+                refW -=
+                  Number.parseFloat(atStyle.paddingLeft) +
+                  Number.parseFloat(atStyle.paddingRight);
+                refH -=
+                  Number.parseFloat(atStyle.paddingTop) +
+                  Number.parseFloat(atStyle.paddingBottom);
+              }
+              if (reference === 'margin-box') {
+                refX -= Number.parseFloat(atStyle.marginLeft);
+                refY -= Number.parseFloat(atStyle.marginTop);
+                refW +=
+                  Number.parseFloat(atStyle.marginLeft) +
+                  Number.parseFloat(atStyle.marginRight);
+                refH +=
+                  Number.parseFloat(atStyle.marginTop) +
+                  Number.parseFloat(atStyle.marginBottom);
+              }
+              // Missing values repeat as in the margin shorthand before
+              // percentages resolve, so each one takes its own axis.
+              const [t = '0px', r = t, b = t, l = r] = lengths;
+              const [top = 0, right = 0, bottom = 0, left = 0] = [
+                t,
+                r,
+                b,
+                l,
+              ].map((piece, i) =>
+                piece.endsWith('%')
+                  ? (Number.parseFloat(piece) / 100) *
+                    (i % 2 === 0 ? refH : refW)
+                  : Number.parseFloat(piece),
+              );
+              region = [
+                Math.max(region[0] ?? -Infinity, refX + left),
+                Math.max(region[1] ?? -Infinity, refY + top),
+                Math.min(region[2] ?? Infinity, refX + refW - right),
+                Math.min(region[3] ?? Infinity, refY + refH - bottom),
+              ];
+              clipped = true;
+            }
+            /** @type {Rect | undefined} */
+            let clipPath;
+            if (clipped) {
+              const [cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0] = region;
+              if (cx1 <= cx0 || cy1 <= cy0) return boxes;
+              clipPath = {
+                x: cx0,
+                y: cy0,
+                width: cx1 - cx0,
+                height: cy1 - cy0,
+              };
+            }
             if (
               (inner instanceof HTMLImageElement ||
                 (inner instanceof SVGSVGElement &&
@@ -333,17 +487,19 @@ export function collect() {
                   width: box.width,
                   height: box.height,
                 },
+                ...(clipPath === undefined ? {} : { clipPath }),
               });
             }
             // A laid-out HTML element with a visible background or border,
             // not inside an <svg>: visibility resolved on it (inherited as
-            // computed). The background (an image, or a color with alpha > 0)
-            // paints each whole client rect; without one, the painted area is
-            // the union of the visible border sides' strips on each client
-            // rect, a side being visible when its style is not none/hidden,
-            // its width is positive and its color's alpha > 0. alpha is what
-            // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
-            // lab(), color()) or rgba()'s fourth part.
+            // computed). The painted area on each client rect is the union of
+            // the background's clip boxes (T08-5; a text clip paints only the
+            // glyphs, so no box), the visible border sides' strips and the
+            // visible inset box-shadows' strips (T08-5 slice 3), a side being
+            // visible when its style is not none/hidden, its width is positive
+            // and its color's alpha > 0. alpha is what follows the
+            // '/' in the slash color syntax (rgb(0 0 0 / 0), lab(), color())
+            // or rgba()'s fourth part.
             // An outer <svg> (one not inside another <svg>) is a CSS box
             // too: its outline and outer box-shadows paint like an HTML
             // element's (T08-4). It keeps its 'svg' entry above and gets no
@@ -375,10 +531,78 @@ export function collect() {
                     ? Number.parseFloat(parts[3] ?? '')
                     : 1;
               });
-              const background =
-                !outerSvg &&
-                visible &&
-                (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
+              // T08-5: the background paints over each layer's
+              // background-clip box, not each whole client rect. Split the
+              // computed background-image on top-level commas (not inside
+              // parentheses, as in a gradient's color stops) into its layers
+              // and repeat the computed background-clip list cyclically to
+              // that many entries (the CSS rule for layered lists). Each
+              // entry is the client's rect's insets for that layer's clip box
+              // in top, right, bottom, left order — border-box and anything
+              // else inset nothing, padding-box insets by the computed border
+              // widths, content-box additionally by the paddings — or null
+              // for a text clip, which paints only the glyphs. A layer with
+              // image none paints nothing; the background color paints over
+              // the LAST layer's clip (below, per client rect).
+              // Split on top-level commas: a comma inside a gradient's
+              // color stops may itself be followed by another '(', so count
+              // parentheses instead of looking ahead.
+              /** @type {string[]} */
+              const bgLayers = Array.from(style.backgroundImage)
+                .reduce(
+                  (acc, ch) => {
+                    if (ch === ',' && acc.depth === 0) {
+                      acc.parts.push('');
+                    } else {
+                      if (ch === '(') acc.depth += 1;
+                      if (ch === ')') acc.depth -= 1;
+                      acc.parts[acc.parts.length - 1] =
+                        (acc.parts[acc.parts.length - 1] ?? '') + ch;
+                    }
+                    return acc;
+                  },
+                  /** @type {{ parts: string[]; depth: number }} */ ({
+                    parts: [''],
+                    depth: 0,
+                  }),
+                )
+                .parts.map(part => part.trim());
+              /** @type {string[]} */
+              const bgClips = style.backgroundClip
+                .split(',')
+                .map(part => part.trim().toLowerCase());
+              /** @type {(number[] | null)[]} */
+              const bgAreas = outerSvg
+                ? []
+                : bgLayers.map((_layer, i) => {
+                    const clip = bgClips[i % bgClips.length] ?? 'border-box';
+                    // text masks the background to the glyphs; with no
+                    // rendered text Chrome prints it unmasked, as a
+                    // border-box background (T08-5 acceptance).
+                    if (clip === 'text') {
+                      return inner instanceof HTMLElement &&
+                        inner.innerText.trim() === ''
+                        ? [0, 0, 0, 0]
+                        : null;
+                    }
+                    const border = [
+                      style.borderTopWidth,
+                      style.borderRightWidth,
+                      style.borderBottomWidth,
+                      style.borderLeftWidth,
+                    ].map(Number.parseFloat);
+                    if (clip === 'padding-box') return border;
+                    if (clip !== 'content-box') return [0, 0, 0, 0];
+                    return [
+                      style.paddingTop,
+                      style.paddingRight,
+                      style.paddingBottom,
+                      style.paddingLeft,
+                    ].map(
+                      (padding, side) =>
+                        Number.parseFloat(padding) + (border[side] ?? 0),
+                    );
+                  });
               // T08-4: an outline paints a ring around each client rect
               // when it is styled (not none), wider than 0, visible and not
               // fully transparent (Chrome reports a width even for style
@@ -410,10 +634,12 @@ export function collect() {
               // comma-separated list, each shadow `<color> <x>px <y>px
               // <blur>px <spread>px` with ` inset` last; the colour may hold
               // commas (rgba(...)) or spaces (rgb(0 0 0 / 0)), so split on
-              // commas and spaces outside parentheses only. Inset and fully
-              // transparent shadows (same alpha parsing as borders) paint
-              // nothing. Offsets, blur and spread stay unrounded.
-              const shadows =
+              // commas and spaces outside parentheses only. A fully
+              // transparent shadow (same alpha parsing as borders) paints
+              // nothing; an inset one paints not around the client rect but
+              // inside the padding box, like a border, counted below per
+              // client rect. Offsets, blur and spread stay unrounded.
+              const parsedShadows =
                 visible && style.boxShadow !== 'none'
                   ? style.boxShadow
                       .split(/,(?![^(]*\))/)
@@ -445,8 +671,15 @@ export function collect() {
                           spread,
                         };
                       })
-                      .filter(shadow => !shadow.inset && shadow.alpha > 0)
+                      .filter(shadow => shadow.alpha > 0)
                   : [];
+              const shadows = parsedShadows.filter(shadow => !shadow.inset);
+              // T08-5 slice 3: an inset shadow counts like a border (its
+              // strips join each client rect's union below). An outer <svg>
+              // gets no 'box' entry, so it gets no inset strips either.
+              const insetShadows = outerSvg
+                ? []
+                : parsedShadows.filter(shadow => shadow.inset);
               // An inline element broken over lines is shadowed as one box
               // sliced at the line ends (box-decoration-break: slice, the
               // initial value): a sliced side gets no shadow past it. With
@@ -467,9 +700,22 @@ export function collect() {
               // The rect an outline or shadow of this element — or a rebuilt
               // pseudo-element's box — paints inside: the intersection, over
               // its ancestors up to and including its .pagedjs_page, of each
-              // one's padding box on every axis on which its overflow is not
-              // visible. Paged.js's .pagedjs_sheet has overflow hidden, so
-              // this always covers the page's edges.
+              // one's clip rect. An ancestor clips an axis when its overflow
+              // on that axis is not visible, or (T08-5) both axes when paint
+              // containment applies — the computed contain holds paint,
+              // strict or content, or the computed content-visibility is
+              // auto or hidden — even with overflow visible; an ancestor
+              // whose computed display is inline, contents, none, table-row,
+              // a table row group, table-column or table-column-group clips
+              // nothing and only passes the walk through (its contain counts
+              // for nothing either). The clip edges are the padding box,
+              // except when paint containment applies or both overflows
+              // compute to clip: then overflow-clip-margin moves them out —
+              // from the padding box by default, from the box it names
+              // (border-box, content-box), plus an optional px length on
+              // every side; with overflow: hidden, or clip on one axis only,
+              // it is ignored. Paged.js's .pagedjs_sheet has overflow
+              // hidden, so this always covers the page's edges.
               /** @type {Rect | undefined} */
               let clipBox;
               if (outlines !== undefined || shadows.length > 0 || pseudo) {
@@ -484,29 +730,101 @@ export function collect() {
                 ) {
                   const ancestorStyle = getComputedStyle(at);
                   const ancestorRect = at.getBoundingClientRect();
-                  if (ancestorStyle.overflowX !== 'visible') {
-                    x0 = Math.max(
-                      x0,
-                      ancestorRect.x +
-                        Number.parseFloat(ancestorStyle.borderLeftWidth),
+                  // Boxes overflow (and contain: paint) does not apply to
+                  // clip nothing; such an ancestor only passes the walk
+                  // through, still stopping at its .pagedjs_page.
+                  const clipsNothing = [
+                    'inline',
+                    'contents',
+                    'none',
+                    'table-row',
+                    'table-row-group',
+                    'table-header-group',
+                    'table-footer-group',
+                    'table-column',
+                    'table-column-group',
+                  ].includes(ancestorStyle.display);
+                  const contained =
+                    ancestorStyle.contain
+                      .split(/\s+/)
+                      .some(word =>
+                        ['paint', 'strict', 'content'].includes(word),
+                      ) ||
+                    ['auto', 'hidden'].includes(
+                      ancestorStyle.contentVisibility,
                     );
-                    x1 = Math.min(
-                      x1,
-                      ancestorRect.right -
-                        Number.parseFloat(ancestorStyle.borderRightWidth),
+                  const clippedX =
+                    !clipsNothing &&
+                    (contained || ancestorStyle.overflowX !== 'visible');
+                  const clippedY =
+                    !clipsNothing &&
+                    (contained || ancestorStyle.overflowY !== 'visible');
+                  if (clippedX || clippedY) {
+                    // The clip edges: the padding box, moved out by the
+                    // computed overflow-clip-margin — an optional box
+                    // keyword (padding-box by default, border-box,
+                    // content-box) and an optional px length growing that
+                    // box on every side; anything unrecognised counts as
+                    // the padding box grown by 0 — but only when paint
+                    // containment applies or both overflows are clip.
+                    const borderL = Number.parseFloat(
+                      ancestorStyle.borderLeftWidth,
                     );
-                  }
-                  if (ancestorStyle.overflowY !== 'visible') {
-                    y0 = Math.max(
-                      y0,
-                      ancestorRect.top +
-                        Number.parseFloat(ancestorStyle.borderTopWidth),
+                    const borderT = Number.parseFloat(
+                      ancestorStyle.borderTopWidth,
                     );
-                    y1 = Math.min(
-                      y1,
-                      ancestorRect.bottom -
-                        Number.parseFloat(ancestorStyle.borderBottomWidth),
+                    const borderR = Number.parseFloat(
+                      ancestorStyle.borderRightWidth,
                     );
+                    const borderB = Number.parseFloat(
+                      ancestorStyle.borderBottomWidth,
+                    );
+                    let edgeX0 = ancestorRect.x;
+                    let edgeY0 = ancestorRect.y;
+                    let edgeX1 = ancestorRect.right;
+                    let edgeY1 = ancestorRect.bottom;
+                    let marginBox = 'padding-box';
+                    let marginLength = 0;
+                    if (
+                      contained ||
+                      (ancestorStyle.overflowX === 'clip' &&
+                        ancestorStyle.overflowY === 'clip')
+                    ) {
+                      for (const token of ancestorStyle
+                        .getPropertyValue('overflow-clip-margin')
+                        .trim()
+                        .split(/\s+/)) {
+                        if (
+                          ['padding-box', 'border-box', 'content-box'].includes(
+                            token,
+                          )
+                        ) {
+                          marginBox = token;
+                        } else if (/^-?[\d.]+px$/.test(token)) {
+                          marginLength = Number.parseFloat(token);
+                        }
+                      }
+                    }
+                    if (marginBox !== 'border-box') {
+                      edgeX0 += borderL;
+                      edgeX1 -= borderR;
+                      edgeY0 += borderT;
+                      edgeY1 -= borderB;
+                    }
+                    if (marginBox === 'content-box') {
+                      edgeX0 += Number.parseFloat(ancestorStyle.paddingLeft);
+                      edgeX1 -= Number.parseFloat(ancestorStyle.paddingRight);
+                      edgeY0 += Number.parseFloat(ancestorStyle.paddingTop);
+                      edgeY1 -= Number.parseFloat(ancestorStyle.paddingBottom);
+                    }
+                    if (clippedX) {
+                      x0 = Math.max(x0, edgeX0 - marginLength);
+                      x1 = Math.min(x1, edgeX1 + marginLength);
+                    }
+                    if (clippedY) {
+                      y0 = Math.max(y0, edgeY0 - marginLength);
+                      y1 = Math.min(y1, edgeY1 + marginLength);
+                    }
                   }
                   if (at.classList.contains('pagedjs_page')) break;
                 }
@@ -556,6 +874,7 @@ export function collect() {
                     width: outlines.width,
                     offset: outlines.offset,
                     ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
                 for (const shadow of shadows) {
@@ -589,23 +908,31 @@ export function collect() {
                     spread: shadow.spread,
                     ...(sliced.length > 0 ? { sliced } : {}),
                     ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
-                if (background) {
-                  boxes.push({
-                    kind: pseudo ? 'pseudo' : 'box',
-                    rect: {
-                      x: rect.x,
-                      y: rect.y,
-                      width: rect.width,
-                      height: rect.height,
-                    },
-                    ...(pseudo && clipBox !== undefined
-                      ? { clip: clipBox }
-                      : {}),
-                  });
-                  continue;
-                }
+                // Where this client rect's background paints, [x0, y0, x1,
+                // y1] each: every live layer's clip box (a layer with image
+                // none paints nothing; the background color paints over the
+                // LAST layer's clip). An empty inset rect (inset past itself)
+                // paints nothing.
+                /** @type {number[][]} */
+                const bgRects = bgAreas.flatMap((inset, i) => {
+                  if (
+                    inset === null ||
+                    !visible ||
+                    ((bgLayers[i] ?? 'none') === 'none' &&
+                      ((alpha[0] ?? 0) <= 0 || i !== bgAreas.length - 1))
+                  ) {
+                    return [];
+                  }
+                  const [top = 0, right = 0, bottom = 0, left = 0] = inset;
+                  const bx0 = rect.x + left;
+                  const by0 = rect.y + top;
+                  const bx1 = rect.x + rect.width - right;
+                  const by1 = rect.y + rect.height - bottom;
+                  return bx1 <= bx0 || by1 <= by0 ? [] : [[bx0, by0, bx1, by1]];
+                });
                 // With border-collapse: collapse a cell's outer half-border
                 // lies inside the table's own border box: the outer cells'
                 // client rects sit half a border width inside the table's
@@ -685,14 +1012,65 @@ export function collect() {
                   ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
                   ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
                 ];
-                if (strips.length > 0) {
-                  const x0 = Math.min(...strips.map(strip => strip[0] ?? 0));
-                  const y0 = Math.min(...strips.map(strip => strip[1] ?? 0));
-                  const right0 = Math.max(
-                    ...strips.map(strip => strip[2] ?? 0),
-                  );
+                // T08-5 slice 3: an inset box-shadow paints inside the
+                // padding box (this client rect inset by the computed border
+                // widths) a strip along each side its offset toward that
+                // side, its spread and 1.5 × its blur reach, each width
+                // clamped to the padding box's own size (blur included, per
+                // the probe). An empty padding box adds nothing; several
+                // shadows' strips all join the same union.
+                const pbX0 = rect.x + Number.parseFloat(style.borderLeftWidth);
+                const pbY0 = rect.y + Number.parseFloat(style.borderTopWidth);
+                const pbX1 = x1 - Number.parseFloat(style.borderRightWidth);
+                const pbY1 = y1 - Number.parseFloat(style.borderBottomWidth);
+                const insetStrips =
+                  visible && pbX1 > pbX0 && pbY1 > pbY0
+                    ? insetShadows.flatMap(shadow => {
+                        const reach = shadow.spread + 1.5 * shadow.blur;
+                        const [iTop = 0, iRight = 0, iBottom = 0, iLeft = 0] = [
+                          Math.min(
+                            Math.max(shadow.offsetY + reach, 0),
+                            pbY1 - pbY0,
+                          ),
+                          Math.min(
+                            Math.max(-shadow.offsetX + reach, 0),
+                            pbX1 - pbX0,
+                          ),
+                          Math.min(
+                            Math.max(-shadow.offsetY + reach, 0),
+                            pbY1 - pbY0,
+                          ),
+                          Math.min(
+                            Math.max(shadow.offsetX + reach, 0),
+                            pbX1 - pbX0,
+                          ),
+                        ];
+                        return [
+                          ...(iTop > 0
+                            ? [[pbX0, pbY0, pbX1, pbY0 + iTop]]
+                            : []),
+                          ...(iRight > 0
+                            ? [[pbX1 - iRight, pbY0, pbX1, pbY1]]
+                            : []),
+                          ...(iBottom > 0
+                            ? [[pbX0, pbY1 - iBottom, pbX1, pbY1]]
+                            : []),
+                          ...(iLeft > 0
+                            ? [[pbX0, pbY0, pbX0 + iLeft, pbY1]]
+                            : []),
+                        ];
+                      })
+                    : [];
+                // One entry per client rect: the union bbox of everything it
+                // paints — the background's clip boxes, the border strips
+                // and the inset shadows' strips. None → no entry.
+                const areas = [...bgRects, ...strips, ...insetStrips];
+                if (areas.length > 0) {
+                  const x0 = Math.min(...areas.map(strip => strip[0] ?? 0));
+                  const y0 = Math.min(...areas.map(strip => strip[1] ?? 0));
+                  const right0 = Math.max(...areas.map(strip => strip[2] ?? 0));
                   const bottom0 = Math.max(
-                    ...strips.map(strip => strip[3] ?? 0),
+                    ...areas.map(strip => strip[3] ?? 0),
                   );
                   boxes.push({
                     kind: pseudo ? 'pseudo' : 'box',
@@ -705,6 +1083,7 @@ export function collect() {
                     ...(pseudo && clipBox !== undefined
                       ? { clip: clipBox }
                       : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
               }

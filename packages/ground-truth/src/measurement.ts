@@ -64,10 +64,11 @@ export interface MeasuredElement {
  */
 export interface PaintedBox {
   /**
-   * An `<img>`, an `<svg>` not inside another `<svg>`, the background and
-   * borders of an element (`box`), those of a ::before/::after
-   * pseudo-element of it or of an element in it (`pseudo`), an element's
-   * outline (`outline`), or an element's outer box-shadow (`shadow`).
+   * An `<img>`, an `<svg>` not inside another `<svg>`, the background,
+   * borders and inset box-shadows of an element (`box`), those of a
+   * ::before/::after pseudo-element of it or of an element in it (`pseudo`),
+   * an element's outline (`outline`), or an element's outer box-shadow
+   * (`shadow`).
    */
   kind: 'img' | 'svg' | 'box' | 'pseudo' | 'outline' | 'shadow';
   /**
@@ -97,12 +98,26 @@ export interface PaintedBox {
   sliced?: ('left' | 'right')[];
   /**
    * Outline, shadow and pseudo only: the rect it paints inside, in viewport
-   * coordinates: the intersection of the padding box of every ancestor
-   * whose overflow clips that axis, up to its `.pagedjs_page` (a
+   * coordinates: the intersection, over the ancestors up to its
+   * `.pagedjs_page`, of each one's clip rect — its padding box on every
+   * axis whose overflow is not visible, or on both axes under paint
+   * containment (T08-5: the computed `contain` holds paint, strict or
+   * content, or the computed `content-visibility` is auto or hidden),
+   * grown by its overflow-clip-margin only when containment applies or
+   * both overflows are `clip`; inline boxes, display contents/none and
+   * table rows, row groups, columns and column groups clip nothing. A
    * pseudo-element's ancestors start at its host, so the host's overflow
-   * clips its own pseudo-elements).
+   * clips its own pseudo-elements.
    */
   clip?: Rect;
+  /**
+   * Any kind: the exact (unrounded) clip-path region, in viewport
+   * coordinates, that the entry paints inside: the intersection of every
+   * `inset()` clip-path on the element itself and its ancestors. Present
+   * only when at least one `inset()` clip-path applies (T08-5); any other
+   * shape (circle(), polygon(), url(), ...) leaves the ink unconstrained.
+   */
+  clipPath?: Rect;
 }
 
 /** A `.pagedjs_page` border box. */
