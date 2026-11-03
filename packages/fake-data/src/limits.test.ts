@@ -692,27 +692,38 @@ test('distinct sums share the empty-array prefix across 20000 rows and 5000 colu
         'sum_' + key, { type: 'sum', of: ['rows[].empty[].' + key] },
       ])),
     });
-    ${relativeGenerationTiming}
-    // A 500-column timing probe keeps the uncached mutant cheap enough to
-    // reach the ratio assertion. The full 5,000-column record is checked below.
-    const timedColumns = columns.slice(0, 500);
-    const probe = rulesFor({
+    ${countedDerivedReads}
+    const rulesWith = keys => rulesFor({
       rows: array(20_000, object({
-        empty: array(0, object(Object.fromEntries(timedColumns.map(key => [key, constant(1)])))),
+        empty: array(0, object(Object.fromEntries(keys.map(key => [key, constant(1)])))),
       })),
-      ...Object.fromEntries(timedColumns.map(key => ['sum_' + key, rules.fields['sum_' + key]])),
+      ...Object.fromEntries(keys.map(key => ['sum_' + key, rules.fields['sum_' + key]])),
     });
-    // 100× fewer rows: sharing pays for paths + rows, not paths × rows.
-    const reference = structuredClone(probe);
-    reference.fields.rows.minItems = reference.fields.rows.maxItems = 200;
-    const measured = compareGeneration(probe, reference, 'shared-empty-prefix', 12,
+    const assertSums = (record, keys, when) => {
+      assert.equal(record.rows.length, 20_000);
+      for (const row of record.rows) assert.deepEqual(row, { empty: [] });
+      for (const key of keys) assert.equal(record['sum_' + key], 0, when + ': ' + key);
+    };
+    // A 500-column probe keeps an uncached mutant's own (uncounted) generate
+    // cheap enough to reach the count. The full 5,000-column record is
+    // checked below. The reference is the same 20,000 rows with one column:
+    // sharing pays for paths + rows, not paths × rows.
+    const countedColumns = columns.slice(0, 500);
+    const probe = rulesWith(countedColumns);
+    const reference = rulesWith(columns.slice(0, 1));
+    const oneColumnReads = countFillReads(generate(reference, 'shared-empty-prefix'),
+      reference, Infinity, 'one-column reference');
+    // Shared, each further column reads 1 value (its sum's own slot), 499
+    // over the reference. Twice that is the budget; one walk of the rows per
+    // column would cost about one reference (≥ 120,000 reads) each.
+    const measured = generate(probe, 'shared-empty-prefix');
+    const reads = countFillReads(measured, probe, oneColumnReads + 2 * 499,
       'shared empty prefix');
-    assert.equal(measured.rows.length, 20_000);
-    for (const key of timedColumns) assert.equal(measured['sum_' + key], 0, key);
-    const record = generate(rules, 'shared-empty-prefix');
-    assert.equal(record.rows.length, 20_000);
-    for (const row of record.rows) assert.deepEqual(row, { empty: [] });
-    for (const key of columns) assert.equal(record['sum_' + key], 0, key);
+    // The reference walks every row and its empty array: the counter sees the fill.
+    assert.ok(oneColumnReads >= 2 * 20_000, 'one-column reference read ' + oneColumnReads + ' times');
+    assert.ok(reads > oneColumnReads, 'every column reads its sum');
+    assertSums(measured, countedColumns, 'refilled probe');
+    assertSums(generate(rules, 'shared-empty-prefix'), columns, 'generated');
   `,
     30_000,
   );
