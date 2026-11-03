@@ -113,7 +113,9 @@ test.each<{
 );
 
 // Paged.js Sheet.imports walks every String under the import node, after
-// replaceIds and RunningHeaders.beforeTreeParse. The upload scanner does not.
+// replaceIds and RunningHeaders.beforeTreeParse. The upload check reads them
+// the same way and refuses these packs (T06-9); print must still refuse them
+// on its own, for a pack that reaches it without that check.
 const bypasses: {
   name: string;
   files: Record<string, string>;
@@ -154,7 +156,7 @@ const bypasses: {
 ];
 
 test.each(bypasses)(
-  'refuses the upload-check bypass: $name',
+  'refuses a loop the upload check also refuses: $name',
   async ({ files, loop }) => {
     const checked = checkPack({
       'manifest.json': JSON.stringify({
@@ -178,10 +180,14 @@ test.each(bypasses)(
       'data/sample.json': JSON.stringify({ holder: '王小明' }),
       ...files,
     });
+    expect(checked.ok, JSON.stringify(checked.issues)).toBe(false);
     expect(
-      checked.issues.filter(issue => issue.code === 'css-import-cycle'),
-    ).toEqual([]);
-    expect(checked.ok, JSON.stringify(checked.issues)).toBe(true);
+      new Set(
+        checked.issues
+          .filter(issue => issue.code === 'css-import-cycle')
+          .map(issue => issue.file),
+      ),
+    ).toEqual(new Set(loop));
     await refusesPromptly(files, loop);
   },
 );

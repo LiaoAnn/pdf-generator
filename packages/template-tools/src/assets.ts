@@ -24,6 +24,7 @@ import {
 } from './import-expansion.ts';
 import type { PackIssue } from './issues.ts';
 import { pageBoxProblems } from './page-box.ts';
+import { pagedImports } from './paged-imports.ts';
 import { isRefused } from './policy.ts';
 import { decode, position } from './text.ts';
 
@@ -88,6 +89,24 @@ const urlEnd = (url: string) => {
   let i = url.length;
   while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
   return i;
+};
+
+/**
+ * The stylesheet a URL loads, as each reading hands it to the URL parser:
+ * Chrome's CSS parser turns a NUL into U+FFFD (the URL parser would strip
+ * the NUL), css-tree — Paged.js's Sheet.parse — keeps it; the URL parser
+ * drops tab, LF and CR anywhere and trims C0 controls and spaces at the
+ * ends; Paged.js's Sheet.imports has already dropped the quotes. Two
+ * readings of one @import agree when the results agree, so `@import
+ * "b.css";` is one load, while `@import "\0a.css";` is two (Chrome reads
+ * `�a.css`, Paged.js keeps the NUL and the URL parser trims it to `a.css`).
+ */
+const stylesheetLoad = (url: string, paged: boolean) => {
+  const read = paged
+    ? url.replace(/[\t\n\r]/g, '')
+    : url.replaceAll('\0', '\uFFFD');
+  const loaded = read.replace(/["']/g, '');
+  return loaded.slice(urlStart(loaded), urlEnd(loaded));
 };
 
 /**
@@ -231,12 +250,14 @@ export function assetIssues(
    */
   const reference = (
     source: Source,
-    { url: written, offset, kind }: Reference,
+    { url: written, offset, kind, paged }: Reference & { paged?: boolean },
     context: 'attribute' | 'css' = 'css',
   ) => {
     // CSS (and HTML) turn a NUL into U+FFFD before the URL parser, which
-    // would strip a NUL: that file is the one the browser loads.
-    const url = written.replaceAll('\0', '\uFFFD');
+    // would strip a NUL: that file is the one the browser loads. A Paged.js
+    // load has no such replacement (css-tree keeps the NUL): it arrives as
+    // stylesheetLoad read it.
+    const url = paged === true ? written : written.replaceAll('\0', '\uFFFD');
     const trimmed = url.slice(urlStart(url));
     const at = offset + url.length - trimmed.length;
     if (source === template && url.includes('{{')) {
@@ -338,8 +359,15 @@ export function assetIssues(
         'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see',
       );
     }
+    // The stylesheet loads scanCss counted, by offset and loaded string: a
+    // Paged.js read of the same @import is the same load, not another.
+    const scanned = new Map<string, number>();
     for (const ref of references) {
       reference(source, { ...ref, offset: at(ref.offset) });
+      if (ref.kind === 'stylesheet') {
+        const key = `${ref.offset}|${stylesheetLoad(ref.url, false)}`;
+        scanned.set(key, (scanned.get(key) ?? 0) + 1);
+      }
     }
     for (const offset of escapes) {
       issue(
@@ -350,6 +378,37 @@ export function assetIssues(
       );
     }
     if (rules) {
+      // Paged.js's Sheet.parse also reads @import forms Chrome's parser
+      // skips (paged-imports.ts): feed the loads the scanner missed through
+      // the same reference path, so cycles, expansion, asset-missing and
+      // the rest see exactly what Paged.js would fetch. One both readings
+      // saw (`@import "b.css";`, a quoted url()) the scanner counted; only
+      // the counts past it (a string under nested @imports) go through.
+      // css-tree's parse is super-linear in nesting depth, so it runs only
+      // where an @import can be: every at-rule css-tree reads as one spells
+      // `import` in the text (an escape that spells it is a css-escape issue
+      // already). The scanner's own @import flag would not do: a bad string
+      // the element() rewrite mends hides an @import from the scanner.
+      const paged = /import/i.test(css) ? pagedImports(css) : [];
+      for (const { url, offset } of paged) {
+        const load = stylesheetLoad(url, true);
+        const key = `${offset}|${load}`;
+        const both = scanned.get(key);
+        if (both !== undefined) {
+          if (both === 1) scanned.delete(key);
+          else scanned.set(key, both - 1);
+          continue;
+        }
+        // As written but for tab, LF and CR, which the URL parser drops:
+        // reference trims the ends (a NUL among them) and points at the
+        // first character it keeps.
+        reference(source, {
+          url: url.replace(/[\t\n\r]/g, ''),
+          offset: at(offset),
+          kind: 'stylesheet',
+          paged: true,
+        });
+      }
       for (const problem of pageBoxProblems(css)) {
         issue('css-page-box', source, at(problem.offset), problem.message);
       }
