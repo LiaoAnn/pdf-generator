@@ -169,6 +169,7 @@ describe('template author error explanations', () => {
     'asset-missing',
     'asset-data',
     'asset-dynamic',
+    'asset-stylesheet-type',
     'css-escape',
     'css-import-cycle',
     'css-import-expansion',

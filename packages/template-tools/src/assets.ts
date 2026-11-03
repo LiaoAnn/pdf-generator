@@ -91,6 +91,14 @@ const urlEnd = (url: string) => {
 };
 
 /**
+ * Extensions the upload reads as binary (keep in sync with `binary` in
+ * apps/web/src/templates/limits.ts): their bytes never reach this check,
+ * yet print serves them and Paged.js reads them as CSS, so a stylesheet
+ * stored in one would go unchecked.
+ */
+const binaryFile = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
+
+/**
  * The candidate URLs of a srcset, with their offsets in it, as the HTML spec
  * splits them: a URL runs to the next whitespace (commas included, so data:
  * URLs survive), then a descriptor runs to the next comma.
@@ -276,6 +284,17 @@ export function assetIssues(
         source,
         at,
         `${url} points to ${problem.path}, which is not in the pack`,
+      );
+    } else if (kind === 'stylesheet' && binaryFile.test(problem.path)) {
+      // The upload hands this file to the check as empty bytes, but print
+      // serves it and Paged.js reads it as CSS, so what it imports would
+      // go unchecked. A stylesheet stored in an image or font file is
+      // never legitimate; don't follow it.
+      issue(
+        'asset-stylesheet-type',
+        source,
+        at,
+        `${url} points to ${problem.path}, an image or font file: a stylesheet must be a text file such as .css; the upload reads image and font files as binary, so what it imports would go unchecked`,
       );
     } else {
       // Paged.js loads the template's own stylesheets once, but follows an

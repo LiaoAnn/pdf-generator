@@ -316,3 +316,55 @@ describe('checkPack @import expansion: stylesheets the template repeats', () => 
     );
   });
 });
+
+describe('checkPack: a stylesheet stored as an image or font file', () => {
+  // The upload hands the check an image or font file's bytes as empty, and
+  // print serves it as an image or font, yet Paged.js (and Chrome, in quirks
+  // mode) still read it as CSS: what it imports would go uncounted.
+  /** Line and column (1-based) of the first `text` in `source`. */
+  const at = (source: string, text: string) => {
+    const lines = source.slice(0, source.indexOf(text)).split('\n');
+    return { line: lines.length, column: (lines.at(-1)?.length ?? 0) + 1 };
+  };
+
+  it.each(['png', 'jpg', 'gif', 'webp', 'woff', 'woff2', 'ttf', 'otf'])(
+    'refuses an @import of an existing .%s file at its URL',
+    extension => {
+      const a = `p { margin: 0; }\n@import "../assets/s0.${extension}";`;
+      const files = pack({
+        'styles/a.css': a,
+        [`assets/s0.${extension}`]: imports('s1.css', 2),
+        'assets/s1.css': 'p { margin: 0; }',
+      });
+      const result = checkPack(files);
+      expect(result.ok).toBe(false);
+      expect(result.issues).toEqual([
+        {
+          code: 'asset-stylesheet-type',
+          file: 'styles/a.css',
+          ...at(a, `../assets/s0.${extension}`),
+          message: expect.stringContaining(`assets/s0.${extension}`),
+        },
+      ]);
+    },
+  );
+
+  it('refuses a template <link> to an existing .png file at its URL', () => {
+    const files = pack(
+      { 'styles/a.css': '', 'assets/sheet.png': 'p { margin: 0; }' },
+      ['styles/a.css'],
+      '<link rel="stylesheet" href="../assets/sheet.png">',
+    );
+    const template = String(files['templates/report.hbs']);
+    const result = checkPack(files);
+    expect(result.ok).toBe(false);
+    expect(result.issues).toEqual([
+      {
+        code: 'asset-stylesheet-type',
+        file: 'templates/report.hbs',
+        ...at(template, '../assets/sheet.png'),
+        message: expect.stringContaining('assets/sheet.png'),
+      },
+    ]);
+  });
+});

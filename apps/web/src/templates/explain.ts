@@ -101,6 +101,8 @@ const packIssues: Record<string, string> = {
     '樣板引用了 data: 網址的內容。請把檔案放進樣板包，用相對路徑引用。',
   'asset-dynamic':
     '檔案路徑是用 Handlebars 動態組出來的，平台無法確認檔案存在。請改用固定的路徑。',
+  'asset-stylesheet-type':
+    '<link> 或 @import 載入的樣式表是圖片或字型檔（例如 .png、.woff2）。上傳時這些檔案不會被當成文字檢查，平台無法確認它載入了什麼。請把 CSS 放在 .css 檔案裡再引用。',
   'css-escape':
     'CSS 裡有反斜線跳脫字元，平台無法確認它引用的檔案。請改成不用跳脫的寫法。',
   'css-page-box':
