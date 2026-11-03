@@ -8,7 +8,12 @@
 // edge, as one inside the box does. Offsets are multiples of 1/64 px
 // (Chrome's layout unit) and avoid exact .5 fractions, so every expected
 // box is exact: px edge * 0.75, two decimals. Slice 2: an <img> or <svg>
-// whose computed visibility is not visible paints nothing at all.
+// whose computed visibility is not visible paints nothing at all. Slice 3:
+// overflow clips follow the containing-block chain: an absolutely
+// positioned element is clipped only by ancestors from its containing block
+// up, so a static block's overflow does not cut a child positioned against
+// an ancestor outside it (the same holds for ::before/::after, outlines and
+// shadows).
 import { fileURLToPath } from 'node:url';
 import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { type Browser, chromium, type Page } from 'playwright-core';
@@ -294,6 +299,89 @@ describe('readGroundTruth: a hidden <img> or <svg> paints nothing', () => {
         `<div class="pad"><div data-gt="image" data-gt-id="ghost2" class="small"><div style="visibility: hidden"><img class="wide" alt="" src="${gray}"></div></div></div>`,
       );
       expect(boxes(result)).toEqual({ ghost2: layoutBox });
+    });
+  }, 30_000);
+});
+
+// the content area's corner (64, 80) px.
+
+const cbCss = `.cb { position: relative; }
+  .static { position: static; }
+  /* Against .cb: 61.875..82.375 x 110.375..120.625 px, painted 62..82 x 110..121. */
+  .loose { position: absolute; left: -2.125px; top: 30.375px; width: 20.5px; height: 10.25px; }
+  .loose.inked, .loose > .fill { background: #000; }
+  .loose > .fill { height: 10.25px; }
+  /* Against the block itself: the same place. */
+  .own { left: -12.375px; top: 9.625px; }`;
+
+describe('readGroundTruth: overflow clips follow the containing block', () => {
+  test('an absolutely positioned child of a static block with overflow hidden, placed against a wrapper outside it, is not cut by the block', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad cb"><div data-gt="paragraph" data-gt-id="escaped" class="small static clipped"><div class="loose inked"></div></div></div>`,
+        cbCss,
+      );
+      expect(boxes(result)).toEqual({ escaped: [46.5, 75.56, 86.06, 98.44] });
+    });
+  }, 30_000);
+
+  test('an element inside such a child is not cut by the block either', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad cb"><div data-gt="paragraph" data-gt-id="nested" class="small static clipped"><div class="loose"><div class="fill"></div></div></div></div>`,
+        cbCss,
+      );
+      expect(boxes(result)).toEqual({ nested: [46.5, 75.56, 86.06, 98.44] });
+    });
+  }, 30_000);
+
+  test.each([
+    ['is positioned', 'clipped'],
+    ['has layout containment', 'static clipped contained'],
+  ])(
+    'the same child is cut by the block when the block %s, so it is the containing block',
+    async (_, classes) => {
+      await withPage(async page => {
+        const result = await read(
+          page,
+          `<div class="pad cb"><div data-gt="paragraph" data-gt-id="kept" class="small ${classes}"><div class="loose inked own"></div></div></div>`,
+          `${cbCss} .contained { contain: layout; }`,
+        );
+        // It shows 74..82 x 110..121, flush with the block's left.
+        expect(boxes(result)).toEqual({ kept: [55.5, 75.56, 86.06, 98.44] });
+      });
+    },
+    30_000,
+  );
+
+  test('an absolutely positioned ::before of a static host with overflow hidden, placed against a wrapper outside it, grows the box', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad cb"><div data-gt="list_item" data-gt-id="bulleted" class="small static clipped dot"></div></div>`,
+        // Against .cb: 61.75..68 x 105.375..111.625 px, painted 62..68 x 105..112.
+        `${cbCss} .dot::before { content: ''; position: absolute; left: -2.25px; top: 25.375px;
+           width: 6.25px; height: 6.25px; background: #000; }`,
+      );
+      expect(boxes(result)).toEqual({ bulleted: [46.5, 75.56, 86.06, 98.44] });
+    });
+  }, 30_000);
+
+  test('a rebuild that changes which ancestor a ::before is positioned against measures no pseudo-element', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad cb"><div data-gt="list_item" data-gt-id="flipped" class="small clipped dot flip"></div></div>`,
+        // Printed, the host is positioned and clips its bullet away; with a
+        // child element in it, it would be static and the bullet would show
+        // past its left.
+        `${cbCss} .dot::before { content: ''; position: absolute; left: -2.25px; top: 25.375px;
+           width: 6.25px; height: 6.25px; background: #000; }
+         .flip:has(*) { position: static; }`,
+      );
+      expect(boxes(result)).toEqual({ flipped: layoutBox });
     });
   }, 30_000);
 });

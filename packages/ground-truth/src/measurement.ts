@@ -109,9 +109,16 @@ export interface PaintedBox {
    * content, or the computed `content-visibility` is auto or hidden),
    * grown by its overflow-clip-margin only when containment applies or
    * both overflows are `clip`; inline boxes, display contents/none and
-   * table rows, row groups, columns and column groups clip nothing. A
-   * pseudo-element's ancestors start at its host, so the host's overflow
-   * clips its own pseudo-elements.
+   * table rows, row groups, columns and column groups clip nothing. An
+   * ancestor clips only descendants whose containing-block chain passes
+   * through it (T08-6): one that is not the containing block of an out
+   * of flow element (a non-static position for absolutely positioned,
+   * also a transform, perspective, filter, translate, rotate or scale,
+   * `backdrop-filter`, layout or paint containment, `content-visibility`
+   * auto/hidden, `container-type` other than `normal` or a `will-change`
+   * of one of those for fixed-positioned descendants) clips nothing of
+   * it. A pseudo-element's ancestors start at its host, so the host's
+   * overflow clips its own pseudo-elements.
    */
   clip?: Rect;
   /**
