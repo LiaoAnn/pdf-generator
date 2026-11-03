@@ -1,15 +1,30 @@
-// Rebuilds public/fonts from the upstream files T03 tested (sha256-checked),
-// with the Noto CJK and LXGW WenKai cmaps patched (T03 §2.5; every code point
-// gets its own glyph, T07-13) and the Noto CJK `locl` feature emptied
-// (T07-11). Run with
-// `pnpm --filter @pdf-generator/print fonts`; commit the result.
+// Rebuilds the platform fonts from the upstream files T03 tested
+// (sha256-checked), with the Noto CJK and LXGW WenKai cmaps patched
+// (T03 §2.5; every code point gets its own glyph, T07-13) and the Noto CJK
+// `locl` feature emptied (T07-11). A split (`split`) font's whole file is
+// written, unserved, to apps/print/fonts (T07-37): the input of the
+// unicode-range chunks wrangler's build command makes (`chunks.ts`), which
+// this script never writes. The other files go whole to public/fonts.
+// Run with `pnpm --filter @pdf-generator/print fonts`; commit the result.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { disableLocl, patchCmap } from './sfnt.ts';
 
 const noto = 'https://github.com/notofonts/noto-cjk/raw/main';
-const sources = [
+
+interface Source {
+  file: string;
+  url: string;
+  sha256: string;
+  cmap: boolean;
+  locl: boolean;
+  // Also written, whole, to apps/print/fonts: the input of its
+  // unicode-range chunks (built by chunks.ts, T07-37).
+  split?: boolean;
+}
+
+const sources: Source[] = [
   {
     file: 'NotoSansTC-Regular.otf',
     url: `${noto}/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf`,
@@ -30,6 +45,7 @@ const sources = [
     sha256: '63515eb0622d589a2f4062e8757c598b3da3bffd053f69abd181c210158ef10c',
     cmap: true,
     locl: true,
+    split: true,
   },
   {
     file: 'NotoSerifTC-Bold.otf',
@@ -37,6 +53,7 @@ const sources = [
     sha256: '3ca2b3294ec84b795d0a45695e78e3612a44dce50f9fc776cd40206340a5768d',
     cmap: true,
     locl: true,
+    split: true,
   },
   {
     file: 'LXGWWenKaiTC-Regular.ttf',
@@ -44,6 +61,7 @@ const sources = [
     sha256: '6662480a3f95b4a90c80b189c679617a48adce3a505118a6af63ce5a482b83fa',
     cmap: true,
     locl: false,
+    split: true,
   },
   {
     file: 'NotoSansSymbols2-Regular.ttf',
@@ -77,6 +95,8 @@ const sources = [
 
 const cache = join(import.meta.dirname, '../../node_modules/.cache/fonts');
 const out = join(import.meta.dirname, '../../public/fonts');
+// Whole files of split fonts: unserved, the input of their chunks (T07-37).
+const wholeOut = join(import.meta.dirname, '../../fonts');
 const sha256 = (bytes: Uint8Array) =>
   createHash('sha256').update(bytes).digest('hex');
 
@@ -94,7 +114,8 @@ async function source(file: string, url: string): Promise<Uint8Array> {
 
 await mkdir(cache, { recursive: true });
 await mkdir(out, { recursive: true });
-for (const { file, url, sha256: expected, cmap, locl } of sources) {
+await mkdir(wholeOut, { recursive: true });
+for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
   const bytes = await source(file, url);
   const actual = sha256(bytes);
   if (actual !== expected) {
@@ -103,14 +124,14 @@ for (const { file, url, sha256: expected, cmap, locl } of sources) {
   const patched = cmap ? patchCmap(bytes) : undefined;
   const emptied = locl ? disableLocl(patched?.font ?? bytes) : undefined;
   const font = emptied?.font ?? patched?.font ?? bytes;
-  await writeFile(join(out, file), font);
+  await writeFile(join(split ? wholeOut : out, file), font);
   const notes = [
     patched &&
       `${patched.dropped.length} code points dropped, ${patched.copied.length} given their own glyph`,
     emptied && `${emptied.features} locl features emptied`,
   ].filter(Boolean);
   console.log(
-    `public/fonts/${file} sha256 ${sha256(font)}` +
+    `${split ? 'fonts' : 'public/fonts'}/${file} sha256 ${sha256(font)}` +
       (notes.length > 0 ? ` (${notes.join(', ')})` : ''),
   );
 }

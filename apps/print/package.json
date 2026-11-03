@@ -12,9 +12,11 @@
     "cf-typegen": "wrangler types",
     "test": "vitest run",
     "typecheck": "tsc && tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json && tsc -p tsconfig.acceptance.json",
-    "fonts": "node src/fonts/build.ts"
+    "fonts": "node src/fonts/build.ts",
+    "chunks": "node src/fonts/chunks.ts"
   },
   "devDependencies": {
+    "harfbuzzjs": "1.6.4",
     "katex": "~0.16.47",
     "pagedjs": "0.4.3",
     "typescript": "catalog:",

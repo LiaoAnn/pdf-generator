@@ -17,12 +17,14 @@ afterAll(async () => {
 test.each([
   'NotoSansTC-Regular.otf',
   'NotoSansTC-Bold.otf',
-  'NotoSerifTC-Regular.otf',
-  'NotoSerifTC-Bold.otf',
-  'LXGWWenKaiTC-Regular.ttf',
+  ...[0, 1, 2, 3].flatMap(part => [
+    `NotoSerifTC-Regular.part${part}.otf`,
+    `NotoSerifTC-Bold.part${part}.otf`,
+    `LXGWWenKaiTC-Regular.part${part}.ttf`,
+  ]),
   'NotoSansSymbols2-Regular.ttf',
 ])(
-  'serves committed font %s unchanged with a reusable browser cache',
+  'serves platform font %s as committed or built, with a reusable browser cache',
   async name => {
     // Read large assets over HTTP to avoid the "Body has already been read"
     // failure observed with worker.fetch under full-suite load.

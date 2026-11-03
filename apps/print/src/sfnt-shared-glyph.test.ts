@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { patchCmap, readCmap } from './fonts/sfnt.ts';
 import {
@@ -10,6 +9,7 @@ import {
   sum32,
 } from './test-fixtures/read-cff.ts';
 import { withSharedCmap } from './test-fixtures/shared-cmap.ts';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 type CopyResult = { font: Uint8Array; dropped: number[]; copied: number[] };
 // The API is extended in this slice. Keep the tests typecheckable while RED.
@@ -25,9 +25,7 @@ const faces = [
 test.each(faces)(
   '%s appends independent CFF glyphs in code-point order with identical outlines, FDs and resolved metrics',
   async name => {
-    const source = withSharedCmap(
-      await readFile(new URL(`../public/fonts/${name}`, import.meta.url)),
-    );
+    const source = withSharedCmap(await readFile(wholeFont(name)));
     const original = Buffer.from(source);
     const tables = fontTables(source);
     const table = (tag: string) => {
@@ -191,9 +189,7 @@ test.each(faces)(
 test.each([...faces, 'LXGWWenKaiTC-Regular.ttf'])(
   '%s keeps the original en-dash glyph for layout coverage and copies the figure dash',
   async name => {
-    const original = await readFile(
-      new URL(`../public/fonts/${name}`, import.meta.url),
-    );
+    const original = await readFile(wholeFont(name));
     const originalDash = readCmap(original).get(0x2013);
     expect(originalDash).toBeGreaterThan(0);
     const source = withSharedCmap(original, name.endsWith('.ttf'));

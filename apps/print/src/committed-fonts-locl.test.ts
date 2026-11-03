@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
 import { expect, test } from 'vitest';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 // Read the committed binaries independently of the production font patcher.
 function table(font: Buffer, tag: string) {
@@ -59,9 +59,7 @@ test.each([
 ])(
   '%s disables every locl lookup, including every path that could substitute digit glyphs, while preserving vertical substitutions',
   async name => {
-    const font = await readFile(
-      new URL(`../public/fonts/${name}`, import.meta.url),
-    );
+    const font = await readFile(wholeFont(name));
     const records = features(table(font, 'GSUB'));
     const locl = records.filter(record => record.tag === 'locl');
     expect(locl.length).toBeGreaterThan(0);

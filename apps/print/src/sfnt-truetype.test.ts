@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises';
-import { URL } from 'node:url';
 import { expect, test } from 'vitest';
 import { patchCmap, readCmap } from './fonts/sfnt.ts';
 import { fontTables, metrics, sum32 } from './test-fixtures/read-cff.ts';
@@ -10,14 +9,10 @@ import {
   withTables,
 } from './test-fixtures/read-ttf.ts';
 import { withSharedCmap } from './test-fixtures/shared-cmap.ts';
+import { wholeFont } from './test-fixtures/whole-fonts.ts';
 
 const lxgw = async () =>
-  withSharedCmap(
-    await readFile(
-      new URL('../public/fonts/LXGWWenKaiTC-Regular.ttf', import.meta.url),
-    ),
-    true,
-  );
+  withSharedCmap(await readFile(wholeFont('LXGWWenKaiTC-Regular.ttf')), true);
 
 // The T03 drop policy, independently applied to the collision fixture cmap.
 const alias = (cp: number) =>

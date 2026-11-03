@@ -138,7 +138,7 @@ test('delayed linked body and bold rules embed both platform faces', async () =>
 // Slice 1: an undeclared platform face cannot fail loading, so the old race
 // silently bypasses font_not_loaded as well as embedding the wrong font.
 test('a missing platform face used only by delayed linked CSS returns font_not_loaded', async () => {
-  failedFont = '/fonts/NotoSerifTC-Regular.otf';
+  failedFont = '/fonts/NotoSerifTC-Regular.part1.otf';
   const response = await print('body { font-family: "Noto Serif TC"; }');
   expect(response.status).toBe(422);
   const { error } = apiErrorSchema.parse(await response.json());

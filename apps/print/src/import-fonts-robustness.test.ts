@@ -170,7 +170,7 @@ test('a 404 import does not discard a sibling imported print font', async () => 
 });
 
 test('a failed platform face used only by an imported print rule returns font_not_loaded', async () => {
-  failedFont = '/fonts/NotoSerifTC-Regular.otf';
+  failedFont = '/fonts/NotoSerifTC-Regular.part1.otf';
   const response = await print({
     'styles/report.css': '@import "print/fonts.css";',
     'styles/print/fonts.css':
