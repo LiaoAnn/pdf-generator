@@ -129,6 +129,18 @@ export function collect() {
     'overflow-clip-margin',
     'contain',
     'content-visibility',
+    // T08-6: the containing block each out-of-flow element hangs from
+    // decides whose overflow clips it.
+    'position',
+    'transform',
+    'translate',
+    'rotate',
+    'scale',
+    'perspective',
+    'filter',
+    'backdrop-filter',
+    'will-change',
+    'container-type',
     'box-decoration-break',
     '-webkit-box-decoration-break',
     'direction',
@@ -324,8 +336,11 @@ export function collect() {
     // element that paints nothing (display: none or contents) contributes
     // none. Outlines and outer box-shadows (T08-4) grow the box instead, and
     // a rebuilt pseudo-element's background or borders count as 'pseudo'
-    // entries that carry the overflow clips around it. Document order
-    // throughout.
+    // entries. The overflow clips around an element are attached to its
+    // entries at the end of the walk below (T08-6): to every entry of an
+    // element inside the block — its ink may lie outside the block's border
+    // box — and to every outline, outer shadow and pseudo entry, never to
+    // the block's own img/svg/box entries. Document order throughout.
     for (const element of Array.from(
       document.querySelectorAll('[data-gt]'),
     ).filter(element => element.getClientRects().length > 0)) {
@@ -470,11 +485,16 @@ export function collect() {
                 height: cy1 - cy0,
               };
             }
+            // An <img> or outer <svg> (one not inside another <svg>) paints
+            // its own content, but only when its computed visibility is
+            // visible: a hidden one (own or inherited visibility — the
+            // computed value is inherited) paints nothing (T08-6 slice 2).
             if (
               (inner instanceof HTMLImageElement ||
                 (inner instanceof SVGSVGElement &&
                   inner.parentElement?.closest('svg') == null)) &&
-              inner.getClientRects().length > 0
+              inner.getClientRects().length > 0 &&
+              getComputedStyle(inner).visibility === 'visible'
             ) {
               const box = inner.getBoundingClientRect();
               boxes.push({
@@ -697,148 +717,6 @@ export function collect() {
               // at its host, so a host with overflow: hidden clips its own
               // pseudo-elements).
               const pseudo = spans.includes(inner);
-              // The rect an outline or shadow of this element — or a rebuilt
-              // pseudo-element's box — paints inside: the intersection, over
-              // its ancestors up to and including its .pagedjs_page, of each
-              // one's clip rect. An ancestor clips an axis when its overflow
-              // on that axis is not visible, or (T08-5) both axes when paint
-              // containment applies — the computed contain holds paint,
-              // strict or content, or the computed content-visibility is
-              // auto or hidden — even with overflow visible; an ancestor
-              // whose computed display is inline, contents, none, table-row,
-              // a table row group, table-column or table-column-group clips
-              // nothing and only passes the walk through (its contain counts
-              // for nothing either). The clip edges are the padding box,
-              // except when paint containment applies or both overflows
-              // compute to clip: then overflow-clip-margin moves them out —
-              // from the padding box by default, from the box it names
-              // (border-box, content-box), plus an optional px length on
-              // every side; with overflow: hidden, or clip on one axis only,
-              // it is ignored. Paged.js's .pagedjs_sheet has overflow
-              // hidden, so this always covers the page's edges.
-              /** @type {Rect | undefined} */
-              let clipBox;
-              if (outlines !== undefined || shadows.length > 0 || pseudo) {
-                let x0 = -Infinity;
-                let y0 = -Infinity;
-                let x1 = Infinity;
-                let y1 = Infinity;
-                for (
-                  let at = inner.parentElement;
-                  at !== null;
-                  at = at.parentElement
-                ) {
-                  const ancestorStyle = getComputedStyle(at);
-                  const ancestorRect = at.getBoundingClientRect();
-                  // Boxes overflow (and contain: paint) does not apply to
-                  // clip nothing; such an ancestor only passes the walk
-                  // through, still stopping at its .pagedjs_page.
-                  const clipsNothing = [
-                    'inline',
-                    'contents',
-                    'none',
-                    'table-row',
-                    'table-row-group',
-                    'table-header-group',
-                    'table-footer-group',
-                    'table-column',
-                    'table-column-group',
-                  ].includes(ancestorStyle.display);
-                  const contained =
-                    ancestorStyle.contain
-                      .split(/\s+/)
-                      .some(word =>
-                        ['paint', 'strict', 'content'].includes(word),
-                      ) ||
-                    ['auto', 'hidden'].includes(
-                      ancestorStyle.contentVisibility,
-                    );
-                  const clippedX =
-                    !clipsNothing &&
-                    (contained || ancestorStyle.overflowX !== 'visible');
-                  const clippedY =
-                    !clipsNothing &&
-                    (contained || ancestorStyle.overflowY !== 'visible');
-                  if (clippedX || clippedY) {
-                    // The clip edges: the padding box, moved out by the
-                    // computed overflow-clip-margin — an optional box
-                    // keyword (padding-box by default, border-box,
-                    // content-box) and an optional px length growing that
-                    // box on every side; anything unrecognised counts as
-                    // the padding box grown by 0 — but only when paint
-                    // containment applies or both overflows are clip.
-                    const borderL = Number.parseFloat(
-                      ancestorStyle.borderLeftWidth,
-                    );
-                    const borderT = Number.parseFloat(
-                      ancestorStyle.borderTopWidth,
-                    );
-                    const borderR = Number.parseFloat(
-                      ancestorStyle.borderRightWidth,
-                    );
-                    const borderB = Number.parseFloat(
-                      ancestorStyle.borderBottomWidth,
-                    );
-                    let edgeX0 = ancestorRect.x;
-                    let edgeY0 = ancestorRect.y;
-                    let edgeX1 = ancestorRect.right;
-                    let edgeY1 = ancestorRect.bottom;
-                    let marginBox = 'padding-box';
-                    let marginLength = 0;
-                    if (
-                      contained ||
-                      (ancestorStyle.overflowX === 'clip' &&
-                        ancestorStyle.overflowY === 'clip')
-                    ) {
-                      for (const token of ancestorStyle
-                        .getPropertyValue('overflow-clip-margin')
-                        .trim()
-                        .split(/\s+/)) {
-                        if (
-                          ['padding-box', 'border-box', 'content-box'].includes(
-                            token,
-                          )
-                        ) {
-                          marginBox = token;
-                        } else if (/^-?[\d.]+px$/.test(token)) {
-                          marginLength = Number.parseFloat(token);
-                        }
-                      }
-                    }
-                    if (marginBox !== 'border-box') {
-                      edgeX0 += borderL;
-                      edgeX1 -= borderR;
-                      edgeY0 += borderT;
-                      edgeY1 -= borderB;
-                    }
-                    if (marginBox === 'content-box') {
-                      edgeX0 += Number.parseFloat(ancestorStyle.paddingLeft);
-                      edgeX1 -= Number.parseFloat(ancestorStyle.paddingRight);
-                      edgeY0 += Number.parseFloat(ancestorStyle.paddingTop);
-                      edgeY1 -= Number.parseFloat(ancestorStyle.paddingBottom);
-                    }
-                    if (clippedX) {
-                      x0 = Math.max(x0, edgeX0 - marginLength);
-                      x1 = Math.min(x1, edgeX1 + marginLength);
-                    }
-                    if (clippedY) {
-                      y0 = Math.max(y0, edgeY0 - marginLength);
-                      y1 = Math.min(y1, edgeY1 + marginLength);
-                    }
-                  }
-                  if (at.classList.contains('pagedjs_page')) break;
-                }
-                // Infinite only off every page: no clip then (an infinite
-                // number doesn't survive the trip out of the browser).
-                if ([x0, y0, x1, y1].every(Number.isFinite)) {
-                  clipBox = {
-                    x: x0,
-                    y: y0,
-                    width: x1 - x0,
-                    height: y1 - y0,
-                  };
-                }
-              }
               // The width each visible border side paints, in top, right,
               // bottom, left order; 0 for a side that paints nothing (an
               // outer <svg> gets no 'box' entry for its borders).
@@ -873,7 +751,6 @@ export function collect() {
                     },
                     width: outlines.width,
                     offset: outlines.offset,
-                    ...(clipBox !== undefined ? { clip: clipBox } : {}),
                     ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
@@ -907,7 +784,6 @@ export function collect() {
                     blur: shadow.blur,
                     spread: shadow.spread,
                     ...(sliced.length > 0 ? { sliced } : {}),
-                    ...(clipBox !== undefined ? { clip: clipBox } : {}),
                     ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
@@ -1080,11 +956,241 @@ export function collect() {
                       width: right0 - x0,
                       height: bottom0 - y0,
                     },
-                    ...(pseudo && clipBox !== undefined
-                      ? { clip: clipBox }
-                      : {}),
                     ...(clipPath === undefined ? {} : { clipPath }),
                   });
+                }
+              }
+            }
+            // T08-6: every entry of an element inside the block (not the
+            // block itself) carries the rect it paints inside — its ink may
+            // lie outside the block's border box (a negative margin, an
+            // absolutely positioned child) — as every outline, outer shadow
+            // and rebuilt pseudo-element entry does (T08-4); the block's own
+            // img/svg/box entries carry none. The walk runs once per inner,
+            // and only when one of its entries carries it.
+            // The rect an entry paints inside: the intersection, over its
+            // ancestors up to and including its .pagedjs_page, of each one's
+            // clip rect. An ancestor clips an axis when its overflow on that
+            // axis is not visible, or (T08-5) both axes when paint
+            // containment applies — the computed contain holds paint, strict
+            // or content, or the computed content-visibility is auto or
+            // hidden — even with overflow visible; an ancestor whose
+            // computed display is inline, contents, none, table-row, a table
+            // row group, table-column or table-column-group clips nothing
+            // and only passes the walk through (its contain counts for
+            // nothing either). And it clips only descendants whose
+            // containing-block chain passes through it (T08-6):
+            // a non-static position makes it the containing block of an
+            // absolutely positioned descendant; a computed transform,
+            // translate, rotate, scale, perspective, filter or
+            // backdrop-filter other than none, a contain holding layout,
+            // paint, strict or content, a content-visibility of auto or
+            // hidden, a container-type other than normal or a will-change
+            // naming transform, perspective, filter, translate, rotate or
+            // scale make it the containing block of a fixed-positioned one
+            // too. An ancestor that is not the containing block of the
+            // positioned element (or of the positioned ancestor it hangs
+            // from) clips nothing of it and only passes the walk through,
+            // the walk still anchored where the containing block is.
+            // The clip edges are the padding box, except
+            // when paint containment applies or both overflows compute to
+            // clip: then overflow-clip-margin moves them out — from the
+            // padding box by default, from the box it names (border-box,
+            // content-box), plus an optional px length on every side; with
+            // overflow: hidden, or clip on one axis only, it is ignored.
+            // Paged.js's .pagedjs_sheet has overflow hidden, so this always
+            // covers the page's edges.
+            if (
+              boxes.length > 0 &&
+              (inner !== element ||
+                boxes.some(
+                  entry => entry.kind === 'outline' || entry.kind === 'shadow',
+                ))
+            ) {
+              let x0 = -Infinity;
+              let y0 = -Infinity;
+              let x1 = Infinity;
+              let y1 = Infinity;
+              // T08-6: the computed position of the element whose clip the
+              // walk is computing — inner, then each positioned ancestor it
+              // hangs from — so the walk follows the containing-block
+              // chain. (A rebuilt pseudo-element span carries its pseudo's
+              // computed position, so it follows the same rule.)
+              let pending = getComputedStyle(inner).position;
+              for (
+                let at = inner.parentElement;
+                at !== null;
+                at = at.parentElement
+              ) {
+                const ancestorStyle = getComputedStyle(at);
+                const ancestorRect = at.getBoundingClientRect();
+                // T08-6: an ancestor clips an out-of-flow descendant only
+                // when the descendant's containing-block chain passes
+                // through it: a non-static position makes it the
+                // containing block of absolutely positioned descendants;
+                // a transform etc. also that of fixed-positioned ones.
+                // Until the walk reaches that containing block, an
+                // ancestor clips nothing of it and only passes the walk
+                // through.
+                const fixedBlock =
+                  [
+                    'transform',
+                    'translate',
+                    'rotate',
+                    'scale',
+                    'perspective',
+                    'filter',
+                    'backdrop-filter',
+                  ].some(
+                    name => ancestorStyle.getPropertyValue(name) !== 'none',
+                  ) ||
+                  ancestorStyle.contain
+                    .split(/\s+/)
+                    .some(word =>
+                      ['layout', 'paint', 'strict', 'content'].includes(word),
+                    ) ||
+                  ['auto', 'hidden'].includes(
+                    ancestorStyle.contentVisibility,
+                  ) ||
+                  ancestorStyle.willChange
+                    .split(/[\s,]+/)
+                    .some(word =>
+                      [
+                        'transform',
+                        'perspective',
+                        'filter',
+                        'translate',
+                        'rotate',
+                        'scale',
+                      ].includes(word),
+                    ) ||
+                  ancestorStyle.containerType !== 'normal';
+                if (
+                  ((pending === 'absolute' &&
+                    ancestorStyle.position === 'static') ||
+                    pending === 'fixed') &&
+                  !fixedBlock
+                ) {
+                  if (at.classList.contains('pagedjs_page')) break;
+                  continue;
+                }
+                // Boxes overflow (and contain: paint) does not apply to
+                // clip nothing; such an ancestor only passes the walk
+                // through, still stopping at its .pagedjs_page.
+                const clipsNothing = [
+                  'inline',
+                  'contents',
+                  'none',
+                  'table-row',
+                  'table-row-group',
+                  'table-header-group',
+                  'table-footer-group',
+                  'table-column',
+                  'table-column-group',
+                ].includes(ancestorStyle.display);
+                const contained =
+                  ancestorStyle.contain
+                    .split(/\s+/)
+                    .some(word =>
+                      ['paint', 'strict', 'content'].includes(word),
+                    ) ||
+                  ['auto', 'hidden'].includes(ancestorStyle.contentVisibility);
+                const clippedX =
+                  !clipsNothing &&
+                  (contained || ancestorStyle.overflowX !== 'visible');
+                const clippedY =
+                  !clipsNothing &&
+                  (contained || ancestorStyle.overflowY !== 'visible');
+                // T08-6: past this ancestor, what hangs from it clips as in
+                // flow again, or is positioned against its own containing
+                // block further up.
+                pending = ancestorStyle.position;
+                if (clippedX || clippedY) {
+                  // The clip edges: the padding box, moved out by the
+                  // computed overflow-clip-margin — an optional box
+                  // keyword (padding-box by default, border-box,
+                  // content-box) and an optional px length growing that
+                  // box on every side; anything unrecognised counts as
+                  // the padding box grown by 0 — but only when paint
+                  // containment applies or both overflows are clip.
+                  const borderL = Number.parseFloat(
+                    ancestorStyle.borderLeftWidth,
+                  );
+                  const borderT = Number.parseFloat(
+                    ancestorStyle.borderTopWidth,
+                  );
+                  const borderR = Number.parseFloat(
+                    ancestorStyle.borderRightWidth,
+                  );
+                  const borderB = Number.parseFloat(
+                    ancestorStyle.borderBottomWidth,
+                  );
+                  let edgeX0 = ancestorRect.x;
+                  let edgeY0 = ancestorRect.y;
+                  let edgeX1 = ancestorRect.right;
+                  let edgeY1 = ancestorRect.bottom;
+                  let marginBox = 'padding-box';
+                  let marginLength = 0;
+                  if (
+                    contained ||
+                    (ancestorStyle.overflowX === 'clip' &&
+                      ancestorStyle.overflowY === 'clip')
+                  ) {
+                    for (const token of ancestorStyle
+                      .getPropertyValue('overflow-clip-margin')
+                      .trim()
+                      .split(/\s+/)) {
+                      if (
+                        ['padding-box', 'border-box', 'content-box'].includes(
+                          token,
+                        )
+                      ) {
+                        marginBox = token;
+                      } else if (/^-?[\d.]+px$/.test(token)) {
+                        marginLength = Number.parseFloat(token);
+                      }
+                    }
+                  }
+                  if (marginBox !== 'border-box') {
+                    edgeX0 += borderL;
+                    edgeX1 -= borderR;
+                    edgeY0 += borderT;
+                    edgeY1 -= borderB;
+                  }
+                  if (marginBox === 'content-box') {
+                    edgeX0 += Number.parseFloat(ancestorStyle.paddingLeft);
+                    edgeX1 -= Number.parseFloat(ancestorStyle.paddingRight);
+                    edgeY0 += Number.parseFloat(ancestorStyle.paddingTop);
+                    edgeY1 -= Number.parseFloat(ancestorStyle.paddingBottom);
+                  }
+                  if (clippedX) {
+                    x0 = Math.max(x0, edgeX0 - marginLength);
+                    x1 = Math.min(x1, edgeX1 + marginLength);
+                  }
+                  if (clippedY) {
+                    y0 = Math.max(y0, edgeY0 - marginLength);
+                    y1 = Math.min(y1, edgeY1 + marginLength);
+                  }
+                }
+                if (at.classList.contains('pagedjs_page')) break;
+              }
+              // Infinite only off every page: no clip then (an infinite
+              // number doesn't survive the trip out of the browser).
+              if ([x0, y0, x1, y1].every(Number.isFinite)) {
+                const clip = {
+                  x: x0,
+                  y: y0,
+                  width: x1 - x0,
+                  height: y1 - y0,
+                };
+                for (const entry of boxes) {
+                  if (
+                    inner !== element ||
+                    entry.kind === 'outline' ||
+                    entry.kind === 'shadow'
+                  ) {
+                    entry.clip = clip;
+                  }
                 }
               }
             }

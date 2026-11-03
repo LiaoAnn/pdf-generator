@@ -55,16 +55,18 @@ export interface MeasuredElement {
 }
 
 /**
- * Something painted on whole px inside (or being) a measured element. `img`,
- * `svg` and `box` paint near or inside the border box; a ::before/::after's
- * background and borders (`pseudo`) may lie outside it, and `outline` and
- * `shadow` paint a ring or shape that may extend past it, so those only
- * ever grow the block's box, cut to the overflow clips around it and to its
- * page.
+ * Something painted on whole px inside (or being) a measured element.
+ * `img`, `svg` and `box` of the element itself paint inside its border box;
+ * those of an element inside it may lie outside it (T08-6: a negative
+ * margin, an absolutely positioned child), as may a ::before/::after's
+ * background and borders (`pseudo`), and `outline` and `shadow` paint a
+ * ring or shape that may extend past it, so those only ever grow the
+ * block's box, cut to the overflow clips around it and to its page.
  */
 export interface PaintedBox {
   /**
-   * An `<img>`, an `<svg>` not inside another `<svg>`, the background,
+   * An `<img>`, an `<svg>` not inside another `<svg>`, with computed
+   * visibility `visible`, the background,
    * borders and inset box-shadows of an element (`box`), those of a
    * ::before/::after pseudo-element of it or of an element in it (`pseudo`),
    * an element's outline (`outline`), or an element's outer box-shadow
@@ -97,7 +99,9 @@ export interface PaintedBox {
    */
   sliced?: ('left' | 'right')[];
   /**
-   * Outline, shadow and pseudo only: the rect it paints inside, in viewport
+   * Outline, shadow and pseudo entries, and (T08-6) the img, svg and box
+   * entries of an element inside the block (never the block's own): the
+   * rect the entry paints inside, in viewport
    * coordinates: the intersection, over the ancestors up to its
    * `.pagedjs_page`, of each one's clip rect — its padding box on every
    * axis whose overflow is not visible, or on both axes under paint
@@ -105,9 +109,16 @@ export interface PaintedBox {
    * content, or the computed `content-visibility` is auto or hidden),
    * grown by its overflow-clip-margin only when containment applies or
    * both overflows are `clip`; inline boxes, display contents/none and
-   * table rows, row groups, columns and column groups clip nothing. A
-   * pseudo-element's ancestors start at its host, so the host's overflow
-   * clips its own pseudo-elements.
+   * table rows, row groups, columns and column groups clip nothing. An
+   * ancestor clips only descendants whose containing-block chain passes
+   * through it (T08-6): one that is not the containing block of an out
+   * of flow element (a non-static position for absolutely positioned,
+   * also a transform, perspective, filter, translate, rotate or scale,
+   * `backdrop-filter`, layout or paint containment, `content-visibility`
+   * auto/hidden, `container-type` other than `normal` or a `will-change`
+   * of one of those for fixed-positioned descendants) clips nothing of
+   * it. A pseudo-element's ancestors start at its host, so the host's
+   * overflow clips its own pseudo-elements.
    */
   clip?: Rect;
   /**

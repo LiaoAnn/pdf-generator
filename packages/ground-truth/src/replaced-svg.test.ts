@@ -133,7 +133,7 @@ describe('readGroundTruth: an <svg> is painted from a rounded origin at its own 
     });
   }, 30_000);
 
-  test('an svg wider than its overflow:hidden block is not counted', async () => {
+  test('an svg wider than its overflow:hidden block counts only as far as the block’s clip lets it show', async () => {
     await withPage(async page => {
       await paginate(
         page,
@@ -142,10 +142,13 @@ describe('readGroundTruth: an <svg> is painted from a rounded origin at its own 
         css,
       );
       const result = await readGroundTruth(page, source);
-      // The svg is flush with the block's left and top but 60 px wider than
-      // it (what KaTeX's wide svgs do). Counting it would snap the block's
-      // left to 75 px (56.25 pt); it must keep 74.75..115.375 x 100.25..130.875.
-      expect(boxes(result)).toEqual({ code: [56.06, 75.19, 86.53, 98.16] });
+      // The svg is 74.75..175.25 x 100.25..130.875 px, 60 px wider than the
+      // block (what KaTeX's wide svgs do). T08-6: the block's clip, its
+      // padding box 74.75..115.375 x 100.25..130.875 painted 75..115 x
+      // 100..131, cuts it; what shows is flush with every side of the block.
+      // The svg paints from its rounded origin (75, 100) for 30.625 px down,
+      // so the ink is 75..115 x 100..130.625.
+      expect(boxes(result)).toEqual({ code: [56.25, 75, 86.25, 97.97] });
     });
   }, 30_000);
 });

@@ -218,83 +218,78 @@ export function buildGroundTruth(
 const flush = 0.01;
 
 /**
- * The box as Chrome prints it: it paints each painted box inside the box on
- * whole px of its page — a replaced element (T08-2), or a visible background
- * (T08-3), or a rebuilt ::before/::after box that lies inside it (T08-4) —
- * so a side the box shares with one moves to where that one is painted, and
- * the box grows to cover them all. Ones that stick out of the box (clipped,
- * say) are left out; a pseudo-element's box that lies outside grows it
- * instead, cut to its overflow clips. A clip-path on the element or an
- * ancestor (T08-5) cuts the ink at the clip region's exact, unrounded
- * edges: the whole-px paint of an inside entry is intersected with it
- * (unrounded), and where the entry lies is the intersection too, so the
- * shared-side test follows the visible ink; an entry cut away entirely
- * paints nothing. Decorations painted outside the border box (T08-4:
- * outlines and outer box-shadows) skip the inside rule and apply
- * afterwards, as pure growth: their visible ink only ever moves a side
- * outwards, never inwards; the clip-path region cuts each strip too,
- * without rounding.
+ * The box as Chrome prints it: it paints each painted box on whole px of
+ * its page — a replaced element (T08-2), a visible background or border
+ * (T08-3), a rebuilt ::before/::after box (T08-4) — so a side the box
+ * shares with one moves to where that one paints, and the box grows to
+ * cover them all. Where an entry lies is its layout cut at the overflow
+ * clips around it (unrounded) and at a clip-path region (T08-5, unrounded);
+ * where it paints is the whole-px paint cut at the clips' edges rounded to
+ * whole px of the page and at the region's exact, unrounded edges. T08-6:
+ * an entry may lie outside the box (a descendant's background, border,
+ * <img> or <svg> sticking out of it): every side it shares moves as for an
+ * inside entry, and any side it lies beyond only grows, cut to the same
+ * clips and region; an entry the cuts empty out counts for nothing.
+ * Decorations painted outside the border box (T08-4: outlines and outer
+ * box-shadows) skip the shared-side rule and apply afterwards, as pure
+ * growth: their visible ink only ever moves a side outwards, never inwards;
+ * the clip-path region cuts each strip too, without rounding.
  */
 function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
-  const inside = paintedBoxes
+  const entries = paintedBoxes
     .filter(({ kind }) => kind !== 'outline' && kind !== 'shadow')
-    .map(({ kind, rect, clipPath }) => {
+    .map(({ kind, rect, clip, clipPath }) => {
       const layout = edges(rect, page);
-      if (clipPath === undefined) {
-        return { kind, layout, paint: paint(kind, layout) };
+      let visible = layout;
+      let ink = paint(kind, layout);
+      if (clip !== undefined) {
+        // The clips cut where the entry lies at their exact edges; its ink
+        // is cut where THEY paint: the edges rounded to whole px of the
+        // page.
+        const clips = edges(clip, page);
+        visible = intersect(visible, clips);
+        ink = intersect(ink, clips.map(Math.round) as Bbox);
       }
-      // T08-5: what a clip-path leaves of the layout decides where the
-      // entry lies; its ink is the whole-px paint cut at the clip region's
-      // exact, unrounded edges.
-      const region = edges(clipPath, page);
-      const layoutCut = intersect(layout, region);
-      if (layoutCut[2] <= layoutCut[0] || layoutCut[3] <= layoutCut[1]) {
+      if (clipPath !== undefined) {
+        // A clip-path region (T08-5) cuts both at its exact, unrounded
+        // edges.
+        const region = edges(clipPath, page);
+        visible = intersect(visible, region);
+        ink = intersect(ink, region);
+      }
+      if (visible[2] <= visible[0] || visible[3] <= visible[1]) {
         return undefined;
       }
-      const ink = intersect(paint(kind, layout), region);
       if (ink[2] <= ink[0] || ink[3] <= ink[1]) return undefined;
-      return { kind, layout: layoutCut, paint: ink };
+      return { visible, ink };
     })
-    .filter(entry => entry !== undefined)
-    .filter(
-      ({ layout }) =>
-        layout[0] >= box[0] - flush &&
-        layout[1] >= box[1] - flush &&
-        layout[2] <= box[2] + flush &&
-        layout[3] <= box[3] + flush,
-    );
+    .filter(entry => entry !== undefined);
   // The visible ink of every outline ring and box-shadow shape, after its
-  // clip, and of every `pseudo` box that lies outside (ones inside already
-  // counted above). A clip-path region cuts each strip at its exact,
+  // clip. A clip-path region (T08-5) cuts each strip at its exact,
   // unrounded edges (the overflow clip itself stays rounded).
   const growth = paintedBoxes
-    .filter(
-      ({ kind }) =>
-        kind === 'outline' || kind === 'shadow' || kind === 'pseudo',
-    )
+    .filter(({ kind }) => kind === 'outline' || kind === 'shadow')
     .flatMap(entry => {
       const strips =
         entry.kind === 'outline'
           ? outlineStrips(entry, page)
-          : entry.kind === 'shadow'
-            ? shadowStrips(entry, page)
-            : pseudoStrips(entry, box, page);
+          : shadowStrips(entry, page);
       if (entry.clipPath === undefined) return strips;
       const region = edges(entry.clipPath, page);
       return strips
         .map(strip => intersect(strip, region))
         .filter(strip => strip[2] > strip[0] && strip[3] > strip[1]);
     });
-  if (inside.length === 0 && growth.length === 0) return rect;
+  if (entries.length === 0 && growth.length === 0) return rect;
   const side = (i: 0 | 1 | 2 | 3): number => {
     const outer = i < 2 ? Math.min : Math.max;
     // A shared side is wherever they paint; any other side only grows.
-    const shared = inside.some(
-      ({ layout }) => Math.abs(layout[i] - box[i]) <= flush,
+    const shared = entries.some(
+      ({ visible }) => Math.abs(visible[i] - box[i]) <= flush,
     );
-    return inside.reduce(
-      (at, { paint }) => outer(at, paint[i]),
+    return entries.reduce(
+      (at, { ink }) => outer(at, ink[i]),
       shared ? (i < 2 ? Infinity : -Infinity) : box[i],
     );
   };
@@ -372,42 +367,6 @@ function outlineStrips(outline: PaintedBox, page: Rect): Bbox[] {
     inner[3] + width,
   ];
   return ringStrips(outer, inner, clip);
-}
-
-/**
- * The strip one rebuilt ::before/::after box (T08-4) paints where it lies
- * outside the block's box, in page px: the rect edges rounded page-relative
- * on their own (as a `box`), cut to the overflow clips around the
- * pseudo-element (clip edges rounded page-relative too) and to a clip-path
- * region's exact, unrounded edges (T08-5, in `painted`); one lying inside
- * the box — with what its clip-path leaves of it deciding where it lies —
- * instead counted with the `box` entries, and an empty one paints nothing.
- */
-function pseudoStrips(pseudo: PaintedBox, box: Bbox, page: Rect): Bbox[] {
-  const layout = edges(pseudo.rect, page);
-  const visible =
-    pseudo.clipPath === undefined
-      ? layout
-      : intersect(layout, edges(pseudo.clipPath, page));
-  if (visible[2] <= visible[0] || visible[3] <= visible[1]) return [];
-  // One lying inside the box counted with the `box` entries above.
-  if (
-    visible[0] >= box[0] - flush &&
-    visible[1] >= box[1] - flush &&
-    visible[2] <= box[2] + flush &&
-    visible[3] <= box[3] + flush
-  ) {
-    return [];
-  }
-  const clip = edges(pseudo.clip ?? page, page).map(Math.round) as Bbox;
-  const [x0, y0, x1, y1] = layout.map(Math.round) as Bbox;
-  const cut: Bbox = [
-    Math.max(x0, clip[0]),
-    Math.max(y0, clip[1]),
-    Math.min(x1, clip[2]),
-    Math.min(y1, clip[3]),
-  ];
-  return cut[2] > cut[0] && cut[3] > cut[1] ? [cut] : [];
 }
 
 /**
