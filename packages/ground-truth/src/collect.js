@@ -103,6 +103,8 @@ export function collect() {
     'visibility',
     'background-color',
     'background-image',
+    // T08-5: also decides what it paints (the background's clip box).
+    'background-clip',
     'border-top-style',
     'border-top-width',
     'border-top-color',
@@ -476,13 +478,13 @@ export function collect() {
             }
             // A laid-out HTML element with a visible background or border,
             // not inside an <svg>: visibility resolved on it (inherited as
-            // computed). The background (an image, or a color with alpha > 0)
-            // paints each whole client rect; without one, the painted area is
-            // the union of the visible border sides' strips on each client
-            // rect, a side being visible when its style is not none/hidden,
-            // its width is positive and its color's alpha > 0. alpha is what
-            // follows the '/' in the slash color syntax (rgb(0 0 0 / 0),
-            // lab(), color()) or rgba()'s fourth part.
+            // computed). The painted area on each client rect is the union of
+            // the background's clip boxes (T08-5; a text clip paints only the
+            // glyphs, so no box) and the visible border sides' strips, a side
+            // being visible when its style is not none/hidden, its width is
+            // positive and its color's alpha > 0. alpha is what follows the
+            // '/' in the slash color syntax (rgb(0 0 0 / 0), lab(), color())
+            // or rgba()'s fourth part.
             // An outer <svg> (one not inside another <svg>) is a CSS box
             // too: its outline and outer box-shadows paint like an HTML
             // element's (T08-4). It keeps its 'svg' entry above and gets no
@@ -514,10 +516,70 @@ export function collect() {
                     ? Number.parseFloat(parts[3] ?? '')
                     : 1;
               });
-              const background =
-                !outerSvg &&
-                visible &&
-                (style.backgroundImage !== 'none' || (alpha[0] ?? 0) > 0);
+              // T08-5: the background paints over each layer's
+              // background-clip box, not each whole client rect. Split the
+              // computed background-image on top-level commas (not inside
+              // parentheses, as in a gradient's color stops) into its layers
+              // and repeat the computed background-clip list cyclically to
+              // that many entries (the CSS rule for layered lists). Each
+              // entry is the client's rect's insets for that layer's clip box
+              // in top, right, bottom, left order — border-box and anything
+              // else inset nothing, padding-box insets by the computed border
+              // widths, content-box additionally by the paddings — or null
+              // for a text clip, which paints only the glyphs. A layer with
+              // image none paints nothing; the background color paints over
+              // the LAST layer's clip (below, per client rect).
+              // Split on top-level commas: a comma inside a gradient's
+              // color stops may itself be followed by another '(', so count
+              // parentheses instead of looking ahead.
+              /** @type {string[]} */
+              const bgLayers = Array.from(style.backgroundImage)
+                .reduce(
+                  (acc, ch) => {
+                    if (ch === ',' && acc.depth === 0) {
+                      acc.parts.push('');
+                    } else {
+                      if (ch === '(') acc.depth += 1;
+                      if (ch === ')') acc.depth -= 1;
+                      acc.parts[acc.parts.length - 1] =
+                        (acc.parts[acc.parts.length - 1] ?? '') + ch;
+                    }
+                    return acc;
+                  },
+                  /** @type {{ parts: string[]; depth: number }} */ ({
+                    parts: [''],
+                    depth: 0,
+                  }),
+                )
+                .parts.map(part => part.trim());
+              /** @type {string[]} */
+              const bgClips = style.backgroundClip
+                .split(',')
+                .map(part => part.trim().toLowerCase());
+              /** @type {(number[] | null)[]} */
+              const bgAreas = outerSvg
+                ? []
+                : bgLayers.map((_layer, i) => {
+                    const clip = bgClips[i % bgClips.length] ?? 'border-box';
+                    if (clip === 'text') return null;
+                    const border = [
+                      style.borderTopWidth,
+                      style.borderRightWidth,
+                      style.borderBottomWidth,
+                      style.borderLeftWidth,
+                    ].map(Number.parseFloat);
+                    if (clip === 'padding-box') return border;
+                    if (clip !== 'content-box') return [0, 0, 0, 0];
+                    return [
+                      style.paddingTop,
+                      style.paddingRight,
+                      style.paddingBottom,
+                      style.paddingLeft,
+                    ].map(
+                      (padding, side) =>
+                        Number.parseFloat(padding) + (border[side] ?? 0),
+                    );
+                  });
               // T08-4: an outline paints a ring around each client rect
               // when it is styled (not none), wider than 0, visible and not
               // fully transparent (Chrome reports a width even for style
@@ -732,22 +794,28 @@ export function collect() {
                     ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
-                if (background) {
-                  boxes.push({
-                    kind: pseudo ? 'pseudo' : 'box',
-                    rect: {
-                      x: rect.x,
-                      y: rect.y,
-                      width: rect.width,
-                      height: rect.height,
-                    },
-                    ...(pseudo && clipBox !== undefined
-                      ? { clip: clipBox }
-                      : {}),
-                    ...(clipPath === undefined ? {} : { clipPath }),
-                  });
-                  continue;
-                }
+                // Where this client rect's background paints, [x0, y0, x1,
+                // y1] each: every live layer's clip box (a layer with image
+                // none paints nothing; the background color paints over the
+                // LAST layer's clip). An empty inset rect (inset past itself)
+                // paints nothing.
+                /** @type {number[][]} */
+                const bgRects = bgAreas.flatMap((inset, i) => {
+                  if (
+                    inset === null ||
+                    !visible ||
+                    ((bgLayers[i] ?? 'none') === 'none' &&
+                      ((alpha[0] ?? 0) <= 0 || i !== bgAreas.length - 1))
+                  ) {
+                    return [];
+                  }
+                  const [top = 0, right = 0, bottom = 0, left = 0] = inset;
+                  const bx0 = rect.x + left;
+                  const by0 = rect.y + top;
+                  const bx1 = rect.x + rect.width - right;
+                  const by1 = rect.y + rect.height - bottom;
+                  return bx1 <= bx0 || by1 <= by0 ? [] : [[bx0, by0, bx1, by1]];
+                });
                 // With border-collapse: collapse a cell's outer half-border
                 // lies inside the table's own border box: the outer cells'
                 // client rects sit half a border width inside the table's
@@ -827,14 +895,16 @@ export function collect() {
                   ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
                   ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
                 ];
-                if (strips.length > 0) {
-                  const x0 = Math.min(...strips.map(strip => strip[0] ?? 0));
-                  const y0 = Math.min(...strips.map(strip => strip[1] ?? 0));
-                  const right0 = Math.max(
-                    ...strips.map(strip => strip[2] ?? 0),
-                  );
+                // One entry per client rect: the union bbox of everything it
+                // paints — the background's clip boxes and the border
+                // strips. Neither → no entry.
+                const areas = [...bgRects, ...strips];
+                if (areas.length > 0) {
+                  const x0 = Math.min(...areas.map(strip => strip[0] ?? 0));
+                  const y0 = Math.min(...areas.map(strip => strip[1] ?? 0));
+                  const right0 = Math.max(...areas.map(strip => strip[2] ?? 0));
                   const bottom0 = Math.max(
-                    ...strips.map(strip => strip[3] ?? 0),
+                    ...areas.map(strip => strip[3] ?? 0),
                   );
                   boxes.push({
                     kind: pseudo ? 'pseudo' : 'box',
