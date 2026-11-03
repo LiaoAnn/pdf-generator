@@ -1230,3 +1230,12 @@
 - **驗收測試**：這些測試不再依賴耗時或預設 timeout；在滿載 CPU 下連跑 40 次都過；故意改壞的實作仍會失敗
 - **不做**：改引擎行為
 - **來源**：PR #105（T05-4）
+
+### T08-7 標準答案：paint containment 內的捨入
+- **目標**：在 `contain: paint`（以及 strict、content、`content-visibility`）的容器內，Chrome 以容器自己的原點捨入畫出的東西與裁切，而不是以頁面原點（實測：子元素背景排版在 205.59 px 印在 205，以頁面捨入應為 206；裁切在 248，以頁面捨入應為 249）。容器原點不在整數 px 時 gt 邊緣最多差 1 px。改成在 paint containment 內以容器原點捨入
+- **Blocked by**：T08-5
+- **Blocks**：—
+- **撞車風險**：`packages/ground-truth`；與 T08-6 不要同時派
+- **驗收測試**：原點在小數 px 的 paint-contained 容器內，背景、框線與裁切的 gt 邊緣與 PDF 墨跡相差 ≤ 0.125 pt；6 個樣板 `compare-gt` 60/60 相同、自我檢查 60/60
+- **不做**：改共用契約；非 inset() 的 clip-path 形狀
+- **來源**：PR #108（T08-5）
