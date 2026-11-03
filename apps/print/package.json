@@ -15,6 +15,7 @@
     "fonts": "node src/fonts/build.ts"
   },
   "devDependencies": {
+    "harfbuzzjs": "1.6.4",
     "katex": "~0.16.47",
     "pagedjs": "0.4.3",
     "typescript": "catalog:",

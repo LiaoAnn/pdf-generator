@@ -70,16 +70,18 @@ test('platformFonts equals the PostScript names of the fonts the print Worker em
     .filter(name => /\.(?:otf|ttf)$/i.test(name))
     .sort();
   expect(files.length).toBeGreaterThan(0);
-  const embedded = (
+  // The unicode-range chunks of a split font keep its PostScript name
+  // (T07-37), so each name counts once.
+  const embedded = new Set(
     await Promise.all(
       files.map(async file =>
         postScriptName(
           new Uint8Array(await readFile(new URL(file, fontsDirectory))),
         ),
       ),
-    )
-  ).sort();
-  expect([...platformFonts].sort()).toEqual(embedded);
+    ),
+  );
+  expect([...platformFonts].sort()).toEqual([...embedded].sort());
 });
 
 test('selfChecker rejects an unreadable PDF instead of reporting a pass', async () => {

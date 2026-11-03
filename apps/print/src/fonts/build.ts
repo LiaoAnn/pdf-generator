@@ -7,9 +7,22 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { disableLocl, patchCmap } from './sfnt.ts';
+import { splitFont } from './split.ts';
 
 const noto = 'https://github.com/notofonts/noto-cjk/raw/main';
-const sources = [
+
+interface Source {
+  file: string;
+  url: string;
+  sha256: string;
+  cmap: boolean;
+  locl: boolean;
+  // Also written as unicode-range chunks under Chrome's batch-cache limit
+  // (T07-37).
+  split?: boolean;
+}
+
+const sources: Source[] = [
   {
     file: 'NotoSansTC-Regular.otf',
     url: `${noto}/Sans/SubsetOTF/TC/NotoSansTC-Regular.otf`,
@@ -30,6 +43,7 @@ const sources = [
     sha256: '63515eb0622d589a2f4062e8757c598b3da3bffd053f69abd181c210158ef10c',
     cmap: true,
     locl: true,
+    split: true,
   },
   {
     file: 'NotoSerifTC-Bold.otf',
@@ -37,6 +51,7 @@ const sources = [
     sha256: '3ca2b3294ec84b795d0a45695e78e3612a44dce50f9fc776cd40206340a5768d',
     cmap: true,
     locl: true,
+    split: true,
   },
   {
     file: 'LXGWWenKaiTC-Regular.ttf',
@@ -44,6 +59,7 @@ const sources = [
     sha256: '6662480a3f95b4a90c80b189c679617a48adce3a505118a6af63ce5a482b83fa',
     cmap: true,
     locl: false,
+    split: true,
   },
   {
     file: 'NotoSansSymbols2-Regular.ttf',
@@ -94,7 +110,7 @@ async function source(file: string, url: string): Promise<Uint8Array> {
 
 await mkdir(cache, { recursive: true });
 await mkdir(out, { recursive: true });
-for (const { file, url, sha256: expected, cmap, locl } of sources) {
+for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
   const bytes = await source(file, url);
   const actual = sha256(bytes);
   if (actual !== expected) {
@@ -104,6 +120,15 @@ for (const { file, url, sha256: expected, cmap, locl } of sources) {
   const emptied = locl ? disableLocl(patched?.font ?? bytes) : undefined;
   const font = emptied?.font ?? patched?.font ?? bytes;
   await writeFile(join(out, file), font);
+  if (split) {
+    for (const chunk of await splitFont(font, file)) {
+      await writeFile(join(out, chunk.file), chunk.font);
+      console.log(
+        `public/fonts/${chunk.file} sha256 ${sha256(chunk.font)} ` +
+          `(${chunk.font.length} bytes, ${chunk.unicodeRange})`,
+      );
+    }
+  }
   const notes = [
     patched &&
       `${patched.dropped.length} code points dropped, ${patched.copied.length} given their own glyph`,

@@ -224,6 +224,9 @@ importers:
         specifier: ^4.6.7
         version: 4.6.7
     devDependencies:
+      harfbuzzjs:
+        specifier: 1.6.4
+        version: 1.6.4
       katex:
         specifier: ~0.16.47
         version: 0.16.47
@@ -2861,6 +2864,9 @@ packages:
     engines: {node: '>=0.4.7'}
     hasBin: true
 
+  harfbuzzjs@1.6.4:
+    resolution: {integrity: sha512-T/PyfhVt1gGR2Tkf5KJUj1DQFkVBXHw552lS1iLEEDhV1Lukb3eq1pk2ov85kgbT2YUiZtJBTak9w+M7YgzUEQ==}
+
   http-proxy-agent@7.0.2:
     resolution: {integrity: sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig==}
     engines: {node: '>= 14'}
@@ -5362,6 +5368,8 @@ snapshots:
       wordwrap: 1.0.0
     optionalDependencies:
       uglify-js: 3.19.3
+
+  harfbuzzjs@1.6.4: {}
 
   http-proxy-agent@7.0.2(supports-color@10.2.2):
     dependencies:
