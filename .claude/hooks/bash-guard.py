@@ -46,7 +46,7 @@ RULES = (
         and not c.lstrip().startswith("wt-bg"),
         "A full `pnpm verify`/`pnpm test` in the foreground blocks messages for "
         "its whole run. Start it with `wt-bg <path> <name> --heavy -- pnpm verify` "
-        "and poll with `wt-wait <path> <name> --max 110`.",
+        "and wait with one `wt-wait <path> <name> --max 1500` run with run_in_background: true.",
     ),
 )
 

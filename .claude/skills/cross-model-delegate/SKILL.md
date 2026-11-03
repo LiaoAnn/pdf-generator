@@ -60,6 +60,8 @@ Don't commit red tests (`AGENTS.md`): the slice's commit holds its tests and its
 
 ## Implementer brief (Kimi K3)
 
+Pass every brief inline in `delegate_task`'s message. Don't write it to a file with a shell heredoc: bash-guard reads the whole command text, so a brief that mentions `wt-exec` and `pnpm verify` is refused as a foreground suite run (T06-11).
+
 The child starts with no history and doesn't see your conversation or skills. pi loads `~/.config/devvm/AGENTS.md` on its own; tell it to read the repo's `AGENTS.md`. Write a self-contained brief:
 
 ```text
