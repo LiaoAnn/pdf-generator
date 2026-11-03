@@ -24,6 +24,10 @@ if [ "$(playwright --version 2>/dev/null)" != "Version $PLAYWRIGHT_VERSION" ]; t
   npm install -g --no-fund --no-audit "playwright@$PLAYWRIGHT_VERSION"
 fi
 sudo mkdir -p "$PLAYWRIGHT_BROWSERS_PATH"
+# Docker creates the volume's mount-point parent /home/node/.cache as root;
+# wrangler's local Browser Rendering writes ~/.cache/.wrangler. Non-recursive:
+# a chown -R would walk the shared playwright_browsers volume.
+sudo chown node:node /home/node/.cache
 sudo chown node:node "$PLAYWRIGHT_BROWSERS_PATH"
 sudo "$(command -v playwright)" install-deps chromium-headless-shell
 # No-op when this version's headless shell is already on the volume.
