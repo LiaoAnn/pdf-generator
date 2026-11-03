@@ -27,6 +27,14 @@ export function startPrintWorker(
         { type: 'plain_text', value },
       ]),
     ),
+    // wrangler.jsonc's build command (the Paged.js copy) uses paths relative
+    // to apps/print; wrangler runs it in its own working directory, which
+    // under vitest is the repo root.
+    build: {
+      custom: {
+        workingDirectory: fileURLToPath(new URL('..', import.meta.url)),
+      },
+    },
     dev: {
       server: { hostname: '127.0.0.1', port: 0 },
       inspector: false,
