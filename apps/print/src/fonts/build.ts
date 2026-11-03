@@ -2,14 +2,14 @@
 // (sha256-checked), with the Noto CJK and LXGW WenKai cmaps patched
 // (T03 §2.5; every code point gets its own glyph, T07-13) and the Noto CJK
 // `locl` feature emptied (T07-11). A split (`split`) font's whole file is
-// written, unserved, to apps/print/fonts (T07-37) and its unicode-range
-// chunks to public/fonts; the other files go whole to public/fonts.
+// written, unserved, to apps/print/fonts (T07-37): the input of the
+// unicode-range chunks wrangler's build command makes (`chunks.ts`), which
+// this script never writes. The other files go whole to public/fonts.
 // Run with `pnpm --filter @pdf-generator/print fonts`; commit the result.
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { disableLocl, patchCmap } from './sfnt.ts';
-import { splitFont } from './split.ts';
 
 const noto = 'https://github.com/notofonts/noto-cjk/raw/main';
 
@@ -19,8 +19,8 @@ interface Source {
   sha256: string;
   cmap: boolean;
   locl: boolean;
-  // Also written as unicode-range chunks under Chrome's batch-cache limit
-  // (T07-37).
+  // Also written, whole, to apps/print/fonts: the input of its
+  // unicode-range chunks (built by chunks.ts, T07-37).
   split?: boolean;
 }
 
@@ -125,15 +125,6 @@ for (const { file, url, sha256: expected, cmap, locl, split } of sources) {
   const emptied = locl ? disableLocl(patched?.font ?? bytes) : undefined;
   const font = emptied?.font ?? patched?.font ?? bytes;
   await writeFile(join(split ? wholeOut : out, file), font);
-  if (split) {
-    for (const chunk of await splitFont(font, file)) {
-      await writeFile(join(out, chunk.file), chunk.font);
-      console.log(
-        `public/fonts/${chunk.file} sha256 ${sha256(chunk.font)} ` +
-          `(${chunk.font.length} bytes, ${chunk.unicodeRange})`,
-      );
-    }
-  }
   const notes = [
     patched &&
       `${patched.dropped.length} code points dropped, ${patched.copied.length} given their own glyph`,

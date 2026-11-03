@@ -137,3 +137,7 @@ dist
 
 # Copied from npm pagedjs by apps/print's wrangler build command (T07-9)
 apps/print/public/paged.polyfill.js
+
+# Split from the committed apps/print/fonts by apps/print's wrangler build
+# command (T07-37)
+apps/print/public/fonts/*.part[0-3].*

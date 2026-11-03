@@ -11,13 +11,16 @@
   // keep_names helpers (__name) would not exist in the page.
   "keep_names": false,
   // Paged.js is served from the pinned npm pagedjs (the same file
-  // ground-truth and self-check test against); wrangler runs this before
+  // ground-truth and self-check test against), and the large platform fonts
+  // from their unicode-range chunks `src/fonts/chunks.ts` splits out of the
+  // committed whole fonts (T07-37); wrangler runs this before
   // `wrangler dev`, `wrangler deploy` and unstable_startWorker (the tests),
-  // so public/paged.polyfill.js is a gitignored copy, never committed (T07-9).
+  // so public/paged.polyfill.js (T07-9) and public/fonts/*.part*. are
+  // gitignored build output, never committed.
   // Wrangler runs it in its own working directory, not this file's: the
   // package scripts start it in apps/print, and src/test-worker.ts sets it.
   "build": {
-    "command": "cp node_modules/pagedjs/dist/paged.polyfill.js public/paged.polyfill.js",
+    "command": "cp node_modules/pagedjs/dist/paged.polyfill.js public/paged.polyfill.js && node src/fonts/chunks.ts",
   },
   "browser": {
     "binding": "BROWSER",
