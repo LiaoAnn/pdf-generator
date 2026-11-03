@@ -64,10 +64,11 @@ export interface MeasuredElement {
  */
 export interface PaintedBox {
   /**
-   * An `<img>`, an `<svg>` not inside another `<svg>`, the background and
-   * borders of an element (`box`), those of a ::before/::after
-   * pseudo-element of it or of an element in it (`pseudo`), an element's
-   * outline (`outline`), or an element's outer box-shadow (`shadow`).
+   * An `<img>`, an `<svg>` not inside another `<svg>`, the background,
+   * borders and inset box-shadows of an element (`box`), those of a
+   * ::before/::after pseudo-element of it or of an element in it (`pseudo`),
+   * an element's outline (`outline`), or an element's outer box-shadow
+   * (`shadow`).
    */
   kind: 'img' | 'svg' | 'box' | 'pseudo' | 'outline' | 'shadow';
   /**

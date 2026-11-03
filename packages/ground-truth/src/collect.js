@@ -480,9 +480,10 @@ export function collect() {
             // not inside an <svg>: visibility resolved on it (inherited as
             // computed). The painted area on each client rect is the union of
             // the background's clip boxes (T08-5; a text clip paints only the
-            // glyphs, so no box) and the visible border sides' strips, a side
-            // being visible when its style is not none/hidden, its width is
-            // positive and its color's alpha > 0. alpha is what follows the
+            // glyphs, so no box), the visible border sides' strips and the
+            // visible inset box-shadows' strips (T08-5 slice 3), a side being
+            // visible when its style is not none/hidden, its width is positive
+            // and its color's alpha > 0. alpha is what follows the
             // '/' in the slash color syntax (rgb(0 0 0 / 0), lab(), color())
             // or rgba()'s fourth part.
             // An outer <svg> (one not inside another <svg>) is a CSS box
@@ -611,10 +612,12 @@ export function collect() {
               // comma-separated list, each shadow `<color> <x>px <y>px
               // <blur>px <spread>px` with ` inset` last; the colour may hold
               // commas (rgba(...)) or spaces (rgb(0 0 0 / 0)), so split on
-              // commas and spaces outside parentheses only. Inset and fully
-              // transparent shadows (same alpha parsing as borders) paint
-              // nothing. Offsets, blur and spread stay unrounded.
-              const shadows =
+              // commas and spaces outside parentheses only. A fully
+              // transparent shadow (same alpha parsing as borders) paints
+              // nothing; an inset one paints not around the client rect but
+              // inside the padding box, like a border, counted below per
+              // client rect. Offsets, blur and spread stay unrounded.
+              const parsedShadows =
                 visible && style.boxShadow !== 'none'
                   ? style.boxShadow
                       .split(/,(?![^(]*\))/)
@@ -646,8 +649,15 @@ export function collect() {
                           spread,
                         };
                       })
-                      .filter(shadow => !shadow.inset && shadow.alpha > 0)
+                      .filter(shadow => shadow.alpha > 0)
                   : [];
+              const shadows = parsedShadows.filter(shadow => !shadow.inset);
+              // T08-5 slice 3: an inset shadow counts like a border (its
+              // strips join each client rect's union below). An outer <svg>
+              // gets no 'box' entry, so it gets no inset strips either.
+              const insetShadows = outerSvg
+                ? []
+                : parsedShadows.filter(shadow => shadow.inset);
               // An inline element broken over lines is shadowed as one box
               // sliced at the line ends (box-decoration-break: slice, the
               // initial value): a sliced side gets no shadow past it. With
@@ -895,10 +905,59 @@ export function collect() {
                   ...(wBottom > 0 ? [[rect.x, y1 - wBottom, x1, y1]] : []),
                   ...(wLeft > 0 ? [[rect.x, rect.y, rect.x + wLeft, y1]] : []),
                 ];
+                // T08-5 slice 3: an inset box-shadow paints inside the
+                // padding box (this client rect inset by the computed border
+                // widths) a strip along each side its offset toward that
+                // side, its spread and 1.5 × its blur reach, each width
+                // clamped to the padding box's own size (blur included, per
+                // the probe). An empty padding box adds nothing; several
+                // shadows' strips all join the same union.
+                const pbX0 = rect.x + Number.parseFloat(style.borderLeftWidth);
+                const pbY0 = rect.y + Number.parseFloat(style.borderTopWidth);
+                const pbX1 = x1 - Number.parseFloat(style.borderRightWidth);
+                const pbY1 = y1 - Number.parseFloat(style.borderBottomWidth);
+                const insetStrips =
+                  visible && pbX1 > pbX0 && pbY1 > pbY0
+                    ? insetShadows.flatMap(shadow => {
+                        const reach = shadow.spread + 1.5 * shadow.blur;
+                        const [iTop = 0, iRight = 0, iBottom = 0, iLeft = 0] = [
+                          Math.min(
+                            Math.max(shadow.offsetY + reach, 0),
+                            pbY1 - pbY0,
+                          ),
+                          Math.min(
+                            Math.max(-shadow.offsetX + reach, 0),
+                            pbX1 - pbX0,
+                          ),
+                          Math.min(
+                            Math.max(-shadow.offsetY + reach, 0),
+                            pbY1 - pbY0,
+                          ),
+                          Math.min(
+                            Math.max(shadow.offsetX + reach, 0),
+                            pbX1 - pbX0,
+                          ),
+                        ];
+                        return [
+                          ...(iTop > 0
+                            ? [[pbX0, pbY0, pbX1, pbY0 + iTop]]
+                            : []),
+                          ...(iRight > 0
+                            ? [[pbX1 - iRight, pbY0, pbX1, pbY1]]
+                            : []),
+                          ...(iBottom > 0
+                            ? [[pbX0, pbY1 - iBottom, pbX1, pbY1]]
+                            : []),
+                          ...(iLeft > 0
+                            ? [[pbX0, pbY0, pbX0 + iLeft, pbY1]]
+                            : []),
+                        ];
+                      })
+                    : [];
                 // One entry per client rect: the union bbox of everything it
-                // paints — the background's clip boxes and the border
-                // strips. Neither → no entry.
-                const areas = [...bgRects, ...strips];
+                // paints — the background's clip boxes, the border strips
+                // and the inset shadows' strips. None → no entry.
+                const areas = [...bgRects, ...strips, ...insetStrips];
                 if (areas.length > 0) {
                   const x0 = Math.min(...areas.map(strip => strip[0] ?? 0));
                   const y0 = Math.min(...areas.map(strip => strip[1] ?? 0));
