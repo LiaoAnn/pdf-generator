@@ -98,10 +98,16 @@ export interface PaintedBox {
   sliced?: ('left' | 'right')[];
   /**
    * Outline, shadow and pseudo only: the rect it paints inside, in viewport
-   * coordinates: the intersection of the padding box of every ancestor
-   * whose overflow clips that axis, up to its `.pagedjs_page` (a
+   * coordinates: the intersection, over the ancestors up to its
+   * `.pagedjs_page`, of each one's clip rect — its padding box on every
+   * axis whose overflow is not visible, or on both axes under paint
+   * containment (T08-5: the computed `contain` holds paint, strict or
+   * content, or the computed `content-visibility` is auto or hidden),
+   * grown by its overflow-clip-margin only when containment applies or
+   * both overflows are `clip`; inline boxes, display contents/none and
+   * table rows, row groups, columns and column groups clip nothing. A
    * pseudo-element's ancestors start at its host, so the host's overflow
-   * clips its own pseudo-elements).
+   * clips its own pseudo-elements.
    */
   clip?: Rect;
   /**
