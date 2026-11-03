@@ -16,6 +16,7 @@
   },
   "devDependencies": {
     "katex": "~0.16.47",
+    "pagedjs": "0.4.3",
     "typescript": "catalog:",
     "vitest": "catalog:",
     "wrangler": "catalog:"

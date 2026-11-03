@@ -134,3 +134,6 @@ dist
 
 # TanStack Router/Start dev temp files
 .tanstack
+
+# Copied from npm pagedjs by apps/print's wrangler build command (T07-9)
+apps/print/public/paged.polyfill.js

@@ -62,20 +62,22 @@ test.each(['LICENSE-noto-cjk.txt', 'LICENSE-lxgw.txt', 'LICENSE-symbols2.txt'])(
   },
 );
 
-test('serves the Paged.js 0.4.3 polyfill as JavaScript rather than the Worker fallback', async () => {
-  const response = await worker.fetch(
+test('serves the npm pagedjs 0.4.3 polyfill byte for byte as JavaScript', async () => {
+  // The repo holds no copy of Paged.js: the Worker serves the file of the
+  // pagedjs version apps/print pins, which the same version ground-truth and
+  // self-check test against. A missed or stale copy into public/ fails here
+  // (a clean checkout has no public/paged.polyfill.js at all) (T07-9).
+  const npmPolyfill = await readFile(
+    new URL('../dist/paged.polyfill.js', import.meta.resolve('pagedjs')),
+  );
+  const response = await fetch(
     new URL('/paged.polyfill.js', (await worker.url).href),
   );
   expect(response.status).toBe(200);
   expect(response.headers.get('content-type')).toMatch(
     /(?:javascript|ecmascript)/i,
   );
-  const script = await response.text();
-  expect(script).toBe(
-    await readFile(
-      new URL('../public/paged.polyfill.js', import.meta.url),
-      'utf8',
-    ),
-  );
-  expect(script).toMatch(/Paged\.js v0\.4\.3/);
+  const served = Buffer.from(await response.arrayBuffer());
+  expect(served.equals(npmPolyfill)).toBe(true);
+  expect(served.toString('utf8')).toMatch(/Paged\.js v0\.4\.3/);
 });
