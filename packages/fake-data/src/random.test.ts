@@ -38,7 +38,8 @@ test('fresh CLI runs reproduce the pinned stream and distinguish seeds', () => {
       495813,
     ]
   `);
-});
+  // Room for all three child runs' 10 s timeouts: a hang guard, not a speed check.
+}, 40_000);
 
 test('mixed calls replay independently of other streams and ambient randomness', () => {
   const forbidden = () => {
