@@ -91,6 +91,36 @@ const countedDerivedReads = `
   };
 `;
 
+// Running balances below the same row share one walk of it, however many
+// balances and paths read it. Counted against a reference that pays every
+// balance's own reads (its row, opening and target) but walks nothing, the
+// fill may add one lookup per balance and path (it reads the row), the
+// values the balances read, and a few reads per container on the shared
+// walk (check, then descend: 2 to 4 measured, 3 counted); the budget is twice
+// that. A walk per balance or per path multiplies the container term instead.
+const countedSharedWalk = `
+  ${countedDerivedReads}
+  // The same rules with every running balance adding and subtracting nothing.
+  const withoutPaths = rules => {
+    const copy = structuredClone(rules);
+    const visit = field => {
+      if (field.type === 'runningBalance') field.add = field.subtract = [];
+      if (field.type === 'object') Object.values(field.fields).forEach(visit);
+      if (field.type === 'array') visit(field.items);
+    };
+    Object.values(copy.fields).forEach(visit);
+    return copy;
+  };
+  const assertSharedWalk = (record, rules, reference, { lookups, values, containers }, label) => {
+    const referenceReads = countFillReads(generate(reference, 'shared-walk-reference'),
+      reference, Infinity, label + ' reference');
+    const reads = countFillReads(record, rules,
+      referenceReads + 2 * (lookups + values + 3 * containers), label);
+    // The walk itself reads: the counter sees the fill.
+    assert.ok(reads > referenceReads, label + ': ' + reads + ' reads, reference ' + referenceReads);
+  };
+`;
+
 function guardedDerivedBudget(body: string, timeout = 10_000) {
   guardedGeneration(
     `
@@ -301,16 +331,22 @@ test('derived budget charges a balance for every line it re-sums: 1 row × 500 b
 }, 15_000);
 
 test('derived budget accepts exactly one million steps from 1,000 balances over 1,000 lines', () => {
-  guardedDerivedBudget(`
+  guardedDerivedBudget(
+    `
     ${fanOutBudgetSetup}
-    const start = performance.now();
-    const record = generate(rulesFor(fanOutFields(1, [1_000], 1_000)), 'fan-out-boundary');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 3_000, 'fan-out boundary took ' + elapsed.toFixed(1) + ' ms');
+    ${countedSharedWalk}
+    const rules = rulesFor(fanOutFields(1, [1_000], 1_000));
+    const record = generate(rules, 'fan-out-boundary');
+    // Each balance reads the 1,000 amounts: 1,000,000 values. The walk is
+    // lines and its 1,000 items, once; one walk per balance reads 3M in all.
+    assertSharedWalk(record, rules, withoutPaths(rules),
+      { lookups: 1_000, values: 1_000_000, containers: 1_001 }, 'fan-out boundary');
     assert.equal(record.rows.length, 1);
     for (let b = 0; b < 1_000; b++) assert.equal(record.rows[0]['b' + b], 1_000, 'balance ' + b);
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test('derived budget rejects one step above the limit when a sum adds to a fan-out boundary', () => {
   guardedDerivedBudget(
@@ -407,16 +443,22 @@ test('derived budget keeps the fan-out of arrays above an empty array: 316 rows 
 }, 15_000);
 
 test('derived budget accepts exactly one million steps when 1,000 balances walk 1,000 lines with empty arrays below', () => {
-  guardedDerivedBudget(`
+  guardedDerivedBudget(
+    `
     ${belowEmptyBudgetSetup}
-    const start = performance.now();
-    const record = generate(rulesFor(belowEmptyFields(1, 1_000, 0, 1_000)), 'below-empty-boundary');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 3_000, 'below-empty boundary took ' + elapsed.toFixed(1) + ' ms');
+    ${countedSharedWalk}
+    const rules = rulesFor(belowEmptyFields(1, 1_000, 0, 1_000));
+    const record = generate(rules, 'below-empty-boundary');
+    // No values: every b is empty. The walk is a, its 1,000 items and their
+    // 1,000 empty b arrays, once for all 1,000 balances.
+    assertSharedWalk(record, rules, withoutPaths(rules),
+      { lookups: 1_000, values: 0, containers: 2_001 }, 'below-empty boundary');
     assert.equal(record.rows.length, 1);
     for (let b = 0; b < 1_000; b++) assert.equal(record.rows[0]['bal' + b], 0, 'balance ' + b);
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test('derived budget rejects one step above the limit when a sum adds to an empty-below boundary', () => {
   guardedDerivedBudget(
@@ -432,21 +474,26 @@ test('derived budget rejects one step above the limit when a sum adds to an empt
 }, 15_000);
 
 test('derived budget charges one step per path when an empty array sits above a 1,000-item array: 1,000 rows × 90 balances', () => {
-  guardedDerivedBudget(`
+  guardedDerivedBudget(
+    `
     ${belowEmptyBudgetSetup}
+    ${countedSharedWalk}
     // Fan-out [0, 1,000] is 0, so each path costs 1: 1,000 × 90 = 90,000 steps,
     // 90,000 balances + 1,000 empty arrays + 1,000 row objects + 2 root fields = 92,002 values.
-    const start = performance.now();
-    const record = generate(rulesFor(belowEmptyFields(1_000, 0, 1_000, 90)), 'empty-above-boundary');
-    const elapsed = performance.now() - start;
-    assert.ok(elapsed < 3_000, 'empty-above run took ' + elapsed.toFixed(1) + ' ms');
+    const rules = rulesFor(belowEmptyFields(1_000, 0, 1_000, 90));
+    const record = generate(rules, 'empty-above-boundary');
+    // No values. The walk is each row's empty a, once for its 90 balances.
+    assertSharedWalk(record, rules, withoutPaths(rules),
+      { lookups: 90_000, values: 0, containers: 1_000 }, 'empty-above run');
     assert.equal(record.rows.length, 1_000);
     for (const i of [0, 499, 999]) {
       assert.deepEqual(record.rows[i].a, []);
       for (let b = 0; b < 90; b++) assert.equal(record.rows[i]['bal' + b], 0, 'row ' + i + ' balance ' + b);
     }
-  `);
-}, 15_000);
+  `,
+    30_000,
+  );
+}, 35_000);
 
 test.each([
   [
