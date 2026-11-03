@@ -12,7 +12,11 @@
 // A batch's copy lives only as long as its batch: DELETE /batch/<batch>
 // deletes it, and the sweep (started in the background after each upload)
 // deletes every upload whose index is older than a batch's 24 hours, so an
-// end that never arrived still frees the bucket.
+// end that never arrived still frees the bucket. Each upload keeps two
+// records: batch-index/<batch>/<digest>, written when the upload starts,
+// whose age the sweep reads, and batch-complete/<batch>/<digest>, written
+// only once every file is written, which prints by reference read — so an
+// upload that fails after another completed can never undo its completion.
 import { Buffer } from 'node:buffer';
 import { relativePathSchema } from '@pdf-generator/contract';
 
@@ -43,7 +47,7 @@ export interface PrintStore {
   delete(keys: string[]): Promise<unknown>;
   /**
    * Reads one object; only a print by pack reference does, for its batch's
-   * upload index.
+   * completion record.
    */
   get?(key: string): Promise<{ json(): Promise<unknown> } | null>;
 }
@@ -181,20 +185,18 @@ export async function publishFiles(
 const batchIndexKey = (batch: string, digest: string) =>
   `batch-index/${batch}/${digest}`;
 
-/** The entries of a batch's upload index, or undefined when it isn't one. */
-function parseBatchIndex(
-  value: unknown,
-): { paths: string[]; complete: boolean } | undefined {
+/** Where a batch's completion record lives, written once every file is. */
+const batchCompleteKey = (batch: string, digest: string) =>
+  `batch-complete/${batch}/${digest}`;
+
+/** The entries of a batch's completion record, or undefined when it isn't one. */
+function parseBatchCompletion(value: unknown): { paths: string[] } | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
-  const { paths, complete } = value as Record<string, unknown>;
-  if (
-    !Array.isArray(paths) ||
-    paths.some(path => typeof path !== 'string') ||
-    typeof complete !== 'boolean'
-  ) {
+  const { paths } = value as Record<string, unknown>;
+  if (!Array.isArray(paths) || paths.some(path => typeof path !== 'string')) {
     return undefined;
   }
-  return { paths, complete };
+  return { paths };
 }
 
 /**
@@ -232,11 +234,14 @@ async function packDigest(files: Record<string, string>): Promise<string> {
 /**
  * Stores `batch`'s pack `files` under their content digest and answers it,
  * or answers it without a write when that content is already completely
- * uploaded. The index goes in incomplete first and complete once every file
- * is written, so a crash leaves an incomplete index a later upload finishes,
- * never a complete one that misses files. A failed file write throws (the
- * route answers 500) and deletes nothing: a concurrent upload of the same
- * content may be using what was written.
+ * uploaded. The upload index goes in before any file, so a crash leaves an
+ * index the sweep reads by age; the completion record goes in only once
+ * every file is written, never with any other content, so a failed upload
+ * leaves no completion a later upload finishes, and an upload that read
+ * "not complete" before an overlapping upload completed can never turn its
+ * completion back. A failed file write throws (the route answers 500) and
+ * deletes nothing: a concurrent upload of the same content may be using
+ * what was written.
  */
 export async function uploadBatchPack(
   store: R2Bucket,
@@ -245,13 +250,12 @@ export async function uploadBatchPack(
 ): Promise<string> {
   const paths = Object.keys(files).sort();
   const digest = await packDigest(files);
-  const indexKey = batchIndexKey(batch, digest);
-  const existing = await store.get(indexKey);
-  const index = existing ? parseBatchIndex(await existing.json()) : undefined;
-  if (index?.complete) return digest;
-  const writeIndex = (complete: boolean) =>
-    store.put(indexKey, JSON.stringify({ paths, complete }));
-  await writeIndex(false);
+  const existing = await store.get(batchCompleteKey(batch, digest));
+  const complete = existing
+    ? parseBatchCompletion(await existing.json())
+    : undefined;
+  if (complete) return digest;
+  await store.put(batchIndexKey(batch, digest), JSON.stringify({ paths }));
   const writes = await Promise.allSettled(
     paths.map(path =>
       store.put(
@@ -263,7 +267,7 @@ export async function uploadBatchPack(
   );
   const failed = writes.find(write => write.status === 'rejected');
   if (failed) throw failed.reason;
-  await writeIndex(true);
+  await store.put(batchCompleteKey(batch, digest), JSON.stringify({ paths }));
   return digest;
 }
 
@@ -307,15 +311,17 @@ async function deletePrefix(
 }
 
 /**
- * `DELETE /batch/<batch>`: everything the batch stored, its uploaded files
- * and its upload indexes. Idempotent: an empty batch deletes nothing.
+ * `DELETE /batch/<batch>`: everything the batch stored, its completion
+ * records, its upload indexes and its uploaded files. Idempotent: an empty
+ * batch deletes nothing.
  */
 export async function deleteBatchPack(
   store: BatchPackStore,
   batch: string,
 ): Promise<void> {
-  // The index first: a print that starts meanwhile then answers
-  // pack_not_uploaded rather than finding some files gone.
+  // The completion records first: a print that starts meanwhile then
+  // answers pack_not_uploaded rather than finding some files gone.
+  await deletePrefix(store, `batch-complete/${batch}/`);
   await deletePrefix(store, `batch-index/${batch}/`);
   await deletePrefix(store, `batch/${batch}/`);
 }
@@ -329,10 +335,11 @@ const batchPackGrace = 25 * 3_600_000;
 
 /**
  * Deletes every upload index last written more than `batchPackGrace` before
- * `now`, and that upload's files: the batch they belonged to has ended or
- * its end never arrived (its web isolate died). Younger indexes and their
- * files stay, as do keys outside batch/ and batch-index/ (a print's inline
- * files). Never throws: it runs in the background after an upload.
+ * `now`, and that upload's completion record and files: the batch they
+ * belonged to has ended or its end never arrived (its web isolate died).
+ * Younger indexes and their uploads stay, as do keys outside batch/,
+ * batch-index/ and batch-complete/ (a print's inline files). Never throws:
+ * it runs in the background after an upload.
  */
 export async function sweepBatchPacks(
   store: BatchPackStore,
@@ -359,6 +366,9 @@ export async function sweepBatchPacks(
       cursor = page.truncated ? page.cursor : undefined;
     } while (cursor !== undefined);
     for (const { key, batch, digest } of expired) {
+      // The completion record first: a print that starts meanwhile then
+      // answers pack_not_uploaded rather than finding some files gone.
+      await store.delete(batchCompleteKey(batch, digest));
       await store.delete(key);
       await deletePrefix(store, `batch/${batch}/${digest}/`);
     }
@@ -411,9 +421,11 @@ export async function publishBatchFiles(
   if (!store.get) {
     throw new Error('The print store cannot read a pack by batch and digest');
   }
-  const existing = await store.get(batchIndexKey(pack.batch, pack.digest));
-  const index = existing ? parseBatchIndex(await existing.json()) : undefined;
-  if (!index?.complete) {
+  const existing = await store.get(batchCompleteKey(pack.batch, pack.digest));
+  const complete = existing
+    ? parseBatchCompletion(await existing.json())
+    : undefined;
+  if (!complete) {
     throw new PackNotUploadedError(pack.batch, pack.digest);
   }
   const printId = crypto.randomUUID();
@@ -435,7 +447,7 @@ export async function publishBatchFiles(
     .split('/')
     .map(encodeURIComponent)
     .join('/');
-  const served = new Set(index.paths.filter(path => path !== pack.template));
+  const served = new Set(complete.paths.filter(path => path !== pack.template));
   return {
     documentUrl: `${origin}/${base}/${encodedTemplate}?print=${printId}`,
     serves: candidate => {
