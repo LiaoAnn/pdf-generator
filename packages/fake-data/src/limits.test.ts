@@ -60,6 +60,37 @@ const relativeGenerationTiming = `
     compareWork(() => generate(rules, seed), () => generate(reference, seed), limit, label);
 `;
 
+// Count the record reads one derived fill makes, instead of timing it: the
+// count is the same on any machine under any load. Every object the fill
+// reaches is read through one cached counting proxy (so identity-keyed caches
+// still hit), and the fill stops as soon as it exceeds its budget, so a
+// quadratic walk fails fast with the count instead of timing out.
+const countedDerivedReads = `
+  const { derivedOrder, fillDerived } = await import(${JSON.stringify(new URL('./derived.ts', import.meta.url).href)});
+  const countFillReads = (record, rules, budget, label) => {
+    let reads = 0;
+    const proxies = new WeakMap();
+    const counted = value => {
+      if (typeof value !== 'object' || value === null) return value;
+      let proxy = proxies.get(value);
+      if (proxy === undefined) {
+        proxy = new Proxy(value, {
+          get(target, key, receiver) {
+            if (++reads > budget) {
+              throw new Error(label + ': more than ' + budget + ' record reads');
+            }
+            return counted(Reflect.get(target, key, receiver));
+          },
+        });
+        proxies.set(value, proxy);
+      }
+      return proxy;
+    };
+    assert.deepEqual(fillDerived(counted(record), rules, derivedOrder(rules).order), []);
+    return reads;
+  };
+`;
+
 function guardedDerivedBudget(body: string, timeout = 10_000) {
   guardedGeneration(
     `
@@ -774,7 +805,7 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
         ])),
       })),
     });
-    ${relativeGenerationTiming}
+    ${countedDerivedReads}
     // Same rows, values, balances and additions, without the 28 single-child
     // wrappers. Sharing adds O(rows × depth), not
     // O(rows × balances × columns × depth).
@@ -785,15 +816,29 @@ test('running balances share deep distinct add prefixes across 1000 rows and 20 
       reference.fields.rows.items.fields['b' + b].add =
         values.map((_, i) => 'rows[].deep.v' + i);
     }
-    const record = compareGeneration(rules, reference, 'shared-deep-row-prefix', 3,
-      'shared deep row prefix');
-    assert.equal(record.rows.length, 1_000);
     const increment = values.reduce((sum, value) => sum + value, 0);
-    for (const [i, row] of record.rows.entries()) {
-      for (let b = 0; b < 20; b++) {
-        assert.equal(row['b' + b], 17 + (i + 1) * increment, 'row ' + i + ', balance ' + b);
+    const assertBalances = (record, when) => {
+      assert.equal(record.rows.length, 1_000);
+      for (const [i, row] of record.rows.entries()) {
+        for (let b = 0; b < 20; b++) {
+          assert.equal(row['b' + b], 17 + (i + 1) * increment,
+            when + ': row ' + i + ', balance ' + b);
+        }
       }
-    }
+    };
+    const record = generate(rules, 'shared-deep-row-prefix');
+    assertBalances(record, 'generated');
+    const flatReads = countFillReads(generate(reference, 'shared-deep-row-prefix'),
+      reference, Infinity, 'flat reference');
+    // Shared, each row walks its 28 wrappers once: 2 reads per step (test,
+    // then descend), 56,000 reads over the reference. Twice that is the
+    // budget; one walk per balance would add 1,120,000, one per path 44.8M.
+    const deepReads = countFillReads(record, rules, flatReads + 2 * (2 * 1_000 * 28),
+      'shared deep row prefix');
+    // Every balance reads each of its row's 40 values: the counter sees the fill.
+    assert.ok(flatReads >= 1_000 * 20 * 40, 'flat reference read ' + flatReads + ' times');
+    assert.ok(deepReads > flatReads, 'the deep rules read their wrappers');
+    assertBalances(record, 'refilled');
   `,
     30_000,
   );
