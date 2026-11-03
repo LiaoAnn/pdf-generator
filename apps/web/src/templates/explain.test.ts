@@ -191,6 +191,7 @@ describe('template author error explanations', () => {
     'text_missing',
     'text_zero_width',
     'text_zero_height',
+    'pdf_unmeasurable',
   ];
 
   test('preview page-count refusals explain the template CSS cause without changing the print code or diagnostic', () => {
@@ -453,6 +454,37 @@ describe('template author error explanations', () => {
     expect.soft(issue?.explanation).toMatch(/移除|拿掉|刪除|不要/);
   });
 
+  // T07-33: a PDF over the self-check's document budget (operators, group
+  // nesting, decoded content) can't be measured at all; text_missing's font
+  // advice would send the author after the wrong cause.
+  test('preview pdf_unmeasurable explains the too-complex drawing and tells authors to simplify it', () => {
+    const raw = 'nesting past 64';
+    const explained = (code: string) =>
+      explain({
+        code: 'preview_failed',
+        message: 'Printing failed',
+        details: [{ code, message: raw }],
+      });
+    const result = explained('pdf_unmeasurable');
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('pdf_unmeasurable');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toMatch(cjk);
+    expect.soft(issue?.explanation).not.toBe(fallback());
+    expect
+      .soft(issue?.explanation)
+      .not.toBe(explained('text_missing').issues[0]?.explanation);
+    // The cause: too much to measure, from many shapes or deep nesting.
+    expect.soft(issue?.explanation).toMatch(/無法量測|量測不了|無法檢查/);
+    expect.soft(issue?.explanation).toContain('SVG');
+    expect.soft(issue?.explanation).toMatch(/巢狀|層/);
+    expect.soft(issue?.explanation).toContain('opacity');
+    // The fix: fewer shapes or a raster image instead.
+    expect.soft(issue?.explanation).toMatch(/減少|簡化/);
+    expect.soft(issue?.explanation).toMatch(/PNG|點陣/);
+  });
+
   test.each([...uploadCodes, ...printCodes])(
     '%s has an actionable Chinese explanation instead of the unknown-code fallback',
     code => {
@@ -706,6 +738,7 @@ describe('stored fixture print errors', () => {
     'text_missing',
     'text_zero_width',
     'text_zero_height',
+    'pdf_unmeasurable',
   ])(
     'explains the stored %s code with the same guidance as a preview refusal',
     async code => {

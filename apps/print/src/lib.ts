@@ -3,7 +3,11 @@
 // tab through `inspect`, in print media once the PDF is printed (T03 Must 3,
 // T07-20).
 import type { Browser, BrowserContext, Page } from '@cloudflare/puppeteer';
-import { type ExpectedBlock, missingText } from '@pdf-generator/self-check';
+import {
+  type ExpectedBlock,
+  missingText,
+  UnmeasurablePdfError,
+} from '@pdf-generator/self-check';
 import { getDocumentProxy } from 'unpdf';
 import {
   type PrintStore,
@@ -158,6 +162,7 @@ export type RenderErrorCode =
   | 'content_clipped'
   | 'text_zero_width'
   | 'text_zero_height'
+  | 'pdf_unmeasurable'
   | 'css_import_loop';
 
 /** A render that must not produce a PDF. */
@@ -914,7 +919,29 @@ async function print<T>(
       blocks.some(block => block.texts.length > 0),
     )
   ) {
-    const missing = await missingText(pdf, printed.expectedText);
+    // The self-check refuses to measure a PDF over its document budget
+    // (operators, nesting, decoded content; T14-10). That is a property of
+    // the pack — it draws more than the self-check can measure — so refuse
+    // it as pdf_unmeasurable instead of failing the request, as `checkPdf`
+    // reports it instead of throwing (T07-33). A file the scan can't read
+    // at all (`structure`) stays an error: it is the platform's own output
+    // it failed to parse, not a pack fault.
+    let missing: string[];
+    try {
+      missing = await missingText(pdf, printed.expectedText);
+    } catch (error) {
+      if (
+        !(error instanceof UnmeasurablePdfError) ||
+        error.limit === 'structure'
+      ) {
+        throw error;
+      }
+      throw new RenderError(
+        'pdf_unmeasurable',
+        'The printed PDF is too complex for the self-check to measure',
+        [error.message],
+      );
+    }
     if (missing.length > 0) {
       throw new RenderError(
         'text_missing',
