@@ -43,6 +43,9 @@ function add(a: Decimal, b: Decimal): Decimal {
   };
 }
 
+/** Test seam: halving steps taken by `normal`; limits.test.ts counts them. */
+export const normalizationSteps = { count: 0 };
+
 // Without trailing zeros, so equal values compare equal. The zeros are
 // found by halving steps (divisibility by 10^k is monotone in k), a few
 // divisions however long the number is.
@@ -54,6 +57,7 @@ function normal({ units, scale }: Decimal): Decimal {
     step >= 1;
     step /= 2
   ) {
+    normalizationSteps.count++;
     if (zeros + step <= scale && units % pow10(step) === 0n) {
       units /= pow10(step);
       zeros += step;

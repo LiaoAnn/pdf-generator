@@ -1,5 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { expect, test } from 'vitest';
+import { normalizationSteps } from './derived.ts';
+import { generate } from './index.ts';
 
 // Kill synchronous CPU exhaustion without wedging the Vitest worker. Keep
 // assertions in the child so large records never need to cross stdout.
@@ -30,35 +32,6 @@ function guardedGeneration(body: string, timeout = 10_000) {
     }),
   ).toBe('ok');
 }
-
-// Pair samples in one process and alternate order to balance JIT/GC effects.
-// Child timeouts contain runaway mutants; they are not performance assertions.
-const relativeGenerationTiming = `
-  const compareWork = (run, reference, limit, label) => {
-    reference();
-    run();
-    const samples = [[], []];
-    let record;
-    for (let round = 0; round < 3; round++) {
-      for (const which of (round % 2 ? [1, 0] : [0, 1])) {
-        const start = performance.now();
-        const result = (which ? run : reference)();
-        samples[which].push(performance.now() - start);
-        if (which) record = result;
-      }
-    }
-    const median = values => values.sort((a, b) => a - b)[1];
-    const baseline = median(samples[0]);
-    const elapsed = median(samples[1]);
-    assert.ok(elapsed / baseline < limit,
-      label + ': median ' + elapsed.toFixed(1) + ' ms / baseline ' +
-      baseline.toFixed(1) + ' ms = ' + (elapsed / baseline).toFixed(2) +
-      ', expected ratio < ' + limit);
-    return record;
-  };
-  const compareGeneration = (rules, reference, seed, limit, label) =>
-    compareWork(() => generate(rules, seed), () => generate(reference, seed), limit, label);
-`;
 
 // Count the record reads one derived fill makes, instead of timing it: the
 // count is the same on any machine under any load. Every object the fill
@@ -941,21 +914,67 @@ test.each([
 
 test.each([
   [
-    'keeps every printed balance of extreme-magnitude constants fast and exact (largest opening, smallest-denormal add/subtract)',
+    'keeps every printed balance of extreme-magnitude constants cheap and exact (largest opening, smallest-denormal add/subtract)',
     '1.7976931348623157e308',
   ],
   [
-    'keeps every printed balance of denormal add/subtract constants fast and exact (opening 1)',
+    'keeps every printed balance of denormal add/subtract constants cheap and exact (opening 1)',
     '1',
   ],
 ])(
   '%s',
   (_regression, opening) => {
+    // Normalizing strips trailing zeros in halving steps, which no record read
+    // shows, so the test seam counts them. In process: the counter belongs to
+    // this module instance. The reference prints the same balances at
+    // ordinary magnitudes.
+    const rowsWith = (open: number, tiny: number) => ({
+      schemaVersion: 1,
+      fields: {
+        opening: { type: 'constant', value: open },
+        rows: {
+          type: 'array',
+          minItems: 100,
+          maxItems: 100,
+          items: {
+            type: 'object',
+            fields: {
+              p: { type: 'constant', value: tiny },
+              q: { type: 'constant', value: tiny },
+              ...Object.fromEntries(
+                Array.from({ length: 10 }, (_, i) => [
+                  `b${i}`,
+                  {
+                    type: 'runningBalance',
+                    opening: 'opening',
+                    add: ['rows[].p'],
+                    subtract: ['rows[].q'],
+                  },
+                ]),
+              ),
+            },
+          },
+        },
+      },
+    });
+    const stepsFor = (rules: unknown) => {
+      normalizationSteps.count = 0;
+      generate(rules, 'extreme-constants');
+      return normalizationSteps.count;
+    };
+    const reference = stepsFor(rowsWith(1, 1));
+    const extreme = stepsFor(rowsWith(Number(opening), 5e-324));
+    // A scale of 0 takes 1 halving step, 5e-324's scale of 324 at most
+    // ⌊log2 324⌋ + 1 = 9, for the same number of normalizations: at most 9
+    // times the reference. One division per trailing zero takes 324.
+    expect(reference).toBeGreaterThan(0);
+    expect(extreme).toBeGreaterThan(reference);
+    expect(extreme).toBeLessThanOrEqual(9 * reference);
     guardedGeneration(
       `
       const opening = ${opening};
       // 7,000 rows × 10 balances = 70,000 derived steps; 91,002 values.
-      const rules = rulesFor({
+      const record = generate(rulesFor({
         opening: constant(opening),
         rows: array(7_000, object({
           p: constant(5e-324),
@@ -965,25 +984,7 @@ test.each([
             { type: 'runningBalance', opening: 'opening', add: ['rows[].p'], subtract: ['rows[].q'] },
           ])),
         })),
-      });
-      ${relativeGenerationTiming}
-      // A 1,000-row probe keeps repeated samples cheap; check the original
-      // 7,000-row record below. The reference does the same add/subtract/print
-      // operations at ordinary magnitudes: zeros must not cost hundreds of
-      // divisions per normalization.
-      const probe = structuredClone(rules);
-      probe.fields.rows.minItems = probe.fields.rows.maxItems = 1_000;
-      const reference = structuredClone(probe);
-      reference.fields.opening.value = 1;
-      reference.fields.rows.items.fields.p.value = 1;
-      reference.fields.rows.items.fields.q.value = 1;
-      const measured = compareGeneration(probe, reference, 'extreme-constants', 8,
-        'extreme constants');
-      assert.equal(measured.rows.length, 1_000);
-      for (const row of measured.rows) {
-        for (let b = 0; b < 10; b++) assert.equal(row['b' + b], opening);
-      }
-      const record = generate(rules, 'extreme-constants');
+      }), 'extreme-constants');
       assert.equal(record.rows.length, 7_000);
       for (const [i, row] of record.rows.entries()) {
         for (let b = 0; b < 10; b++) {
