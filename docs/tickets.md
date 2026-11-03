@@ -1141,7 +1141,7 @@
 - **來源**：PR #97（T14-10）
 
 
-### T06-8 樣板工具：上傳時把大字型切成 unicode-range 小塊
+### T06-8 樣板工具：上傳時把大字型切成 unicode-range 小塊（取消：2026-11-03 實測樣板包裡 10.5 MiB 的字型本來就每個 session 只載一次，6 個樣板也沒有超過 6 MiB 的樣板包字型；真正每份重載的是平台字型，改由 T07-37 處理。證據在 VM 的 `~/drafts/t06-8-font-split/probe-results/`；若日後需要切字型，harfbuzz hb-subset WASM 可行，見 T07-37 來源）
 - **目標**：T07-5 讓同一批次的列印共用有快取的瀏覽器環境，但 Chrome 這種環境的快取單一檔案上限是 6.25 MiB（Chrome 126 實測），超過的字型每份都要重新載入。上傳樣板包時，把超過 6 MiB 的字型切成數個 `unicode-range` 子集（各 < 6 MiB），並改寫樣板包的 `@font-face`，讓每塊都能被快取
 - **Blocked by**：T07-5
 - **Blocks**：—
@@ -1248,3 +1248,21 @@
 - **驗收測試**：這些測試不再用預設 timeout；滿載 CPU 下連跑 40 次都過；子程序卡住時在新 timeout 內失敗；缺 total memo 的改壞版本被計數抓到
 - **不做**：改引擎行為
 - **來源**：PR #109（T05-5）
+
+### T07-37 印 PDF：超過快取上限的平台字型每份都重新載入
+- **目標**：T07-5 讓同一批次的列印共用有快取的瀏覽器環境，但 T06-8 的實測（本機 Chrome 126）顯示：平台字型 `NotoSerifTC-Regular.otf`（7.6 MiB）每印一份就重新載入一次（29 份文件 29 次 GET），1.2 MiB 的 `NotoSansSymbols2` 每個 session 只載一次；而樣板包裡 10.5 MiB 的字型每個 session 只載一次。先查清楚兩者為何不同（`public, max-age=604800` 的靜態資產 vs `private, max-age=86400, immutable` 的 R2 檔案，或其他原因），再讓超過 6.25 MiB 的平台字型（NotoSerifTC Regular／Bold、LXGW WenKai TC）每個 session 只載一次：改成與樣板包檔案相同的可快取方式提供，或在建置字型時切成 `unicode-range` 小塊（各 < 6 MiB）
+- **Blocked by**：T07-5、T07-9
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的平台字型與靜態資產（`public/_headers`、`src/fonts/build.ts`、`lib.ts` 的快取設定）；與其他改 print 的 T07 票不要同時派
+- **驗收測試**：用 Noto Serif TC 或 WenKai 的樣板批次 10 份，每個平台字型（或每塊）每個 session 只載一次（依 print 的 GET 計數）；6 個樣板各 10 份的 gt.json 與自我檢查和 main 相同（PDF 的字型物件可不同，PR 說明）；`batch-pack-cache.test.ts` 照常通過
+- **不做**：改共用契約；換字型；動樣板包的上傳處理（T06-8 已確認樣板包大字型本來就每個 session 只載一次）
+- **來源**：T06-8（取消）。切字型若需要：harfbuzz hb-subset WASM（npm harfbuzzjs 1.6.4，668 KB／gzip 269 KB），workerd 中 LXGW 15.5 MB 切 4 塊 0.3 s、Noto Serif TC 7.9 MB 切 4 塊 0.8 s、結果逐位元組相同；記憶體固定 65 MiB，切不動時要加塊數；純 JS 的子集工具會丟掉 GSUB/GPOS、改變 gt.json
+
+### T06-11 樣板工具：`font-family` 的 `!important` 讓字型被判為未使用
+- **目標**：template-tools 的 `usedFamilies` 沒有去掉 `!important`，`body{font-family:"Big" !important}` 會讓上傳以 `font-unused`（宣告了但沒有 font-family 用到）拒絕樣板包。解析時去掉 `!important`
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的字型檢查；與 T06-9 不要同時派
+- **驗收測試**：帶 `!important` 的 font-family 樣板包照常上傳；真的沒用到的字型仍被拒；6 個樣板照常上傳
+- **不做**：其他 CSS 解析改動
+- **來源**：T06-8 的探測
