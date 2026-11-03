@@ -34,17 +34,58 @@ export interface ExpectedBlock {
 // 1 pt for subpixel layout. Overlap rather than the anchor's x: an untagged
 // print holds adjacent spans in one font as one item ("Meeting
 // date:2026-10-24"), which then counts for each text it crosses.
+// Rotated text (a `dir`, T07-19) is held to the same rule, turned with it:
+// its advance runs along `dir` from the origin `(x0, baseline)` for
+// `x1 - x0`, its glyphs' "up" the advance turned a quarter left (`(dy, -dx)`,
+// as in check.ts). Its anchor segment — the anchor's height moved along the
+// advance — is clipped to the box widened by 1 pt only across the advance
+// (x by `|dy|`, y by `|dx|`), and it is inside when the clip leaves more
+// than 1 pt. For dir = (1, 0) this is the horizontal rule: the anchor's
+// height within 1 pt of the box in y and more than 1 pt of overlap in x.
 const anchorEm = 0.35;
 const tolerancePt = 1;
 
 function inside(item: PdfTextItem, box: Box): boolean {
-  const overlap = Math.min(item.x1, box.x1) - Math.max(item.x0, box.x0);
-  const y = item.baseline - anchorEm * item.size;
-  return (
-    overlap > tolerancePt &&
-    y >= box.y0 - tolerancePt &&
-    y <= box.y1 + tolerancePt
-  );
+  if (!item.dir) {
+    const overlap = Math.min(item.x1, box.x1) - Math.max(item.x0, box.x0);
+    const y = item.baseline - anchorEm * item.size;
+    return (
+      overlap > tolerancePt &&
+      y >= box.y0 - tolerancePt &&
+      y <= box.y1 + tolerancePt
+    );
+  }
+  const [dx, dy] = item.dir;
+  const length = item.x1 - item.x0;
+  // The anchor segment: from the origin, anchorEm up from the baseline, then
+  // along the advance.
+  const up = anchorEm * item.size;
+  const ax = item.x0 + up * dy;
+  const ay = item.baseline - up * dx;
+  // Widen the box across the advance only: x by |dy|, y by |dx|.
+  const ex = tolerancePt * Math.abs(dy);
+  const ey = tolerancePt * Math.abs(dx);
+  // Clip the advance's parameter range to the widened box (Liang–Barsky);
+  // an axis-parallel advance has no range on its zero axis, only the point.
+  let t0 = 0;
+  let t1 = length;
+  if (dx === 0) {
+    if (ax < box.x0 - ex || ax > box.x1 + ex) return false;
+  } else {
+    const ta = (box.x0 - ex - ax) / dx;
+    const tb = (box.x1 + ex - ax) / dx;
+    t0 = Math.max(t0, Math.min(ta, tb));
+    t1 = Math.min(t1, Math.max(ta, tb));
+  }
+  if (dy === 0) {
+    if (ay < box.y0 - ey || ay > box.y1 + ey) return false;
+  } else {
+    const ta = (box.y0 - ey - ay) / dy;
+    const tb = (box.y1 + ey - ay) / dy;
+    t0 = Math.max(t0, Math.min(ta, tb));
+    t1 = Math.min(t1, Math.max(ta, tb));
+  }
+  return t1 - t0 > tolerancePt;
 }
 
 /**
