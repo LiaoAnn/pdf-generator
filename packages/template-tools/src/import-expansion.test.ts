@@ -260,3 +260,59 @@ describe('checkPack @import expansion: bytes of CSS', () => {
     ]);
   });
 });
+
+describe('checkPack @import expansion: stylesheets the template repeats', () => {
+  /** The pack, with a `rows` list and `body` in the template's body. */
+  function repeating(body: string): PackFiles {
+    const rules = rulesSchema.parse({
+      schemaVersion: 1,
+      fields: {
+        holder: { type: 'name' },
+        rows: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 1000,
+          items: { type: 'integer', min: 0, max: 10 },
+        },
+      },
+    });
+    return {
+      ...pack({ 'styles/a.css': '', 'styles/b.css': 'p { margin: 0; }' }),
+      'templates/report.hbs': withHead(
+        `<head></head><p data-gt="paragraph">{{holder}}</p>${body}`,
+      ),
+      'data/rules.json': JSON.stringify(rules),
+      'data/sample.json': JSON.stringify(
+        recordSchema(rules).parse({ holder: '王小明', rows: [1, 2] }),
+      ),
+    };
+  }
+
+  it.each([
+    ['a <style> @import', '<style>@import "../styles/b.css";</style>'],
+    ['a <link>', '<link rel="stylesheet" href="../styles/b.css">'],
+  ])(
+    'refuses %s inside {{#each}}: filling the template loads it once per item, without limit',
+    (_, sheet) => {
+      const { result, expansion } = expansionIssues(
+        repeating(`{{#each rows}}${sheet}{{/each}}`),
+      );
+      expect(result.ok).toBe(false);
+      expect(expansion).toEqual([
+        {
+          code: 'css-import-expansion',
+          file: 'styles/b.css',
+          message: expect.stringContaining('{{#each}}'),
+        },
+      ]);
+    },
+  );
+
+  it('accepts a stylesheet inside {{#if}}, which prints at most once', () => {
+    accepts(
+      repeating(
+        '{{#if holder}}<style>@import "../styles/b.css";</style>{{/if}}',
+      ),
+    );
+  });
+});

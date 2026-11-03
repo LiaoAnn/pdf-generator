@@ -20,14 +20,18 @@ type Imports = { source: { file: string }; path: string }[];
  * The stylesheet loads and CSS bytes the pack's @imports expand to, from
  * the references in `roots` (manifest styles in manifest order, then the
  * template's <link> and <style> imports in document order); `bytesOf` is a
- * file's UTF-8 byte length. Undefined while both stay within the limits;
- * otherwise the totals and the root that expands the most (by loads when
- * the load count is over, else by bytes; ties go to the earliest root).
+ * file's UTF-8 byte length. A root in `repeating` sits in an {{#each}} of
+ * the template, so it loads once per item, without a limit the check can
+ * count: it is counted as past the load limit. Undefined while the totals
+ * stay within the limits; otherwise the totals and the root that expands
+ * the most (a repeating root first, else by loads when the load count is
+ * over, else by bytes; ties go to the earliest root).
  */
 export function importExpansion(
   roots: string[],
   imports: Imports,
   bytesOf: (path: string) => number,
+  repeating: ReadonlySet<string>,
 ): { loads: number; bytes: number; file: string } | undefined {
   const out = new Map<string, string[]>();
   for (const { source, path } of imports) {
@@ -69,11 +73,16 @@ export function importExpansion(
   const perRoot = new Map<string, { loads: number; bytes: number }>();
   for (const root of roots) {
     const expanded = expand(root);
-    loads += expanded.loads;
+    // A root inside {{#each}} would load once per item when the template is
+    // filled, far past any limit: count it as just past it.
+    const loadsOf = repeating.has(root)
+      ? maxStylesheetLoads + 1
+      : expanded.loads;
+    loads += loadsOf;
     bytes += expanded.bytes;
     const sum = perRoot.get(root) ?? { loads: 0, bytes: 0 };
     perRoot.set(root, {
-      loads: sum.loads + expanded.loads,
+      loads: sum.loads + loadsOf,
       bytes: sum.bytes + expanded.bytes,
     });
   }
@@ -83,12 +92,20 @@ export function importExpansion(
   const byLoads = loads > maxStylesheetLoads;
   let file: string | undefined;
   let most = -1;
-  // Map order is first-reference order, so ties go to the earliest root.
+  let namedRepeats = false;
+  // A repeating root is the one to name, even when another root expands to
+  // more; among the rest, the largest expansion. Map order is
+  // first-reference order, so ties go to the earliest root.
   for (const [root, sum] of perRoot) {
     const value = byLoads ? sum.loads : sum.bytes;
-    if (value > most) {
+    const repeats = repeating.has(root);
+    if (
+      (repeats && !namedRepeats) ||
+      (repeats === namedRepeats && value > most)
+    ) {
       most = value;
       file = root;
+      namedRepeats = repeats;
     }
   }
   return { loads, bytes, file: file ?? '' };
