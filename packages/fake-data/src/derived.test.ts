@@ -128,7 +128,8 @@ describe('derived document numbers through the public engine', () => {
     expect(lengths.has(20)).toBe(true);
     expect(blankAmounts).toBeGreaterThan(0);
     expect(zeroWholes).toBeGreaterThan(0);
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it('binds a nested row sum to its current row while an outside summary still aggregates every row', () => {
     const rules = rulesFor({

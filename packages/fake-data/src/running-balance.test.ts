@@ -148,7 +148,8 @@ describe('bank statement running balances through the public engine', () => {
     expect(checked / records.length).toBeLessThan(1);
     expect(blankAmounts).toBeGreaterThan(0);
     expect(blankOpenings).toBeGreaterThan(0);
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it('uses the innermost rows, scopes ancestor arrays to the current account and sums deeper and unrelated arrays', () => {
     const rules = rulesFor({
