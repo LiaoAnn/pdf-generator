@@ -11,7 +11,7 @@
     "deploy": "wrangler deploy --minify",
     "cf-typegen": "wrangler types",
     "test": "vitest run",
-    "typecheck": "tsc && tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json",
+    "typecheck": "tsc && tsc -p tsconfig.node.json && tsc -p tsconfig.browser.json && tsc -p tsconfig.acceptance.json",
     "fonts": "node src/fonts/build.ts"
   },
   "devDependencies": {

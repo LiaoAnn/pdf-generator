@@ -2,7 +2,8 @@
   // Worker program: the code wrangler runs (src/index.ts and everything it
   // imports), typed with the Workers runtime types worker-configuration.d.ts
   // carries and no DOM lib. The Node tests and vitest.config.ts are checked
-  // by tsconfig.node.json, the print browser runtime by tsconfig.browser.json.
+  // by tsconfig.node.json, the print browser runtime by tsconfig.browser.json,
+  // the acceptance script by tsconfig.acceptance.json.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     // The Worker runs with nodejs_compat_v2 and imports node:buffer.
