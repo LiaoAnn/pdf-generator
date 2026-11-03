@@ -132,6 +132,8 @@ describe('document filler text through the public engine', () => {
         expect(corpus).toMatch(/\d(?:\.\d+)? ?(?:[A-Za-z]+|%)/);
       }
     },
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+    30_000,
   );
 
   it.each(languages)(

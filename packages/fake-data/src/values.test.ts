@@ -53,7 +53,8 @@ test('CLI samples 10,000 valid records and replays every generator by seed and p
       timeout: 20_000,
     });
   expect(run()).toBe(run());
-});
+  // Room for both child runs' 20 s timeouts: a hang guard, not a speed check.
+}, 50_000);
 
 test('calendar validation rejects rollover dates and enforces Gregorian century rules', () => {
   for (const value of [
@@ -119,7 +120,8 @@ test('date output is byte-identical across time zones including a DST transition
     }),
   );
   expect(new Set(outputs).size).toBe(1);
-});
+  // Room for all three child runs' 10 s timeouts: a hang guard, not a speed check.
+}, 40_000);
 
 test('date rejects invalid bounds instead of normalizing or swapping them', () => {
   const rng = createRng('invalid', 'date');

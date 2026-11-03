@@ -121,7 +121,8 @@ describe('financial-detail row sums through the public engine', () => {
     expect(blankInputs).toBeGreaterThan(0);
     expect(blankTargets).toBeGreaterThan(0);
     expect(filledTargets).toBeGreaterThan(0);
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it.each([
     ['ancestor group', 'groups[].k'],

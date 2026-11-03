@@ -41,7 +41,8 @@ test('CLI generates 10,000 IDs of each kind passing independent checks and valid
       timeout: 20_000,
     }).trim(),
   ).toBe('10000 national IDs + 10000 business IDs independently verified');
-});
+  // Room for the child's 20 s timeout: a hang guard, not a speed check.
+}, 30_000);
 
 test('national ID validator handles every letter mapping and rejects check-digit tampering', () => {
   // For the stem <letter>12345678, the numeric part contributes 120.

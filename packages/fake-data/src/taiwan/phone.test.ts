@@ -47,7 +47,8 @@ test('CLI generates 10,000 phones per kind with independent format checks and ar
       timeout: 20_000,
     }).trim(),
   ).toBe('10000 mobile + 10000 landline numbers independently verified');
-});
+  // Room for the child's 20 s timeout: a hang guard, not a speed check.
+}, 30_000);
 
 test('validator accepts every supported landline grouping and keeps phone kinds separate', () => {
   for (const value of [

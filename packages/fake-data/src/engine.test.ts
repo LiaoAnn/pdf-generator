@@ -116,6 +116,7 @@ describe('public fake-data engine', () => {
           cwd: fileURLToPath(new URL('..', import.meta.url)),
           input: JSON.stringify(rules),
           encoding: 'utf8',
+          timeout: 10_000,
         },
       );
     const first = run();
@@ -132,7 +133,8 @@ describe('public fake-data engine', () => {
     expect(recordSchema(rules).parse(JSON.parse(first))).toEqual(
       JSON.parse(first),
     );
-  });
+    // Room for both child runs' 10 s timeouts: a hang guard, not a speed check.
+  }, 30_000);
 
   it('builds valid supported fields and changes the record for another seed', () => {
     const record = generate(rules, seed);

@@ -656,14 +656,24 @@ test('text budget accepts exactly one million characters multiplied across array
 
 test('running balances reuse a shared opening total across 19000 nested row groups', () => {
   guardedGeneration(`
-    const record = generate(rulesFor({
+    const rulesWith = groups => rulesFor({
       opening: array(20_000, constant(1)),
-      groups: array(19_000, object({
+      groups: array(groups, object({
         rows: array(1, object({
           b: { type: 'runningBalance', opening: 'opening[]', add: [], subtract: [] },
         })),
       })),
-    }), 'shared-opening');
+    });
+    ${countedSharedWalk}
+    // A 100-group probe keeps an unmemoized mutant's own (uncounted) generate
+    // cheap enough to reach the count; the full 19,000 groups are checked
+    // below. Against one group, each further group reads its row and walks 3
+    // containers (group, rows, row): 11 reads measured. Rereading the 20,000
+    // openings per group instead would cost about 40,000 each.
+    const probe = rulesWith(100);
+    assertSharedWalk(generate(probe, 'shared-opening'), probe, rulesWith(1),
+      { lookups: 99, values: 0, containers: 3 * 99 }, 'shared opening total');
+    const record = generate(rulesWith(19_000), 'shared-opening');
     assert.equal(record.opening.length, 20_000);
     assert.equal(record.groups.length, 19_000);
     for (const group of record.groups) assert.deepEqual(group.rows, [{ b: 20_000 }]);
