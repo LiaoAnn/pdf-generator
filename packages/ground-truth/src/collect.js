@@ -456,9 +456,16 @@ export function collect() {
             // Anything else (circle(), ellipse(), polygon(), path(),
             // url(), calc() inside inset(), several client rects) is
             // unknown: it puts no constraint on what the element paints.
+            // T08-7: where the regions cut the ink, paintRegion
+            // accumulates the same way with each contributing element's
+            // region moved by that element's paint-containment frame
+            // shift (the `shifts` above; 0 when absent).
             /** @type {number[]} */
             let region = [-Infinity, -Infinity, Infinity, Infinity];
             let clipped = false;
+            /** @type {number[]} */
+            let paintRegion = [-Infinity, -Infinity, Infinity, Infinity];
+            let clipPathShifted = false;
             for (
               let /** @type {Element | null} */ at = inner;
               at !== null;
@@ -546,6 +553,30 @@ export function collect() {
                 Math.min(region[3] ?? Infinity, refY + refH - bottom),
               ];
               clipped = true;
+              // T08-7: the same accumulation, each contributing element's
+              // edges moved by its paint-containment frame shift, so where
+              // the region cuts the ink. A region of an element with no
+              // shift paints on the page, so its edges stay unmoved here.
+              const atShift = shifts.get(at);
+              if (atShift !== undefined) clipPathShifted = true;
+              paintRegion = [
+                Math.max(
+                  paintRegion[0] ?? -Infinity,
+                  refX + left + (atShift?.x ?? 0),
+                ),
+                Math.max(
+                  paintRegion[1] ?? -Infinity,
+                  refY + top + (atShift?.y ?? 0),
+                ),
+                Math.min(
+                  paintRegion[2] ?? Infinity,
+                  refX + refW - right + (atShift?.x ?? 0),
+                ),
+                Math.min(
+                  paintRegion[3] ?? Infinity,
+                  refY + refH - bottom + (atShift?.y ?? 0),
+                ),
+              ];
             }
             /** @type {Rect | undefined} */
             let clipPath;
@@ -557,6 +588,21 @@ export function collect() {
                 y: cy0,
                 width: cx1 - cx0,
                 height: cy1 - cy0,
+              };
+            }
+            // Present only when some element that contributed a region has
+            // a non-zero shift (otherwise it equals `clipPath` and is left
+            // out); the "empty region paints nothing" rule above stays on
+            // the layout region.
+            /** @type {Rect | undefined} */
+            let paintClipPath;
+            if (clipped && clipPathShifted) {
+              const [px0 = 0, py0 = 0, px1 = 0, py1 = 0] = paintRegion;
+              paintClipPath = {
+                x: px0,
+                y: py0,
+                width: px1 - px0,
+                height: py1 - py0,
               };
             }
             // An <img> or outer <svg> (one not inside another <svg>) paints
@@ -583,6 +629,7 @@ export function collect() {
                 },
                 ...(shift === undefined ? {} : { shift }),
                 ...(clipPath === undefined ? {} : { clipPath }),
+                ...(paintClipPath === undefined ? {} : { paintClipPath }),
               });
             }
             // A laid-out HTML element with a visible background or border,
@@ -828,6 +875,7 @@ export function collect() {
                     offset: outlines.offset,
                     ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
                 for (const shadow of shadows) {
@@ -862,6 +910,7 @@ export function collect() {
                     ...(sliced.length > 0 ? { sliced } : {}),
                     ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
                 // Where this client rect's background paints, [x0, y0, x1,
@@ -1035,6 +1084,7 @@ export function collect() {
                     },
                     ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
               }

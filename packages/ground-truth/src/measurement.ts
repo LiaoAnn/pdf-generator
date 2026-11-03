@@ -150,6 +150,13 @@ export interface PaintedBox {
    * shape (circle(), polygon(), url(), ...) leaves the ink unconstrained.
    */
   clipPath?: Rect;
+  /**
+   * `clipPath` with each contributing element's `inset()` region moved by
+   * that element's paint-containment frame shift (T08-7): where the region
+   * cuts the ink. Present only when some element that contributed a region
+   * has a non-zero shift (otherwise it equals `clipPath` and is left out).
+   */
+  paintClipPath?: Rect;
 }
 
 /** A `.pagedjs_page` border box. */

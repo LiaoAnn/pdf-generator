@@ -228,7 +228,9 @@ const flush = 0.01;
  * clips around it (unrounded) and at a clip-path region (T08-5, unrounded);
  * where it paints is the whole-px paint cut at the clips' edges rounded to
  * whole px of the page — of the clipping element's paint-containment frame
- * (T08-7) where it has one — and at the region's exact, unrounded edges.
+ * (T08-7) where it has one — and at the region's exact, unrounded edges,
+ * moved by the paint-containment frame shift of the element that has it
+ * (T08-7).
  * T08-6: an entry may lie outside the box (a descendant's background, border,
  * <img> or <svg> sticking out of it): every side it shares moves as for an
  * inside entry, and any side it lies beyond only grows, cut to the same
@@ -236,13 +238,14 @@ const flush = 0.01;
  * Decorations painted outside the border box (T08-4: outlines and outer
  * box-shadows) skip the shared-side rule and apply afterwards, as pure
  * growth: their visible ink only ever moves a side outwards, never inwards;
- * the clip-path region cuts each strip too, without rounding.
+ * the clip-path region cuts each strip too, without rounding — moved by
+ * the paint-containment frame shift of the element that has it (T08-7).
  */
 function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
   const entries = paintedBoxes
     .filter(({ kind }) => kind !== 'outline' && kind !== 'shadow')
-    .map(({ kind, rect, clip, paintClip, clipPath, shift }) => {
+    .map(({ kind, rect, clip, paintClip, clipPath, paintClipPath, shift }) => {
       const layout = edges(rect, page);
       let visible = layout;
       // T08-7: the ink is the layout moved by the element's
@@ -272,11 +275,12 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
         );
       }
       if (clipPath !== undefined) {
-        // A clip-path region (T08-5) cuts both at its exact, unrounded
-        // edges.
-        const region = edges(clipPath, page);
-        visible = intersect(visible, region);
-        ink = intersect(ink, region);
+        // A clip-path region (T08-5) cuts where the entry lies at its
+        // exact, unrounded edges; its ink is cut at the region moved by
+        // the paint-containment frame shift of the element that has it
+        // (T08-7).
+        visible = intersect(visible, edges(clipPath, page));
+        ink = intersect(ink, edges(paintClipPath ?? clipPath, page));
       }
       if (visible[2] <= visible[0] || visible[3] <= visible[1]) {
         return undefined;
@@ -296,7 +300,7 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
           ? outlineStrips(entry, page)
           : shadowStrips(entry, page);
       if (entry.clipPath === undefined) return strips;
-      const region = edges(entry.clipPath, page);
+      const region = edges(entry.paintClipPath ?? entry.clipPath, page);
       return strips
         .map(strip => intersect(strip, region))
         .filter(strip => strip[2] > strip[0] && strip[3] > strip[1]);

@@ -12,7 +12,9 @@
 // F + round(L - O), where page rounding gives round(L). An overflow clip
 // (an element's padding box, moved by overflow-clip-margin) rounds the same
 // way in the frame of the element that clips: a paint container's own clip
-// in its own frame, any other element's in its container's frame. Offsets
+// in its own frame, any other element's in its container's frame. An
+// inset() clip-path region is cut at its exact edges, moved by the shift
+// F - O of the frame of the element that has it. Offsets
 // are multiples of 1/64 px (Chrome's layout unit) and avoid exact .5
 // fractions, so every expected box is exact: px edge * 0.75, two decimals.
 import { fileURLToPath } from 'node:url';
@@ -409,6 +411,67 @@ describe('readGroundTruth: overflow clips round in the frame of the element that
           ),
         ),
       ).toEqual({ glow: [55.5, 75.75, 115.5, 114] });
+    });
+  }, 30_000);
+});
+
+describe('readGroundTruth: an inset() clip-path region moves with the frame of the element it is on', () => {
+  // The .spot block (a flow-root, so its child's margins stay inside it) has
+  // no paint of its own; its child sticks out 10 px on every side
+  // (77.625..157.625 x 96.375..136.375 px), painted in the
+  // container's frame at 77..157 x 97..137. The frame's shift is
+  // (74 - 74.375, 101 - 100.625) = (-0.375, +0.375) px. A clip-path region
+  // is cut at its exact edges, but in the frame of the element that has it.
+  const host = (clip: string) =>
+    `<div data-gt="paragraph" data-gt-id="host" class="spot" style="display: flow-root; ${clip}">
+       <div class="ink" style="margin: -10px; width: 80px; height: 40px"></div>
+     </div>`;
+
+  test('a clip-path on a block inside a container is cut in the container’s frame', async () => {
+    await withPage(async page => {
+      // inset(-3.125px -2.375px) on the block: 85.25..140.125 x
+      // 103.25..129.5 px, moved by the shift to 84.875..139.75 x
+      // 103.625..129.875 (in place: 85.25..140.125 x 103.25..129.5).
+      expect(
+        await read(
+          page,
+          inside('contain: paint', host('clip-path: inset(-3.125px -2.375px)')),
+        ),
+      ).toEqual({ host: [63.66, 77.72, 104.81, 97.41] });
+    });
+  }, 30_000);
+
+  test('a clip-path on the container itself is cut in the container’s own frame', async () => {
+    await withPage(async page => {
+      // inset(3.25px 0 0 10.125px) on the container (74.375..374.375 x
+      // 100.625..200.625 px): its region starts at 84.5 x 103.875, moved by
+      // the container's own shift to 84.125 x 104.25 (in place: 84.5 x
+      // 103.875). Right and bottom: the child's own painted edges, 157 and
+      // 137.
+      expect(
+        await read(
+          page,
+          inside(
+            'contain: paint; clip-path: inset(3.25px 0 0 10.125px)',
+            host(''),
+          ),
+        ),
+      ).toEqual({ host: [63.09, 78.19, 117.75, 102.75] });
+    });
+  }, 30_000);
+
+  test('a clip-path outside the container stays at its exact page edges', async () => {
+    await withPage(async page => {
+      // inset(0 0 0 21.125px) on the .at wrapper (from 64 px): its region
+      // starts at 85.125 px exactly; the container's shift doesn't move it
+      // (it would give 84.75). Top: the container's own clip, 101 in its
+      // frame; right and bottom: the child's painted 157 and 137.
+      expect(
+        await read(
+          page,
+          `<div class="at" style="clip-path: inset(0 0 0 21.125px)"><div class="c paint">${host('')}</div></div>`,
+        ),
+      ).toEqual({ host: [63.84, 75.75, 117.75, 102.75] });
     });
   }, 30_000);
 });
