@@ -473,11 +473,16 @@ export function collect() {
                 height: cy1 - cy0,
               };
             }
+            // An <img> or outer <svg> (one not inside another <svg>) paints
+            // its own content, but only when its computed visibility is
+            // visible: a hidden one (own or inherited visibility — the
+            // computed value is inherited) paints nothing (T08-6 slice 2).
             if (
               (inner instanceof HTMLImageElement ||
                 (inner instanceof SVGSVGElement &&
                   inner.parentElement?.closest('svg') == null)) &&
-              inner.getClientRects().length > 0
+              inner.getClientRects().length > 0 &&
+              getComputedStyle(inner).visibility === 'visible'
             ) {
               const box = inner.getBoundingClientRect();
               boxes.push({

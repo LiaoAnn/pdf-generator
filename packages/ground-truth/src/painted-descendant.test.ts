@@ -7,7 +7,8 @@
 // visible part of such a child lies flush with takes the child's painted
 // edge, as one inside the box does. Offsets are multiples of 1/64 px
 // (Chrome's layout unit) and avoid exact .5 fractions, so every expected
-// box is exact: px edge * 0.75, two decimals.
+// box is exact: px edge * 0.75, two decimals. Slice 2: an <img> or <svg>
+// whose computed visibility is not visible paints nothing at all.
 import { fileURLToPath } from 'node:url';
 import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { type Browser, chromium, type Page } from 'playwright-core';
@@ -258,6 +259,41 @@ describe('readGroundTruth: an <img> or <svg> inside a block that sticks out of i
       );
       // It shows 74..83 x 101..111, flush with the left and the top.
       expect(boxes(result)).toEqual({ cutpic: [55.5, 75.75, 86.06, 98.44] });
+    });
+  }, 30_000);
+});
+
+describe('readGroundTruth: a hidden <img> or <svg> paints nothing', () => {
+  test.each([
+    ['an img', `<img class="fill hidden" alt="" src="${gray}">`],
+    [
+      'an svg',
+      `<svg class="fill hidden" width="40.5" height="30.5">${bars}</svg>`,
+    ],
+  ])(
+    '%s with visibility hidden that fills the block moves no side',
+    async (_, child) => {
+      await withPage(async page => {
+        const result = await read(
+          page,
+          `<div class="pad"><div data-gt="image" data-gt-id="ghost" class="small">${child}</div></div>`,
+          // Visible, either would snap every side to 74..115 x 101..131.
+          `.fill { display: block; width: 40.5px; height: 30.5px; }
+           .hidden { visibility: hidden; }`,
+        );
+        expect(boxes(result)).toEqual({ ghost: layoutBox });
+      });
+    },
+    30_000,
+  );
+
+  test('an img past the block’s left inside a visibility: hidden parent moves no side', async () => {
+    await withPage(async page => {
+      const result = await read(
+        page,
+        `<div class="pad"><div data-gt="image" data-gt-id="ghost2" class="small"><div style="visibility: hidden"><img class="wide" alt="" src="${gray}"></div></div></div>`,
+      );
+      expect(boxes(result)).toEqual({ ghost2: layoutBox });
     });
   }, 30_000);
 });
