@@ -55,12 +55,13 @@ export interface MeasuredElement {
 }
 
 /**
- * Something painted on whole px inside (or being) a measured element. `img`,
- * `svg` and `box` paint near or inside the border box; a ::before/::after's
- * background and borders (`pseudo`) may lie outside it, and `outline` and
- * `shadow` paint a ring or shape that may extend past it, so those only
- * ever grow the block's box, cut to the overflow clips around it and to its
- * page.
+ * Something painted on whole px inside (or being) a measured element.
+ * `img`, `svg` and `box` of the element itself paint inside its border box;
+ * those of an element inside it may lie outside it (T08-6: a negative
+ * margin, an absolutely positioned child), as may a ::before/::after's
+ * background and borders (`pseudo`), and `outline` and `shadow` paint a
+ * ring or shape that may extend past it, so those only ever grow the
+ * block's box, cut to the overflow clips around it and to its page.
  */
 export interface PaintedBox {
   /**
@@ -97,7 +98,9 @@ export interface PaintedBox {
    */
   sliced?: ('left' | 'right')[];
   /**
-   * Outline, shadow and pseudo only: the rect it paints inside, in viewport
+   * Outline, shadow and pseudo entries, and (T08-6) the img, svg and box
+   * entries of an element inside the block (never the block's own): the
+   * rect the entry paints inside, in viewport
    * coordinates: the intersection, over the ancestors up to its
    * `.pagedjs_page`, of each one's clip rect — its padding box on every
    * axis whose overflow is not visible, or on both axes under paint

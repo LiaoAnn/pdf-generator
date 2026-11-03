@@ -99,16 +99,19 @@ describe('readGroundTruth: ::before and ::after paint for their block', () => {
     });
   }, 30_000);
 
-  test('an ::after that paints only a border strip outside the box grows it to that strip', async () => {
+  test('an ::after that paints only a border strip outside the box grows it to that strip and moves the sides it lies flush with', async () => {
     await withPage(async page => {
       const result = await read(
         page,
         `<div class="pad"><div data-gt="paragraph" data-gt-id="ruled" class="small rule"></div></div>`,
-        // A 2 px rule 8.25 px right of the box: 121..123 px.
+        // A 2 px rule 8.25 px right of the box: 121..123 x 100.75..131.25
+        // px, painted 121..123 x 101..131. T08-6: it is flush with the top
+        // and bottom, so they move to its painted edges, as for a
+        // background inside the box.
         `.rule::after { content: ''; position: absolute; right: -8.25px; top: 0; bottom: 0;
            border-right: 2px solid #000; }`,
       );
-      expect(boxes(result)).toEqual({ ruled: [55.69, 75.56, 92.25, 98.44] });
+      expect(boxes(result)).toEqual({ ruled: [55.69, 75.75, 92.25, 98.25] });
     });
   }, 30_000);
 

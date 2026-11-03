@@ -145,7 +145,7 @@ describe('readGroundTruth: an <img> is painted on whole px of its page', () => {
     });
   }, 30_000);
 
-  test('an img clipped out of its block by overflow:hidden is not counted', async () => {
+  test('an img wider than its overflow:hidden block counts only as far as the block’s clip lets it show', async () => {
     await withPage(async page => {
       await paginate(
         page,
@@ -154,11 +154,13 @@ describe('readGroundTruth: an <img> is painted on whole px of its page', () => {
         css,
       );
       const result = await readGroundTruth(page, source);
-      // The image starts flush with the figure's left and top but is 60 px
-      // wider than it (what KaTeX's wide svgs do). Counting it would snap the
-      // figure to 74 / 101 px (55.5 / 75.75 pt); it must keep 74.25..114.875
-      // x 100.75..130.875 px.
-      expect(boxes(result)).toEqual({ figure: [55.69, 75.56, 86.16, 98.16] });
+      // The image is 74.25..174.75 x 100.75..130.75 px, 60 px wider than the
+      // figure (74.25..114.875 x 100.75..130.875). T08-6: the figure's clip,
+      // its padding box painted 74..115 x 101..131, cuts the image's painted
+      // 74..175 x 101..131 to 74..115 x 101..131. What shows is flush with
+      // the left, top and right, which move to it; its bottom, 131, lies
+      // past the figure's 130.875 and grows it.
+      expect(boxes(result)).toEqual({ figure: [55.5, 75.75, 86.25, 98.25] });
     });
   }, 30_000);
 
@@ -246,27 +248,28 @@ describe('buildGroundTruth: replaced <img> elements of a hand-made measurement',
     ).toEqual({ figure: [55.5, 75.75, 86.25, 98.25] });
   });
 
-  test('an img counts when it sticks out of the block by 0.005 px but not by 0.02 px', () => {
-    // Block x 74.25..174.75. An img starting 0.005 px left of it is still
-    // inside (and flush) and paints from 74; one starting 0.02 px left of it
-    // is outside, so it neither moves the edge nor grows the box to 74.
+  test('an img 0.005 px from a side is flush with it and moves it in to its painted edge; one 0.02 px out is not, and paints inside it', () => {
+    // Block x 74.75..175.25. An img starting 0.005 px left of it is flush
+    // and paints from 75, so the left moves in to 75; one starting 0.02 px
+    // left of it is not flush (T08-6: an img outside the box only grows it)
+    // and also paints from 75, inside the box, so the left stays at 74.75.
     const within = figure({
       id: 'within',
-      rect: { x: 74.25, y: 100.75, width: 100.5, height: 60.5 },
+      rect: { x: 74.75, y: 100.75, width: 100.5, height: 60.5 },
       painted: [
-        { kind: 'img', rect: { x: 74.245, y: 100.75, width: 40, height: 30 } },
+        { kind: 'img', rect: { x: 74.745, y: 100.75, width: 40, height: 30 } },
       ],
     });
     const outside = figure({
       id: 'outside',
-      rect: { x: 74.25, y: 100.75, width: 100.5, height: 60.5 },
+      rect: { x: 74.75, y: 100.75, width: 100.5, height: 60.5 },
       painted: [
-        { kind: 'img', rect: { x: 74.23, y: 100.75, width: 40, height: 30 } },
+        { kind: 'img', rect: { x: 74.73, y: 100.75, width: 40, height: 30 } },
       ],
     });
     const result = build([within, outside]);
-    expect(result.within?.[0]).toBe(55.5);
-    expect(result.outside?.[0]).toBe(55.69);
+    expect(result.within?.[0]).toBe(56.25);
+    expect(result.outside?.[0]).toBe(56.06);
   });
 
   test('an element with an empty or missing painted list keeps its layout rect', () => {
