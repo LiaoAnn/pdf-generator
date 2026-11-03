@@ -262,3 +262,25 @@ describe('readGroundTruth: the pseudo-element rebuild guard covers contain and o
     30_000,
   );
 });
+
+describe('readGroundTruth: the rebuild guard covers the padding a clip is measured from', () => {
+  test('a rebuild that would change the padding of a fixed-size container clipped at its content box measures the page as printed', async () => {
+    await withPage(async page => {
+      // The container's border box is fixed (border-box sizing) and the dot
+      // is absolutely placed from its padding box, so a padding change
+      // during the rebuild moves no rect: only the content-box clip, which
+      // is the padding box as printed (padding 0) and 20 px inside it with
+      // a span in the dot.
+      expect(
+        await read(
+          page,
+          `<div class="whole"><div class="box wrap"><div data-gt="list_item" data-gt-id="dot" class="dot mark"></div></div></div>`,
+          `.mark::before { content: "x"; background: #000; }
+           .wrap { position: relative; padding: 0; overflow: clip; overflow-clip-margin: content-box; }
+           .wrap:has(span) { padding: 20px; }
+           .dot { position: absolute; left: 3.125px; top: 3.125px; }`,
+        ),
+      ).toEqual({ dot: paddingCut });
+    });
+  }, 30_000);
+});

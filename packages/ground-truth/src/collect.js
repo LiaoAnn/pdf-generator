@@ -135,6 +135,16 @@ export function collect() {
     // T08-5: both also decide what it paints.
     'opacity',
     'clip-path',
+    // T08-5: the boxes a clip-path, background-clip or overflow clip is
+    // measured from (content-box, margin-box).
+    'padding-top',
+    'padding-right',
+    'padding-bottom',
+    'padding-left',
+    'margin-top',
+    'margin-right',
+    'margin-bottom',
+    'margin-left',
   ];
   // What the guard compares: the blocks, everything in them and their
   // ancestors (whose overflow clips what the blocks paint).
@@ -566,7 +576,15 @@ export function collect() {
                 ? []
                 : bgLayers.map((_layer, i) => {
                     const clip = bgClips[i % bgClips.length] ?? 'border-box';
-                    if (clip === 'text') return null;
+                    // text masks the background to the glyphs; with no
+                    // rendered text Chrome prints it unmasked, as a
+                    // border-box background (T08-5 acceptance).
+                    if (clip === 'text') {
+                      return inner instanceof HTMLElement &&
+                        inner.innerText.trim() === ''
+                        ? [0, 0, 0, 0]
+                        : null;
+                    }
                     const border = [
                       style.borderTopWidth,
                       style.borderRightWidth,

@@ -199,6 +199,20 @@ describe('readGroundTruth: a background paints its background-clip box', () => {
     });
   }, 30_000);
 
+  test('background-clip: text on an element with no text prints the whole background', async () => {
+    await withPage(async page => {
+      // Printed through the local print Worker (T08-5 acceptance), an
+      // empty element's text-clipped background is a solid rect on its
+      // whole box rounded to whole px: with no glyphs Chrome masks nothing.
+      expect(
+        await read(
+          page,
+          block('empty', 'background: #000; background-clip: text'),
+        ),
+      ).toEqual({ empty: paintedBox });
+    });
+  }, 30_000);
+
   test('the pseudo-element rebuild guard covers background-clip', async () => {
     await withPage(async page => {
       // As printed the background clips to the padding box inside a 2px
