@@ -1136,7 +1136,7 @@
 - **Blocked by**：T14-10
 - **Blocks**：—
 - **撞車風險**：`apps/print` 的 print runtime 與 `lib.ts`；`apps/web/src/templates/explain.ts`；與其他改 print runtime 的 T07 票不要同時派
-- **驗收測試**：T14-10 的 r9、r10 樣板（VM 上 `/home/dev/repros/t14-9/`）列印回 422 `pdf_unmeasurable` 並有中文說明；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
+- **驗收測試**：T14-10 的 r9、r10 樣板（VM 上 `/home/dev/repros/t14-9/`）（注意：那裡是 `readPdf` 腳本，原始標記超過上傳上限 64 KiB `template.hbs`；T07-33 改用 `<use>` 組出等效的樣板包）列印回 422 `pdf_unmeasurable` 並有中文說明；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
 - **不做**：改 self-check 的上限
 - **來源**：PR #97（T14-10）
 
@@ -1212,3 +1212,12 @@
 - **驗收測試**：該測試不再依賴耗時；在負載下連跑 20 次都過；故意把實作改成二次方時仍會失敗
 - **不做**：改引擎行為
 - **來源**：PR #103 的 CI 第一次執行
+
+### T07-36 印 PDF：沒有文字的超量 PDF 在預覽時也拒絕
+- **目標**：T07-33 讓缺字檢查遇到超出量測上限的 PDF 時回 422 `pdf_unmeasurable`，但沒有 `data-gt` 文字的樣板包不會進到 `missingText`，所以預覽照樣印出（實測 r10 無文字版 200、12.9 MB），要到批次的自我檢查才報 unmeasurable，而且沒有中文說明。每次列印都跑操作量預算（`countOperations`），讓預覽時就拒絕
+- **Blocked by**：T07-33
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的 print runtime；與其他改 print runtime 的 T07 票不要同時派
+- **驗收測試**：無文字、超出操作量的樣板包預覽回 422 `pdf_unmeasurable` 並有中文說明；有文字的照 T07-33；6 個樣板 `compare-gt` 60/60 相同、列印耗時增加寫在 PR
+- **不做**：改 self-check 的上限
+- **來源**：PR #104（T07-33）
