@@ -1089,6 +1089,16 @@ export function collect() {
               let y0 = -Infinity;
               let x1 = Infinity;
               let y1 = Infinity;
+              // T08-7: the same accumulation, each contributing ancestor's
+              // edges moved by its paint-containment frame's shift (the
+              // `shifts` above; 0 when absent), so where the clips paint
+              // before rounding. A clip of an ancestor with no shift paints
+              // on the page, so its edges stay unmoved here.
+              let px0 = -Infinity;
+              let py0 = -Infinity;
+              let px1 = Infinity;
+              let py1 = Infinity;
+              let clipShifted = false;
               // T08-6: the computed position of the element whose clip the
               // walk is computing — inner, then each positioned ancestor it
               // hangs from — so the walk follows the containing-block
@@ -1241,13 +1251,32 @@ export function collect() {
                     edgeY0 += Number.parseFloat(ancestorStyle.paddingTop);
                     edgeY1 -= Number.parseFloat(ancestorStyle.paddingBottom);
                   }
+                  const atShift = shifts.get(at);
                   if (clippedX) {
                     x0 = Math.max(x0, edgeX0 - marginLength);
                     x1 = Math.min(x1, edgeX1 + marginLength);
+                    if (atShift !== undefined) clipShifted = true;
+                    px0 = Math.max(
+                      px0,
+                      edgeX0 - marginLength + (atShift?.x ?? 0),
+                    );
+                    px1 = Math.min(
+                      px1,
+                      edgeX1 + marginLength + (atShift?.x ?? 0),
+                    );
                   }
                   if (clippedY) {
                     y0 = Math.max(y0, edgeY0 - marginLength);
                     y1 = Math.min(y1, edgeY1 + marginLength);
+                    if (atShift !== undefined) clipShifted = true;
+                    py0 = Math.max(
+                      py0,
+                      edgeY0 - marginLength + (atShift?.y ?? 0),
+                    );
+                    py1 = Math.min(
+                      py1,
+                      edgeY1 + marginLength + (atShift?.y ?? 0),
+                    );
                   }
                 }
                 if (at.classList.contains('pagedjs_page')) break;
@@ -1261,6 +1290,16 @@ export function collect() {
                   width: x1 - x0,
                   height: y1 - y0,
                 };
+                // Present only when some ancestor that contributed a clip
+                // edge has a non-zero shift (otherwise it equals `clip`).
+                const paintClip = clipShifted
+                  ? {
+                      x: px0,
+                      y: py0,
+                      width: px1 - px0,
+                      height: py1 - py0,
+                    }
+                  : undefined;
                 for (const entry of boxes) {
                   if (
                     inner !== element ||
@@ -1268,6 +1307,7 @@ export function collect() {
                     entry.kind === 'shadow'
                   ) {
                     entry.clip = clip;
+                    if (paintClip !== undefined) entry.paintClip = paintClip;
                   }
                 }
               }

@@ -8,8 +8,9 @@
 // content-visibility: auto) clips both axes at the padding box like
 // overflow: clip. Neither overflow nor contain clips anything on an inline
 // box or a table row. Inside paint containment Chrome rounds from the
-// container's own origin, not the page's (T08-7 proposed), so the contain
-// cases put the container on whole px, where the two agree. Every block is
+// container's own origin, not the page's (T08-7:
+// painted-containment.test.ts), so the contain cases put the container on
+// whole px, where the two agree. Every block is
 // a 10 px dot with a 30 px shadow spread that overflows its container on
 // every side; the expected box is that shadow cut by the clip.
 import { fileURLToPath } from 'node:url';

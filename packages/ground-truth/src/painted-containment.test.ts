@@ -9,11 +9,12 @@
 // background, borders, <img>, <svg>, ::before/::after boxes, outline and
 // box-shadow — is placed in the frame of the nearest paint container that
 // is the element itself or an ancestor: an edge laid out at L paints at
-// F + round(L - O), where page rounding gives round(L). Slice 1 covers
-// what elements paint; the overflow clips and clip-path regions follow in
-// slices 2 and 3. Offsets are multiples of 1/64 px (Chrome's layout unit)
-// and avoid exact .5 fractions, so every expected box is exact: px edge *
-// 0.75, two decimals.
+// F + round(L - O), where page rounding gives round(L). An overflow clip
+// (an element's padding box, moved by overflow-clip-margin) rounds the same
+// way in the frame of the element that clips: a paint container's own clip
+// in its own frame, any other element's in its container's frame. Offsets
+// are multiples of 1/64 px (Chrome's layout unit) and avoid exact .5
+// fractions, so every expected box is exact: px edge * 0.75, two decimals.
 import { fileURLToPath } from 'node:url';
 import { type GroundTruth, gtSchema } from '@pdf-generator/contract';
 import { type Browser, chromium, type Page } from 'playwright-core';
@@ -306,6 +307,108 @@ describe('readGroundTruth: without paint containment the page rounds', () => {
       expect(result).toEqual({
         chip: layout.map(px => Math.round(Math.round(px) * 0.75 * 100) / 100),
       });
+    });
+  }, 30_000);
+});
+
+describe('readGroundTruth: overflow clips round in the frame of the element that clips', () => {
+  test('a paint container cuts what sticks out of it at its padding box rounded in its own frame', async () => {
+    await withPage(async page => {
+      // The block is the container: O = (74.375, 100.625), 50.25 x 20.75 px,
+      // no paint of its own. Its child (80 x 40 px from the content corner)
+      // sticks out right and below; the container's clip, its padding box,
+      // paints at 74 + round(50.25) = 124 and 101 + round(20.75) = 122 in its
+      // own frame (page rounding: 125 and 121). The clip edges are the
+      // block's own, so those sides take where the clip paints.
+      expect(
+        await read(
+          page,
+          `<div class="at"><div data-gt="paragraph" data-gt-id="cut" class="paint" style="width: 50.25px; height: 20.75px">
+             <div class="ink" style="width: 80px; height: 40px"></div>
+           </div></div>`,
+        ),
+      ).toEqual({ cut: [55.5, 75.75, 93, 91.5] });
+    });
+  }, 30_000);
+
+  test('overflow-clip-margin grows the container’s clip in its own frame', async () => {
+    await withPage(async page => {
+      // As above with a 2.0625 px clip margin and a child sticking out 5 px
+      // on every side: the clip lies at 72.3125..126.6875 x
+      // 98.5625..123.4375 px and paints at 74 + round(-2.0625) = 72 .. 74 +
+      // round(52.3125) = 126 and 101 + round(-2.0625) = 99 .. 101 +
+      // round(22.8125) = 124 (page rounding: 72..127 x 99..123).
+      expect(
+        await read(
+          page,
+          `<div class="at"><div data-gt="paragraph" data-gt-id="margin" class="paint" style="width: 50.25px; height: 20.75px; overflow-clip-margin: 2.0625px">
+             <div class="ink" style="margin: -5px; width: 80px; height: 40px"></div>
+           </div></div>`,
+        ),
+      ).toEqual({ margin: [54, 74.25, 94.5, 93] });
+    });
+  }, 30_000);
+
+  test('an overflow: hidden box inside a container clips in the container’s frame', async () => {
+    await withPage(async page => {
+      // The block is the .spot (87.625..137.75 x 106.375..126.375 px) with
+      // overflow: hidden, inside the container; its child sticks out 5 px on
+      // every side. Its clip (its border box: no border) paints in the
+      // container's frame, 87..137 x 107..127; page rounding: 88..138 x
+      // 106..126.
+      expect(
+        await read(
+          page,
+          inside(
+            'contain: paint',
+            `<div data-gt="paragraph" data-gt-id="window" class="spot" style="overflow: hidden">
+               <div class="ink" style="margin: -5px; width: 80px; height: 40px"></div>
+             </div>`,
+          ),
+        ),
+      ).toEqual({ window: inFrame });
+    });
+  }, 30_000);
+
+  test('a clip outside the container still rounds on the page', async () => {
+    await withPage(async page => {
+      // An overflow: hidden wrapper, 73.75 px wide from the content area's
+      // left (64..137.75 px), holds the container. The .spot block (no paint)
+      // has a child 80 x 10 px wide from its corner, cut by the wrapper at
+      // 137.75: the wrapper is on the page, so it paints at round(137.75) =
+      // 138, not in the container's frame (74 + round(63.375) = 137). The
+      // child's left and top are the block's, painted in the frame (87, 107);
+      // its bottom (116.375) is inside the block, whose own bottom stays
+      // 126.375.
+      expect(
+        await read(
+          page,
+          `<div style="overflow: hidden; width: 73.75px; height: 200px">${inside(
+            'contain: paint',
+            `<div data-gt="paragraph" data-gt-id="outer" class="spot">
+               <div class="ink" style="width: 80px; height: 10px"></div>
+             </div>`,
+          )}</div>`,
+        ),
+      ).toEqual({ outer: [65.25, 80.25, 103.5, 94.78] });
+    });
+  }, 30_000);
+
+  test('a box-shadow is cut where the container’s clip paints in its frame', async () => {
+    await withPage(async page => {
+      // The .spot's 30 px spread shadow rings 57..167 x 77..157 px in the
+      // frame; the container (80.25 x 50.75 px) clips it at 74 .. 74 +
+      // round(80.25) = 154 and 101 .. 101 + round(50.75) = 152 (page
+      // rounding: 74..155 x 101..151).
+      expect(
+        await read(
+          page,
+          inside(
+            'contain: paint; width: 80.25px; height: 50.75px',
+            `<div data-gt="paragraph" data-gt-id="glow" class="spot" style="box-shadow: 0 0 0 30px #000"></div>`,
+          ),
+        ),
+      ).toEqual({ glow: [55.5, 75.75, 115.5, 114] });
     });
   }, 30_000);
 });

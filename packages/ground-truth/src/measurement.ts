@@ -135,6 +135,14 @@ export interface PaintedBox {
    */
   clip?: Rect;
   /**
+   * `clip` with each ancestor's clip rect moved by that ancestor's
+   * paint-containment frame shift (T08-7), i.e. where the clips paint
+   * before rounding; present only when some ancestor that contributed a
+   * clip edge has a non-zero shift (otherwise it equals `clip` and is left
+   * out).
+   */
+  paintClip?: Rect;
+  /**
    * Any kind: the exact (unrounded) clip-path region, in viewport
    * coordinates, that the entry paints inside: the intersection of every
    * `inset()` clip-path on the element itself and its ancestors. Present
