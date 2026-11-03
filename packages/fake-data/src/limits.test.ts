@@ -733,11 +733,11 @@ test('distinct sums and percentages share populated column prefixes across 2000 
         }],
       ])),
     });
-    ${relativeGenerationTiming}
-    // Generation/arithmetic mask the shallow c prefix. Amplify its depth in
-    // a bounded probe: 800 rows, 29 objects, 40 columns (<100,000 values).
-    // The flat reference reads the same 32,000 values and computes the same
-    // sums/percentages, without a shared object prefix to rediscover.
+    ${countedDerivedReads}
+    // Amplify the shallow c prefix's depth in a bounded probe: 800 rows,
+    // 29 objects, 40 columns (<100,000 values). The flat reference reads the
+    // same 32,000 values and computes the same sums/percentages, without a
+    // shared object prefix to rediscover.
     let deep = object(Object.fromEntries(columns.map(([key, value]) => [key, constant(value)])));
     for (let i = 1; i < 29; i++) deep = object({ child: deep });
     const prefix = 'rows[].c.' + 'child.'.repeat(28);
@@ -755,20 +755,19 @@ test('distinct sums and percentages share populated column prefixes across 2000 
         ['ratio_' + key, { type: 'percentage', part: key + '[]', whole: 'v0[]', decimals: 2 }],
       ])),
     });
-    // Time derived traversal alone, so generating the extra wrappers does not
-    // hide lost prefix sharing. Each fill creates fresh evaluation caches.
-    const { derivedOrder, fillDerived } = await import(${JSON.stringify(new URL('./derived.ts', import.meta.url).href)});
-    const probeRecord = generate(probe, 'shared-populated-prefix');
-    const referenceRecord = generate(reference, 'shared-populated-prefix');
-    const probeOrder = derivedOrder(probe).order;
-    const referenceOrder = derivedOrder(reference).order;
-    const measured = compareWork(() => {
-      assert.deepEqual(fillDerived(probeRecord, probe, probeOrder), []);
-      return probeRecord;
-    }, () => {
-      assert.deepEqual(fillDerived(referenceRecord, reference, referenceOrder), []);
-      return referenceRecord;
-    }, 2.5, 'shared populated prefix');
+    // Count derived traversal alone; each fill creates fresh evaluation caches.
+    const measured = generate(probe, 'shared-populated-prefix');
+    const flatReads = countFillReads(generate(reference, 'shared-populated-prefix'),
+      reference, Infinity, 'flat reference');
+    // Shared, the 800 rows' prefix (c and 28 child objects) is walked once:
+    // about 48,000 reads (2 per object step), less what the reference spends
+    // walking its 40 column arrays. The budget allows two such walks over
+    // the reference; one walk per column would cost about 40 × 48,000.
+    const deepReads = countFillReads(measured, probe, flatReads + 2 * (2 * 800 * 30),
+      'shared populated prefix');
+    // Each sum reads all 800 values of its column: the counter sees the fill.
+    assert.ok(flatReads >= 40 * 800, 'flat reference read ' + flatReads + ' times');
+    assert.ok(deepReads > flatReads, 'the deep rules read their wrappers');
     for (const [key, value] of columns) {
       assert.equal(measured['sum_' + key], 800 * value);
       assert.equal(measured['ratio_' + key], Math.round(value * 10_000 / 3) / 100);
