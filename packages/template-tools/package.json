@@ -12,6 +12,7 @@
     "typecheck": "tsc && tsc -p tsconfig.node.json"
   },
   "devDependencies": {
+    "@types/css-tree": "^1.0.7",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^24.13.6",
     "esbuild": "0.28.2",
@@ -23,6 +24,7 @@
   "dependencies": {
     "@pdf-generator/contract": "workspace:*",
     "@pdf-generator/fake-data": "workspace:*",
+    "css-tree": "1.1.3",
     "entities": "^8.1.0",
     "fflate": "^0.8.3",
     "handlebars": "^4.7.10",
