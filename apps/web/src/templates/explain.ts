@@ -135,6 +135,8 @@ const printIssues: Record<string, string> = {
     '樣板 CSS 移動了 Paged.js 排好的頁面元素（.pagedjs_*）或 html／body 的位置，PDF 印出來的內容會和標準答案的框對不上。沒有寫出 .pagedjs 的選擇器（例如 body > div > div）也算。請用 @page 設定頁邊界，不要改這些元素的邊界、內距、定位或變形。',
   pagination_timeout:
     '分頁花太久，列印逾時。請檢查是否有極長的表格或無法分頁的大區塊。',
+  pdf_unmeasurable:
+    '印出來的 PDF 太複雜，平台無法量測：繪製的運算數量太多、SVG 群組巢狀太深，或解碼後的內容太大，因此平台無法檢查 PDF 是否與標準答案一致。常見原因：SVG 裡有大量的圖形（例如數十萬個 <rect>）、SVG 群組巢狀太深（每層 opacity 都會變成一層巢狀群組）、或圖片與內容本身很大。請減少或簡化圖形、展平群組的巢狀結構，或改用 PNG 等點陣圖代替大量向量圖形。',
   row_fragmented:
     '有表格列被切在兩頁之間。請讓每一列的高度小於一頁，或允許表格在列與列之間換頁。',
   text_missing:
