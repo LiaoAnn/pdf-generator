@@ -1,0 +1,11 @@
+{
+  // Acceptance program: acceptance/run.ts, a plain Node script that drives a
+  // running print Worker over HTTP. It imports no Worker code, so it gets the
+  // Node types only, without the Workers globals worker-configuration.d.ts
+  // declares (their URL and fetch differ from Node's). No DOM.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["acceptance/run.ts"]
+}
