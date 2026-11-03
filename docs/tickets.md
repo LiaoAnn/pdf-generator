@@ -1185,3 +1185,30 @@
 - **驗收測試**：flex `order`／`row-reverse` 與 `writing-mode: vertical-rl` 的測試樣板列印 10/10、自我檢查 10/10；藏字對照組仍被拒；6 個樣板 `compare-gt` 60/60 相同
 - **不做**：斜體或傾斜文字
 - **來源**：PR #102（T07-19）
+
+### T06-9 樣板工具：上傳時也計算只有 Paged.js 讀的 `@import` 形式
+- **目標**：T06-7 在上傳時計算 `@import` 圖的展開量，但 `@import {…}` 區塊內的字串、NUL、`element(…)` 等只有 Paged.js 會讀的形式（T06-4 的繞道，T07-29 在列印時拒絕）沒有算進去。上傳檢查改成和 Paged.js 一樣計算它們的展開量與循環；同一張票要改 `apps/print/src/import-loop.test.ts` 的前提（`checkPack(...).ok === true`）
+- **Blocked by**：T06-7
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的樣板包檢查；`apps/print/src/import-loop.test.ts`；與 T06-8 不要同時派
+- **驗收測試**：用這些形式組成的梯子與循環樣板包在上傳時被拒絕並有中文說明；T07-29 的列印端測試照常；6 個樣板照常上傳、`compare-gt` 60/60 相同
+- **不做**：改 print runtime 的上限
+- **來源**：PR #103（T06-7）Security review
+
+### T06-10 樣板工具：要不要規定樣板以 `<!doctype html>` 開頭（先量測）
+- **目標**：沒有 doctype 時 Chrome 以 quirks mode 排版，並會套用任何 MIME 類型的同源樣式表（T06-7 的 `.png` 樣式表能載入的原因之一）。先量測：6 個樣板加上 doctype 後版面與 gt.json 有沒有變；再決定是否在上傳檢查要求 doctype。變動會影響樣板，結論要回報給使用者決定
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools`；`templates/*`
+- **驗收測試**：量測報告（6 個樣板有／無 doctype 的 `compare-gt` 結果）；若使用者同意要求 doctype，缺 doctype 的樣板包在上傳時以中文說明被拒
+- **不做**：在使用者決定前改樣板
+- **來源**：PR #103（T06-7）
+
+### T05-4 假資料引擎：`limits.test.ts` 的比例上限在 CI 會偶發失敗
+- **目標**：`packages/fake-data` 的 `limits.test.ts`「running balances share deep distinct add prefixes」以耗時比例 ≤ 3 判斷，在 CI 的分片上出現過 3.13（PR #103，重跑通過）。改成不受機器負載影響的判斷（例如計數操作次數），比照 T06-5／T06-6 處理固定時間上限的做法
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`packages/fake-data` 的測試
+- **驗收測試**：該測試不再依賴耗時；在負載下連跑 20 次都過；故意把實作改成二次方時仍會失敗
+- **不做**：改引擎行為
+- **來源**：PR #103 的 CI 第一次執行
