@@ -304,6 +304,43 @@ describe('checkPack unused font families', () => {
       ),
     );
   });
+
+  it.each([
+    'p { font-family: "Noto Sans TC" !important; }',
+    'p { font-family: serif, "Noto Sans TC"!important }',
+    'p { font-family: Noto Sans TC ! IMPORTANT ; }',
+    ':root { --body: "Noto Sans TC" !important; } p { font-family: var(--body); }',
+  ])('counts a font-family marked !important as usage: %s', css => {
+    accepted(validFiles(markedText, `${face('"Noto Sans TC"')}\n${css}`));
+  });
+
+  it.each([
+    'p { font: 12px/1.5 "Noto Sans TC" !important; }',
+    'p { font: bold 12px noto sans tc ! important }',
+  ])('counts a font shorthand marked !important as usage: %s', css => {
+    accepted(validFiles(markedText, `${face('"Noto Sans TC"')}\n${css}`));
+  });
+
+  it('counts a style attribute font-family marked !important as usage', () => {
+    accepted(
+      validFiles(
+        `<p data-gt="paragraph" style="font-family: 'Noto Sans TC' !important">{{holder}}</p>`,
+        face('"Noto Sans TC"'),
+      ),
+    );
+  });
+
+  it('still rejects a face when the !important declaration names another family', () => {
+    rejected(
+      validFiles(
+        markedText,
+        `${face('"Noto Sans TC"')}\np { font-family: "Noto Sans TC Extra" !important; }`,
+      ),
+      cssFile,
+      'font-unused',
+      '@font-face',
+    );
+  });
 });
 
 describe('checkPack self-contained asset acceptance', () => {

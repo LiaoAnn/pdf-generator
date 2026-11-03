@@ -174,6 +174,9 @@ export function fontFaces(
   });
 }
 
+/** A trailing `!important` on a declaration value (any case, spaced `!`). */
+const importantSuffix = /!\s*important\s*$/i;
+
 /**
  * Whether declarations outside @font-face rules ask for bold or for italic
  * (or oblique): font-weight, font-style and the font shorthand.
@@ -186,7 +189,7 @@ export function fontRequests(css: string): { bold: boolean; slanted: boolean } {
     /(?:^|[;{\s])(font-weight|font-style|font)\s*:\s*([^;}]*)/gi,
   )) {
     const property = match[1]?.toLowerCase();
-    const value = (match[2] ?? '').replace(/!\s*important\s*$/i, ' ');
+    const value = (match[2] ?? '').replace(importantSuffix, ' ');
     if (property !== 'font-style') {
       bold ||= value.trim().split(/\s+/).some(isBold);
     }
@@ -212,7 +215,10 @@ export function usedFamilies(css: string): {
   for (const match of text.matchAll(
     /(?:^|[;{\s])(font-family|font|--[\w-]+)\s*:\s*([^;}]*)/gi,
   )) {
-    const [first = '', ...rest] = (match[2] ?? '').split(',').map(normalize);
+    const [first = '', ...rest] = (match[2] ?? '')
+      .replace(importantSuffix, ' ')
+      .split(',')
+      .map(normalize);
     if (match[1]?.toLowerCase() === 'font') shorthandFirsts.push(first);
     else families.add(first);
     for (const family of rest) families.add(family);
