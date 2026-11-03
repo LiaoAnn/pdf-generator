@@ -1167,3 +1167,21 @@
 - **驗收測試**：子元素背景、框線、圖片超出區塊時 gt 框蓋住它們的墨跡（≤ 0.125 pt）；被 overflow 裁掉的部分不算；6 個樣板各 10 份 gt.json 與 main 相同（`pnpm dump-gt`／`compare-gt`）、自我檢查 60/60
 - **不做**：改共用契約；文字本身的溢出
 - **來源**：PR #100（T08-4）
+
+### T01-4 開發環境：`/home/node/.cache` 歸 node 所有
+- **目標**：`playwright_browsers` volume 掛在 `/home/node/.cache/ms-playwright`，Docker 建立掛載點時把上層 `/home/node/.cache` 建成 root 所有；post-create 只 chown 了 `ms-playwright` 本身。新建的 container（例如 VM 重開後 `wt-up`）裡 `pnpm dev:print` 沒帶 `XDG_CACHE_HOME` 時就會 `EACCES … mkdir '/home/node/.cache/.wrangler'`（T07-19 實測）。讓 post-create 也把 `/home/node/.cache`（不遞迴）交給 node，之後 AGENTS.md「Batch locally」的 `XDG_CACHE_HOME=<writable dir>` 可以拿掉
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`.devcontainer/scripts/post-create.sh`；與其他改 `.devcontainer/` 的票不要同時派
+- **驗收測試**：`wt-up` 新建的 container 裡 `stat -c %U /home/node/.cache` 是 node；不帶 `XDG_CACHE_HOME` 的 `pnpm dev:print` 能起來；dev-container 腳本測試通過
+- **不做**：改 volume 或掛載點
+- **來源**：PR #102（T07-19）
+
+### T07-35 印 PDF：缺字檢查對 CSS 重排與直書文字
+- **目標**：T07-19 之後旋轉文字可正確檢查，但相鄰行內區塊被 CSS 重排（flex `order`、`row-reverse`）時，在沒有標記的 PDF 裡仍可能誤判；直書 `writing-mode` 也沒有測試。補上這兩種情況的判斷與實際列印測試。目前沒有樣板需要，優先度低
+- **Blocked by**：T07-19
+- **Blocks**：—
+- **撞車風險**：`packages/self-check/src/text.ts`；與其他改 print 的 T07 票不要同時派
+- **驗收測試**：flex `order`／`row-reverse` 與 `writing-mode: vertical-rl` 的測試樣板列印 10/10、自我檢查 10/10；藏字對照組仍被拒；6 個樣板 `compare-gt` 60/60 相同
+- **不做**：斜體或傾斜文字
+- **來源**：PR #102（T07-19）
