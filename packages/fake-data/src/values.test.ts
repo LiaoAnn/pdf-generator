@@ -53,8 +53,8 @@ test('CLI samples 10,000 valid records and replays every generator by seed and p
       timeout: 20_000,
     });
   expect(run()).toBe(run());
-  // Room for the child's 20 s timeout: a hang guard, not a speed check.
-}, 30_000);
+  // Room for both child runs' 20 s timeouts: a hang guard, not a speed check.
+}, 50_000);
 
 test('calendar validation rejects rollover dates and enforces Gregorian century rules', () => {
   for (const value of [
