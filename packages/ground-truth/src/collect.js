@@ -126,6 +126,9 @@ export function collect() {
     'box-decoration-break',
     '-webkit-box-decoration-break',
     'direction',
+    // T08-5: both also decide what it paints.
+    'opacity',
+    'clip-path',
   ];
   // What the guard compares: the blocks, everything in them and their
   // ancestors (whose overflow clips what the blocks paint).
@@ -316,6 +319,141 @@ export function collect() {
           inner => {
             /** @type {PaintedBox[]} */
             const boxes = [];
+            // T08-5: opacity 0 on the element or any ancestor up to the
+            // document root paints nothing at all (opacity 0.01 still
+            // does), so it contributes no entries.
+            let transparent = false;
+            for (
+              let /** @type {Element | null} */ at = inner;
+              at !== null;
+              at = at.parentElement
+            ) {
+              if (Number.parseFloat(getComputedStyle(at).opacity) === 0) {
+                transparent = true;
+                break;
+              }
+            }
+            if (transparent) return boxes;
+            // T08-5: a clip-path — the element's own or any ancestor's —
+            // cuts what it paints at the clip region's exact, unrounded
+            // edges. Only an inset() basic shape on an element with
+            // exactly one client rect gives a region: a reference box
+            // keyword before or after it (border-box without one;
+            // padding-box and content-box shrink the border box by the
+            // computed borders and borders plus paddings, margin-box grows
+            // it by the margins, and fill-box, stroke-box and view-box
+            // count as border-box), 1–4 px or % lengths in
+            // margin-shorthand order (% of the reference box's height for
+            // top/bottom, width for left/right) and an optional `round
+            // ...` (rounded corners don't move the bounding rect). Its
+            // region is the reference box inset by those lengths, and the
+            // regions intersect; an empty one (inset(50%)) paints nothing.
+            // Anything else (circle(), ellipse(), polygon(), path(),
+            // url(), calc() inside inset(), several client rects) is
+            // unknown: it puts no constraint on what the element paints.
+            /** @type {number[]} */
+            let region = [-Infinity, -Infinity, Infinity, Infinity];
+            let clipped = false;
+            for (
+              let /** @type {Element | null} */ at = inner;
+              at !== null;
+              at = at.parentElement
+            ) {
+              const atStyle = getComputedStyle(at);
+              const value = atStyle.clipPath.trim();
+              if (value === 'none') continue;
+              const match =
+                /^(?:(margin-box|border-box|padding-box|content-box|fill-box|stroke-box|view-box)\s+)?inset\(([^()]*)\)(?:\s+(margin-box|border-box|padding-box|content-box|fill-box|stroke-box|view-box))?$/i.exec(
+                  value,
+                );
+              if (match === null || at.getClientRects().length !== 1) {
+                continue;
+              }
+              const pieces = (match[2] ?? '').trim().split(/\s+/);
+              const roundAt = pieces.findIndex(
+                piece => piece.toLowerCase() === 'round',
+              );
+              const lengths = (
+                roundAt < 0 ? pieces : pieces.slice(0, roundAt)
+              ).filter(piece => piece !== '');
+              if (
+                lengths.length === 0 ||
+                lengths.length > 4 ||
+                lengths.some(piece => !/^-?[\d.]+(?:px|%)$/.test(piece))
+              ) {
+                continue;
+              }
+              // The reference box, inset by the lengths.
+              const borderBox = at.getBoundingClientRect();
+              let refX = borderBox.x;
+              let refY = borderBox.y;
+              let refW = borderBox.width;
+              let refH = borderBox.height;
+              const reference = (match[1] ?? match[3] ?? '').toLowerCase();
+              if (reference === 'padding-box' || reference === 'content-box') {
+                refX += Number.parseFloat(atStyle.borderLeftWidth);
+                refY += Number.parseFloat(atStyle.borderTopWidth);
+                refW -=
+                  Number.parseFloat(atStyle.borderLeftWidth) +
+                  Number.parseFloat(atStyle.borderRightWidth);
+                refH -=
+                  Number.parseFloat(atStyle.borderTopWidth) +
+                  Number.parseFloat(atStyle.borderBottomWidth);
+              }
+              if (reference === 'content-box') {
+                refX += Number.parseFloat(atStyle.paddingLeft);
+                refY += Number.parseFloat(atStyle.paddingTop);
+                refW -=
+                  Number.parseFloat(atStyle.paddingLeft) +
+                  Number.parseFloat(atStyle.paddingRight);
+                refH -=
+                  Number.parseFloat(atStyle.paddingTop) +
+                  Number.parseFloat(atStyle.paddingBottom);
+              }
+              if (reference === 'margin-box') {
+                refX -= Number.parseFloat(atStyle.marginLeft);
+                refY -= Number.parseFloat(atStyle.marginTop);
+                refW +=
+                  Number.parseFloat(atStyle.marginLeft) +
+                  Number.parseFloat(atStyle.marginRight);
+                refH +=
+                  Number.parseFloat(atStyle.marginTop) +
+                  Number.parseFloat(atStyle.marginBottom);
+              }
+              // Missing values repeat as in the margin shorthand before
+              // percentages resolve, so each one takes its own axis.
+              const [t = '0px', r = t, b = t, l = r] = lengths;
+              const [top = 0, right = 0, bottom = 0, left = 0] = [
+                t,
+                r,
+                b,
+                l,
+              ].map((piece, i) =>
+                piece.endsWith('%')
+                  ? (Number.parseFloat(piece) / 100) *
+                    (i % 2 === 0 ? refH : refW)
+                  : Number.parseFloat(piece),
+              );
+              region = [
+                Math.max(region[0] ?? -Infinity, refX + left),
+                Math.max(region[1] ?? -Infinity, refY + top),
+                Math.min(region[2] ?? Infinity, refX + refW - right),
+                Math.min(region[3] ?? Infinity, refY + refH - bottom),
+              ];
+              clipped = true;
+            }
+            /** @type {Rect | undefined} */
+            let clipPath;
+            if (clipped) {
+              const [cx0 = 0, cy0 = 0, cx1 = 0, cy1 = 0] = region;
+              if (cx1 <= cx0 || cy1 <= cy0) return boxes;
+              clipPath = {
+                x: cx0,
+                y: cy0,
+                width: cx1 - cx0,
+                height: cy1 - cy0,
+              };
+            }
             if (
               (inner instanceof HTMLImageElement ||
                 (inner instanceof SVGSVGElement &&
@@ -333,6 +471,7 @@ export function collect() {
                   width: box.width,
                   height: box.height,
                 },
+                ...(clipPath === undefined ? {} : { clipPath }),
               });
             }
             // A laid-out HTML element with a visible background or border,
@@ -556,6 +695,7 @@ export function collect() {
                     width: outlines.width,
                     offset: outlines.offset,
                     ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
                 for (const shadow of shadows) {
@@ -589,6 +729,7 @@ export function collect() {
                     spread: shadow.spread,
                     ...(sliced.length > 0 ? { sliced } : {}),
                     ...(clipBox !== undefined ? { clip: clipBox } : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
                 if (background) {
@@ -603,6 +744,7 @@ export function collect() {
                     ...(pseudo && clipBox !== undefined
                       ? { clip: clipBox }
                       : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                   continue;
                 }
@@ -705,6 +847,7 @@ export function collect() {
                     ...(pseudo && clipBox !== undefined
                       ? { clip: clipBox }
                       : {}),
+                    ...(clipPath === undefined ? {} : { clipPath }),
                   });
                 }
               }

@@ -103,6 +103,14 @@ export interface PaintedBox {
    * clips its own pseudo-elements).
    */
   clip?: Rect;
+  /**
+   * Any kind: the exact (unrounded) clip-path region, in viewport
+   * coordinates, that the entry paints inside: the intersection of every
+   * `inset()` clip-path on the element itself and its ancestors. Present
+   * only when at least one `inset()` clip-path applies (T08-5); any other
+   * shape (circle(), polygon(), url(), ...) leaves the ink unconstrained.
+   */
+  clipPath?: Rect;
 }
 
 /** A `.pagedjs_page` border box. */
