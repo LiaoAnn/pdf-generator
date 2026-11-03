@@ -1221,3 +1221,12 @@
 - **驗收測試**：無文字、超出操作量的樣板包預覽回 422 `pdf_unmeasurable` 並有中文說明；有文字的照 T07-33；6 個樣板 `compare-gt` 60/60 相同、列印耗時增加寫在 PR
 - **不做**：改 self-check 的上限
 - **來源**：PR #104（T07-33）
+
+### T05-5 假資料引擎：其餘受機器負載影響的測試上限
+- **目標**：T05-4 把三個前綴共用測試改成計數，但還有兩類依賴時間的檢查：(a) `limits.test.ts` 的 extreme-constants 耗時比例 < 8（量的是算術，負載下 40 次沒失敗過）與七個固定 3,000／1,500 ms 上限；(b) hardening、row-percentage、sort-by、text-phrases 測試裡的 CLI 測試用 vitest 預設 5,000 ms timeout，負載下（loadavg 10.4）40 次中有 1 次 5 個一起逾時。改成不受負載影響的判斷（計數，或對 CLI 測試給合理的 timeout），比照 T05-4、T06-5、T06-6
+- **Blocked by**：T05-4
+- **Blocks**：—
+- **撞車風險**：`packages/fake-data` 的測試
+- **驗收測試**：這些測試不再依賴耗時或預設 timeout；在滿載 CPU 下連跑 40 次都過；故意改壞的實作仍會失敗
+- **不做**：改引擎行為
+- **來源**：PR #105（T05-4）
