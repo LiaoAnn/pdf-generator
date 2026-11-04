@@ -25,6 +25,7 @@ export const packIssueCodes = [
   'asset-missing',
   'asset-path',
   'asset-stylesheet-type',
+  'asset-svg-nested',
   'css-escape',
   'css-import-cycle',
   'css-import-expansion',

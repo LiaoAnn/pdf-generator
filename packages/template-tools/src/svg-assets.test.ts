@@ -435,9 +435,11 @@ describe('SVG files: which files and what Chrome reads', () => {
     refusedFile(pack({ [svgFile]: file }), 'text-encoding');
   });
 
-  it('accepts scripts and nested file references (an SVG image runs and loads nothing)', () => {
+  it('accepts scripts (an SVG image runs none)', () => {
+    // Nested file references load nothing either, but print nothing, so they
+    // are refused (asset-svg-nested, T06-16; svg-nested-refs.test.ts).
     const file = svg(
-      `<rect id="r" width="40" height="10" fill="#fff"/><script>document.getElementById('r').setAttribute('fill','#000')</script><image href="missing.png" width="1" height="1"/><style>@import url(missing.css);</style>`,
+      `<rect id="r" width="40" height="10" fill="#fff"/><script>document.getElementById('r').setAttribute('fill','#000')</script>`,
     );
     accepted(pack({ [svgFile]: file }));
   });

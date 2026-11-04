@@ -106,6 +106,8 @@ const packIssues: Record<string, string> = {
     '檔案路徑是用 Handlebars 動態組出來的，平台無法確認檔案存在。請改用固定的路徑。',
   'asset-stylesheet-type':
     '<link> 或 @import 載入的樣式表是圖片或字型檔（例如 .png、.woff2）。上傳時這些檔案不會被當成文字檢查，平台無法確認它載入了什麼。請把 CSS 放在 .css 檔案裡再引用。',
+  'asset-svg-nested':
+    'SVG 圖片（樣板包裡的 .svg 檔，或 data:image/svg+xml 圖片）裡引用了其他檔案或網址，例如 <image href="other.svg">、@import、<?xml-stylesheet?>、<use href="x.svg#id"> 或 CSS 的 url(x.png)。SVG 當成圖片載入時，Chrome 不會載入這些引用，列印出來那部分是空白。請把內容直接畫在這個 SVG 裡，或改用 data: 網址；同一份 SVG 裡的 #id 引用不受影響。',
   'css-escape':
     'CSS 裡有反斜線跳脫字元，平台無法確認它引用的檔案。請改成不用跳脫的寫法。',
   'css-page-box':

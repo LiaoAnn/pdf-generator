@@ -10,9 +10,11 @@
 // Inside the image Chrome also reads a nested data:image/svg+xml image (the
 // same way, so this reads it recursively, nesting bounded) and applies a
 // data: stylesheet (<?xml-stylesheet?>, @import, XHTML <link> — refused as
-// asset-data), while it loads no other URL: every other URL in the file is
-// a string, never a fetch. Issues found inside a nested image are reported
-// once, at the data: URL as written in this file.
+// asset-data), while it loads no other URL: every other URL in the file
+// prints nothing (the T06-16 probe: 21 cases of nested <image>/<feImage>/
+// <use>/XHTML <img>, all blank), so the attribute that would load it is
+// refused as asset-svg-nested. Issues found inside a nested image are
+// reported once, at the data: URL as written in this file.
 //
 // One iterative pass over the text: no recursion over element depth, and
 // every scan for a terminator (-->, ]]>, ?>, a quote, >) resumes where it
@@ -31,6 +33,7 @@ import {
   dynamicAssetMessage,
   repeatingGradientMessage,
   spreadMethodMessage,
+  svgNestedRefMessage,
 } from './messages.ts';
 import { decode, position } from './text.ts';
 import { srcsetUrls, urlParserView } from './urls.ts';
@@ -316,20 +319,34 @@ function readText(report: Report, text: string, level: number): void {
    * srcset candidate, or a CSS url() / image-set() string / @import — as
    * the URL parser sees it: tab, LF and CR dropped anywhere, C0 controls
    * and spaces trimmed at the ends. `stylesheet` is an @import, <link> or
-   * <?xml-stylesheet?> URL. An SVG image loads no other URL, so only data:
-   * matters: a nested image is read recursively, a stylesheet refused, the
-   * rest ignored. `rawAt` maps an offset in `url` to one in `text`.
+   * <?xml-stylesheet?> URL. An SVG image loads no other URL: `nestedRef`
+   * — true only where the element's attribute would load an image —
+   * refuses every non-data:, non-#id URL (it prints nothing), a nested
+   * data: image is read recursively, a stylesheet refused. `rawAt` maps an
+   * offset in `url` to one in `text`.
    */
   const checkUrl = (
     url: string,
     kind: 'image' | 'stylesheet',
     rawAt: (offset: number) => number,
+    nestedRef = false,
   ) => {
     const view = urlParserView(url);
     if (view === undefined) return;
     const parsed = view.url;
     // The first character kept after trimming, where the issue points.
     const at = rawAt(view.at);
+    // A URL an image element would load: an SVG image loads no other file
+    // or URL (T06-16 probe), so it prints nothing. data: loads (a nested
+    // image below, a real image as is); a same-document #id is fine.
+    if (
+      nestedRef &&
+      parsed.slice(0, 5).toLowerCase() !== 'data:' &&
+      !parsed.startsWith('#')
+    ) {
+      issue('asset-svg-nested', at, svgNestedRefMessage(parsed));
+      return;
+    }
     if (kind === 'stylesheet') {
       if (parsed.slice(0, 5).toLowerCase() === 'data:') {
         issue(
@@ -566,13 +583,26 @@ function readText(report: Report, text: string, level: number): void {
     for (const attr of attrs) {
       const rawAt = (offset: number) => attr.rawOf[offset] ?? n;
       if (attr.local === 'href' || attr.local === 'src') {
-        checkUrl(attr.value, local === 'link' ? 'stylesheet' : 'image', rawAt);
+        // Not <a> (its href is a hyperlink, never a load), <script> (it
+        // never runs) or <link> (a stylesheet): the attribute loads an
+        // image, which inside an SVG image prints nothing.
+        const nestedRef =
+          local !== 'a' && local !== 'script' && local !== 'link';
+        checkUrl(
+          attr.value,
+          local === 'link' ? 'stylesheet' : 'image',
+          rawAt,
+          nestedRef,
+        );
         continue;
       }
       if (attr.local === 'srcset') {
         for (const reference of srcsetUrls(attr.value)) {
-          checkUrl(reference.url, 'image', offset =>
-            rawAt(reference.offset + offset),
+          checkUrl(
+            reference.url,
+            'image',
+            offset => rawAt(reference.offset + offset),
+            true,
           );
         }
         continue;

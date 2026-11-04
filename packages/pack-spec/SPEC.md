@@ -524,6 +524,7 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `template-syntax`, `template-unsupported`, `template-unknown-field`, `template-render`, `template-structure` | Handlebars (§3) |
 | `html-active`, `html-unsupported` | The allowlist (§3) |
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `asset-stylesheet-type`, `css-escape` | Files the template or CSS loads |
+| `asset-svg-nested` | A file or URL referenced inside an SVG image (a pack `.svg` file or a `data:image/svg+xml` image) that isn't a `data:` URL or a same-document `#id`: Chrome loads none of them there, so they print nothing (§5) |
 | `css-import-cycle`, `css-import-expansion` | Stylesheet `@import`s: a cycle, or imports that load more than 64 stylesheets or 1 MiB of CSS in all (Chrome and Paged.js load a sheet again for every `@import` of it) |
 | `font-unused` | Fonts (§6) |
 | `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |
