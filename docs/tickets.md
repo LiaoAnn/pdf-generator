@@ -1308,3 +1308,12 @@
 - **驗收測試**：T14-11 的 15 種寫法裡，自我檢查的結果與 `pnpm compare-renderers` 的 PDFium 一致；T14-9 的 9 個重現案例仍被擋下；6 個樣板各 10 份仍通過，時間與 main 同一量級
 - **不做**：改樣板規格
 - **來源**：PR #117（T14-11）
+
+### T08-8 標準答案：`content-visibility: hidden` 內的區塊
+- **目標**：T08-7 的探測顯示 `content-visibility: hidden` 內什麼都不會印出，但沒人檢查過標準答案對其中的 `data-gt` 區塊與裝飾記了什麼。查清楚後讓標準答案與列印一致（不記錄，或由上傳檢查／列印以中文說明拒絕）。優先度低：目前沒有樣板用到
+- **Blocked by**：T08-7
+- **Blocks**：—
+- **撞車風險**：`packages/ground-truth`；可能動到 `apps/print` 的缺字或裁切檢查
+- **驗收測試**：`content-visibility: hidden` 內含 `data-gt` 區塊的樣板包，gt.json 與 PDF 一致（或被以中文說明拒絕）；6 個樣板 `compare-gt` 60/60 相同
+- **不做**：改共用契約
+- **來源**：PR #118（T08-7）
