@@ -11,6 +11,7 @@ import {
   scanCss,
   usedFamilies,
 } from './css.ts';
+import { dataImageSvgText } from './data-url.ts';
 import { repeatingGradients } from './gradients.ts';
 import {
   attributeOf,
@@ -24,26 +25,18 @@ import {
   maxStylesheetLoads,
 } from './import-expansion.ts';
 import type { CheckIssue, PackIssueCode } from './issues.ts';
+import {
+  cssEscapeMessage,
+  dynamicAssetMessage,
+  repeatingGradientMessage,
+  spreadMethodMessage,
+} from './messages.ts';
 import { pageBoxProblems } from './page-box.ts';
-
-// T06-13: the SVG check (svg.ts) reports the same problems in .svg files,
-// so the message texts live here once instead of twice.
-/** Why a repeating-linear/radial-gradient() is refused, and what to draw. */
-export const repeatingGradientMessage =
-  'repeating-linear-gradient() and repeating-radial-gradient() print as a shading the self-check misreads (stripes read solid black or blank, rings as a scrambled pattern): draw them as SVG <rect> or <circle> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%';
-/** Why spreadMethod="repeat"/"reflect" is refused, and what to draw. */
-export const spreadMethodMessage =
-  'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%';
-/** Why a backslash escape in CSS is refused. */
-export const cssEscapeMessage =
-  'a backslash escape in CSS: write the character itself (packs are UTF-8)';
-/** Why a function inside image-set() is refused. */
-export const dynamicAssetMessage =
-  'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see';
-
 import { pagedImports } from './paged-imports.ts';
 import { isRefused } from './policy.ts';
+import { dataSvgTextIssues } from './svg.ts';
 import { decode, position } from './text.ts';
+import { srcsetUrls, urlEnd, urlParserView, urlStart } from './urls.ts';
 
 /**
  * Attributes that make the browser load a URL, by element, among the
@@ -93,23 +86,6 @@ function resolve(
 }
 
 /**
- * Where a URL starts and ends once the browser's URL parser has stripped the
- * C0 controls and spaces around it; it keeps the no-break space and other
- * Unicode spaces, which then name a file that isn't in the pack. (svg.ts
- * puts data: URLs through the same trim.)
- */
-export const urlStart = (url: string) => {
-  let i = 0;
-  while (i < url.length && url.charCodeAt(i) <= 0x20) i++;
-  return i;
-};
-export const urlEnd = (url: string) => {
-  let i = url.length;
-  while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
-  return i;
-};
-
-/**
  * The stylesheet a URL loads, as each reading hands it to the URL parser:
  * Chrome's CSS parser turns a NUL into U+FFFD (the URL parser would strip
  * the NUL), css-tree — Paged.js's Sheet.parse — keeps it; the URL parser
@@ -134,27 +110,6 @@ const stylesheetLoad = (url: string, paged: boolean) => {
  * stored in one would go unchecked.
  */
 const binaryFile = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
-
-/**
- * The candidate URLs of a srcset, with their offsets in it, as the HTML spec
- * splits them: a URL runs to the next whitespace (commas included, so data:
- * URLs survive), then a descriptor runs to the next comma.
- */
-/** Exported for svg.ts, which runs the same URLs inside an SVG file. */
-export function srcsetUrls(value: string): Reference[] {
-  const urls: Reference[] = [];
-  let i = 0;
-  while (i < value.length) {
-    while (i < value.length && /[\t\n\f\r ,]/.test(value[i] ?? '')) i++;
-    const start = i;
-    while (i < value.length && !/[\t\n\f\r ]/.test(value[i] ?? '')) i++;
-    let url = value.slice(start, i);
-    if (url.endsWith(',')) url = url.replace(/,+$/, '');
-    else while (i < value.length && value[i] !== ',') i++;
-    if (url !== '') urls.push({ url, offset: start });
-  }
-  return urls;
-}
 
 /** Elements the browser prints bold, or italic, by default. */
 const boldElements = new Set([
@@ -299,6 +254,38 @@ export function assetIssues(
         'a stylesheet may not be a data: URL: put it in the pack as a .css file',
       );
       return;
+    }
+    if (kind !== 'stylesheet') {
+      // T06-13: a data:image/svg+xml image in the template or a stylesheet
+      // prints the same misread way as an SVG file (the probe), so its text
+      // is read with the SVG checks (svg.ts), as svg.ts reads a nested
+      // data: image in an SVG file: the URL parser's view first (tab, LF
+      // and CR dropped anywhere — an HTML attribute value keeps a literal
+      // tab — C0 controls and spaces trimmed from the ends), the decode as
+      // Chrome's fetch code does it, then the image read nested at level 1.
+      // Every issue inside is reported once, at this URL as written.
+      const view = urlParserView(url);
+      if (view !== undefined) {
+        const data = dataImageSvgText(view.url);
+        if (data !== undefined) {
+          // The first character kept after trimming is where issues point,
+          // in the already-decoded text `offset` counts.
+          const urlAt = offset + view.at;
+          if ('encoding' in data) {
+            issue(
+              'text-encoding',
+              source,
+              urlAt,
+              `in the data:image/svg+xml image here: ${data.encoding}`,
+            );
+          } else {
+            for (const found of dataSvgTextIssues(data.text, 1)) {
+              issue(found.code, source, urlAt, found.message);
+            }
+          }
+          return;
+        }
+      }
     }
     // Paged.js drops every quote from an @import's URL, then loads what is
     // left in place of the @import.

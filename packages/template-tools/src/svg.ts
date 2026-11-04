@@ -22,20 +22,18 @@
 // level's text is no longer than the URL that carried it, so the total work
 // stays linear in the file size.
 
+import { scanCss } from './css.ts';
+import { dataImageSvgText } from './data-url.ts';
+import { repeatingGradients } from './gradients.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 import {
   cssEscapeMessage,
   dynamicAssetMessage,
   repeatingGradientMessage,
   spreadMethodMessage,
-  srcsetUrls,
-  urlEnd,
-  urlStart,
-} from './assets.ts';
-import { scanCss } from './css.ts';
-import { dataImageSvgText } from './data-url.ts';
-import { repeatingGradients } from './gradients.ts';
-import type { CheckIssue, PackIssueCode } from './issues.ts';
+} from './messages.ts';
 import { decode, position } from './text.ts';
+import { srcsetUrls, urlParserView } from './urls.ts';
 
 /** XML whitespace (spaces, tabs and newlines). */
 const ws = (char: string | undefined) =>
@@ -271,6 +269,30 @@ export function svgIssues(file: string, bytes: Uint8Array): CheckIssue[] {
 }
 
 /**
+ * What readText finds in a data:image/svg+xml image decoded to `text`,
+ * nested at `level` (1 under a file or the template, deeper inside another
+ * image), each message prefixed to name the image and carrying no position:
+ * the caller reports them all at the URL as written. svg.ts's checkUrl and
+ * assets.ts's reference() use it; the 8-level bound still applies inside.
+ */
+export function dataSvgTextIssues(
+  text: string,
+  level: number,
+): { code: PackIssueCode; message: string }[] {
+  const issues: { code: PackIssueCode; message: string }[] = [];
+  readText(
+    (code, _at, message) =>
+      issues.push({
+        code,
+        message: `in the data:image/svg+xml image here: ${message}`,
+      }),
+    text,
+    level,
+  );
+  return issues;
+}
+
+/**
  * Read one SVG document's text (the file itself at level 0, a decoded data:
  * image deeper), reporting each issue through `report` as readText sees it.
  */
@@ -301,20 +323,11 @@ function readText(report: Report, text: string, level: number): void {
     kind: 'image' | 'stylesheet',
     rawAt: (offset: number) => number,
   ) => {
-    let view = '';
-    const toValue: number[] = [];
-    for (let k = 0; k < url.length; k++) {
-      const char = url.charCodeAt(k);
-      if (char === 0x09 || char === 0x0a || char === 0x0d) continue;
-      view += url[k];
-      toValue.push(k);
-    }
-    const start = urlStart(view);
-    const end = urlEnd(view);
-    if (start >= end) return;
-    const parsed = view.slice(start, end);
+    const view = urlParserView(url);
+    if (view === undefined) return;
+    const parsed = view.url;
     // The first character kept after trimming, where the issue points.
-    const at = rawAt(toValue[start] ?? url.length);
+    const at = rawAt(view.at);
     if (kind === 'stylesheet') {
       if (parsed.slice(0, 5).toLowerCase() === 'data:') {
         issue(
@@ -345,12 +358,9 @@ function readText(report: Report, text: string, level: number): void {
     }
     // Every issue inside is reported once, re-located to this URL (and a
     // deeper level's URL re-locates again to the outermost one).
-    readText(
-      (code, _at, message) =>
-        issue(code, at, `in the data:image/svg+xml image here: ${message}`),
-      data.text,
-      level + 1,
-    );
+    for (const found of dataSvgTextIssues(data.text, level + 1)) {
+      issue(found.code, at, found.message);
+    }
   };
 
   /** The CSS checks shared with a template's attribute CSS (assets.ts). */

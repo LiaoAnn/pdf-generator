@@ -2,7 +2,7 @@
 // decodes the URL and reads it as an SVG document), so the check decodes it
 // as Chrome's URL and fetch code do and reads it too. `url` here is already
 // the URL parser's view: ASCII tab, LF and CR removed, C0 controls and
-// spaces trimmed from the ends (svg.ts and, in slice 3, assets.ts do that).
+// spaces trimmed from the ends (urls.ts's urlParserView does that).
 // Everything is one left-to-right pass: percent-decode and base64-decode
 // scan byte by byte, so a crafted URL stays linear.
 import { decode } from './text.ts';
