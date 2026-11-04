@@ -25,6 +25,22 @@ import {
 } from './import-expansion.ts';
 import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { pageBoxProblems } from './page-box.ts';
+
+// T06-13: the SVG check (svg.ts) reports the same problems in .svg files,
+// so the message texts live here once instead of twice.
+/** Why a repeating-linear/radial-gradient() is refused, and what to draw. */
+export const repeatingGradientMessage =
+  'repeating-linear-gradient() and repeating-radial-gradient() print as a shading the self-check misreads (stripes read solid black or blank, rings as a scrambled pattern): draw them as SVG <rect> or <circle> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%';
+/** Why spreadMethod="repeat"/"reflect" is refused, and what to draw. */
+export const spreadMethodMessage =
+  'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%';
+/** Why a backslash escape in CSS is refused. */
+export const cssEscapeMessage =
+  'a backslash escape in CSS: write the character itself (packs are UTF-8)';
+/** Why a function inside image-set() is refused. */
+export const dynamicAssetMessage =
+  'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see';
+
 import { pagedImports } from './paged-imports.ts';
 import { isRefused } from './policy.ts';
 import { decode, position } from './text.ts';
@@ -353,12 +369,7 @@ export function assetIssues(
   ) => {
     const { references, escapes, dynamic } = scanCss(css);
     for (const offset of dynamic) {
-      issue(
-        'asset-dynamic',
-        source,
-        at(offset),
-        'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see',
-      );
+      issue('asset-dynamic', source, at(offset), dynamicAssetMessage);
     }
     // The stylesheet loads scanCss counted, by offset and loaded string: a
     // Paged.js read of the same @import is the same load, not another.
@@ -371,12 +382,7 @@ export function assetIssues(
       }
     }
     for (const offset of escapes) {
-      issue(
-        'css-escape',
-        source,
-        at(offset),
-        'a backslash escape in CSS: write the character itself (packs are UTF-8)',
-      );
+      issue('css-escape', source, at(offset), cssEscapeMessage);
     }
     // T14-11, T06-14: Chromium prints repeating-linear-gradient() and
     // repeating-radial-gradient() as a shading the self-check's renderer
@@ -387,7 +393,7 @@ export function assetIssues(
         'css-repeating-gradient',
         source,
         at(offset),
-        'repeating-linear-gradient() and repeating-radial-gradient() print as a shading the self-check misreads (stripes read solid black or blank, rings as a scrambled pattern): draw them as SVG <rect> or <circle> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
+        repeatingGradientMessage,
       );
     }
     if (rules) {
@@ -537,7 +543,7 @@ export function assetIssues(
                 'css-repeating-gradient',
                 template,
                 spreadAt.startOffset,
-                'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
+                spreadMethodMessage,
               );
             }
           }
