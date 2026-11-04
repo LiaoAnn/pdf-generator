@@ -1389,3 +1389,12 @@
 - **驗收測試**：該測試在滿載 CPU 下連跑 40 次都過；把 T07-34 的修正拿掉時仍會失敗
 - **不做**：改上傳協定
 - **來源**：PR #126 的 CI
+
+### T09-7 網站：API 上傳測試的 3 秒／5 秒上限
+- **目標**：apps/web 的 API 上傳測試仍以固定時間判斷：`template-upload-zip.test.ts` 的 `refused()` 3,000 ms（3 個測試：數 GiB 的列出／未列出項目、5 MiB 對 10 bytes）、`template-upload-entries.test.ts` 的 `refused()` 3,000 ms（5 個測試：11.5 萬到 25 萬個項目、目錄外的 local entry）、`template-upload-review.test.ts` 的 5,000 ms（2 個測試，checkPack 的 CSS 解析）。平常只要 17–293 ms（10–170 倍餘裕），也兼當防卡死的保險。改成計數（走過的項目數用新的 `Unzip` file callback 接口，需量測確認是雜訊；inflate 用 T09-5 的 `steps`），保留寬鬆的明確 timeout 當卡死保險
+- **Blocked by**：T09-6
+- **Blocks**：—
+- **撞車風險**：`apps/web/src/api` 的上傳測試、`apps/web/src/templates/unzip.ts`；review 那兩個測試碰到 template-tools 的 CSS 解析
+- **驗收測試**：這些測試不再以耗時判斷是否變慢；滿載 CPU 下連跑 40 次都過；對應的改慢版本（逐項目變慢、多一次 inflate、CSS 解析變二次方）會失敗；新接口的成本量測為雜訊
+- **不做**：改上傳上限
+- **來源**：PR #127（T09-6）
