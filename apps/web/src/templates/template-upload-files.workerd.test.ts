@@ -30,9 +30,11 @@ test('refuses 1,000 files before scanning or inflating any of their 13,000 dynam
   });
   // Timing this refusal (200 ms) could fail under load (T09-6). The files
   // are counted from the zip's directory, so none of their streams is
-  // copied, scanned or inflated: refusing them costs nothing per block.
+  // copied, scanned or inflated, and no local entry is walked: refusing
+  // them costs nothing per block.
   expect(work).toEqual({
     tables: 0,
+    walked: 0,
     inflaters: 0,
     pushed: 0,
     inflated: 0,

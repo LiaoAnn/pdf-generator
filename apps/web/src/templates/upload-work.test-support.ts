@@ -1,7 +1,8 @@
 // Counting the work an upload's unzip does, for tests that would otherwise
 // time it: fixed millisecond bounds fail under load (T09-4, T09-6). The
 // counts go through the seams the upload runs through (tables.create,
-// steps.inflater and steps.concat), and every typed array `slice`.
+// steps.unzipper, steps.inflater and steps.concat), and every typed array
+// `slice`.
 import { tables } from './deflate-blocks.ts';
 import { steps } from './unzip.ts';
 
@@ -9,6 +10,8 @@ import { steps } from './unzip.ts';
 type Work = {
   /** Decoding tables the scan built. */
   tables: number;
+  /** Local entries the streaming unzip walked: calls of its file callback. */
+  walked: number;
   /** Inflaters made, one per entry inflated. */
   inflaters: number;
   /** Bytes of deflate data pushed into inflaters. */
@@ -88,6 +91,7 @@ function install({ readLimit }: Options) {
   const read = { bytes: 0 };
   const work: Work = {
     tables: 0,
+    walked: 0,
     inflaters: 0,
     pushed: 0,
     inflated: 0,
@@ -95,6 +99,7 @@ function install({ readLimit }: Options) {
     sliced: 0,
   };
   const create = tables.create;
+  const unzipper = steps.unzipper;
   const inflater = steps.inflater;
   const concat = steps.concat;
   const slice = typedArray.slice;
@@ -102,6 +107,11 @@ function install({ readLimit }: Options) {
     work.tables++;
     return create(size);
   };
+  steps.unzipper = onfile =>
+    unzipper(file => {
+      work.walked++;
+      onfile(file);
+    });
   steps.inflater = ondata => {
     work.inflaters++;
     const inflate = inflater((data, final) => {
@@ -127,6 +137,7 @@ function install({ readLimit }: Options) {
   };
   const restore = () => {
     tables.create = create;
+    steps.unzipper = unzipper;
     steps.inflater = inflater;
     steps.concat = concat;
     typedArray.slice = slice;
