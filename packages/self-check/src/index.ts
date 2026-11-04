@@ -7,6 +7,7 @@ export {
   type Difference,
   type SelfCheckReport,
 } from './check.ts';
+export { countOperations } from './operations.ts';
 export {
   type PdfDocument,
   type PdfGroup,
