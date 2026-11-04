@@ -138,6 +138,9 @@ describe('css-repeating-gradient for SVG spreadMethod', () => {
     expect(issue?.message).toMatch(/spreadMethod/);
     expect(issue?.message).toMatch(/<rect>/);
     expect(issue?.message).toMatch(/linear-gradient\(/);
+    // T06-14: a tile sized in px prints a third dark instead of half (T10-5).
+    expect(issue?.message).toMatch(/ 4pt 100%/);
+    expect(issue?.message).not.toMatch(/\dpx/);
   });
 
   it.each([

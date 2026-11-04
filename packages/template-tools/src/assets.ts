@@ -11,7 +11,7 @@ import {
   scanCss,
   usedFamilies,
 } from './css.ts';
-import { repeatingLinearGradients } from './gradients.ts';
+import { repeatingGradients } from './gradients.ts';
 import {
   attributeOf,
   decodedOffsets,
@@ -378,14 +378,16 @@ export function assetIssues(
         'a backslash escape in CSS: write the character itself (packs are UTF-8)',
       );
     }
-    // T14-11: Chromium prints repeating-linear-gradient() as a shading the
-    // self-check's renderer misreads, whichever CSS context it prints in.
-    for (const offset of repeatingLinearGradients(css)) {
+    // T14-11, T06-14: Chromium prints repeating-linear-gradient() and
+    // repeating-radial-gradient() as a shading the self-check's renderer
+    // misreads (T10-5 measured the radial form), whichever CSS context
+    // it prints in.
+    for (const offset of repeatingGradients(css)) {
       issue(
         'css-repeating-gradient',
         source,
         at(offset),
-        'repeating-linear-gradient() prints as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+        'repeating-linear-gradient() and repeating-radial-gradient() print as a shading the self-check misreads (stripes read solid black or blank, rings as a scrambled pattern): draw them as SVG <rect> or <circle> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
       );
     }
     if (rules) {
@@ -535,7 +537,7 @@ export function assetIssues(
                 'css-repeating-gradient',
                 template,
                 spreadAt.startOffset,
-                'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+                'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient sized in pt, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
               );
             }
           }

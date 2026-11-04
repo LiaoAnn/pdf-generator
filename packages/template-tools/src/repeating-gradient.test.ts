@@ -1,7 +1,10 @@
 // T14-11: Chromium prints repeating-linear-gradient() as a function-based
 // shading that pdf.js samples once per stripe, so the self-check reads the
 // stripes as solid black or blank. The upload refuses it wherever the print
-// reads CSS (css-repeating-gradient, T06-12).
+// reads CSS (css-repeating-gradient, T06-12). T10-5 measured
+// repeating-radial-gradient() misread the same way (pdf.js draws the rings
+// as a scrambled pattern: 0.31 dark against PDFium's 0.50), so it is refused
+// with every spelling the linear form is (T06-14).
 import { describe, expect, it } from 'vitest';
 import { withHead } from '../fixtures/document.ts';
 import { type CheckResult, checkPack, type PackFiles } from './index.ts';
@@ -13,6 +16,7 @@ const extraFile = 'extra.css';
 const paragraph = '<p data-gt="paragraph">{{value}}</p>';
 const stripes =
   'repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px)';
+const rings = 'repeating-radial-gradient(circle, #000 0 2pt, #fff 2pt 4pt)';
 
 function pack({
   css = '',
@@ -180,22 +184,30 @@ describe('css-repeating-gradient in a manifest stylesheet', () => {
     expect(issue?.message).toMatch(/repeating-linear-gradient/);
     expect(issue?.message).toMatch(/<rect>/);
     expect(issue?.message).toMatch(/linear-gradient\(/);
+    // T06-14: a tile sized in px prints a third dark instead of half (T10-5).
+    expect(issue?.message).toMatch(/ 4pt 100%/);
+    expect(issue?.message).not.toMatch(/\dpx/);
   });
 
   it.each([
-    [
-      'repeating-radial-gradient',
-      'repeating-radial-gradient(circle, #000 0 2px, #fff 2px 4px)',
-    ],
     [
       'repeating-conic-gradient',
       'repeating-conic-gradient(#000 0 10deg, #fff 10deg 20deg)',
     ],
     ['conic-gradient', 'conic-gradient(#000, #fff)'],
     ['radial-gradient', 'radial-gradient(#000, #fff)'],
+    ['-webkit-radial-gradient', '-webkit-radial-gradient(#000, #fff)'],
+    [
+      'a tiled fixed-size radial-gradient',
+      'radial-gradient(circle, #000 50%, transparent 50%) 0 0 / 4pt 4pt',
+    ],
     ['linear-gradient', 'linear-gradient(90deg, #000 50%, transparent 50%)'],
     [
       'a tiled fixed-size linear-gradient',
+      'linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
+    ],
+    [
+      'a tiled linear-gradient sized in px',
       'linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
     ],
     ['-webkit-linear-gradient', '-webkit-linear-gradient(left, #000, #fff)'],
@@ -263,7 +275,7 @@ describe('css-repeating-gradient in the template', () => {
     accepted(
       pack({
         template:
-          '<p data-gt="paragraph" style="background: repeating-radial-gradient(#000 0 2px, #fff 2px 4px), linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%">{{value}}</p>',
+          '<p data-gt="paragraph" style="background: repeating-conic-gradient(#000 0 10deg, #fff 10deg 20deg), conic-gradient(#000, #fff), radial-gradient(#000, #fff), linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%">{{value}}</p>',
       }),
     );
   });
@@ -289,6 +301,182 @@ describe('css-repeating-gradient in stylesheets the pack loads', () => {
       }),
       extraFile,
       ['repeating-linear-gradient'],
+    );
+  });
+});
+
+describe('css-repeating-gradient for repeating-radial-gradient (T06-14)', () => {
+  it.each([
+    ['plain', `p { background: ${rings}; }`, 'repeating-radial-gradient'],
+    [
+      'any letter case',
+      'p { background: Repeating-RADIAL-gradient(red, blue); }',
+      'Repeating-RADIAL-gradient',
+    ],
+    [
+      'the -webkit- prefix',
+      'p { background: -webkit-repeating-radial-gradient(red, blue); }',
+      '-webkit-repeating-radial-gradient',
+    ],
+    [
+      'the -moz- prefix',
+      'p { background: -moz-repeating-radial-gradient(red, blue); }',
+      '-moz-repeating-radial-gradient',
+    ],
+    [
+      'inside @media, @supports and @layer',
+      `@media print { @supports (display: grid) { @layer base { p { background: ${rings}; } } } }`,
+      'repeating-radial-gradient',
+    ],
+    [
+      'a custom property used through var()',
+      `:root { --rings: ${rings}; } p { background: var(--rings); }`,
+      'repeating-radial-gradient',
+    ],
+    [
+      'inside image-set()',
+      `p { background-image: image-set(${rings} 1x); }`,
+      'repeating-radial-gradient',
+    ],
+    [
+      'a mask image',
+      `p { mask-image: ${rings}; }`,
+      'repeating-radial-gradient',
+    ],
+    [
+      'a border image',
+      `p { border-image: ${rings} 30; }`,
+      'repeating-radial-gradient',
+    ],
+    [
+      'after a comment and a string that mention it',
+      `/* repeating-radial-gradient( */ p::before { content: "repeating-radial-gradient("; background: ${rings}; }`,
+      'repeating-radial-gradient(circle',
+    ],
+  ])('refuses %s', (_form, css, token) => {
+    refused(pack({ css }), cssFile, [token]);
+  });
+
+  it('reports both repeating forms, each where it is written', () => {
+    refused(
+      pack({
+        css: `p { background: ${rings}, ${stripes}; }\nh1 { background: -webkit-${rings}; }`,
+      }),
+      cssFile,
+      [
+        'repeating-radial-gradient',
+        'repeating-linear-gradient',
+        '-webkit-repeating-radial-gradient',
+      ],
+    );
+  });
+
+  it.each([
+    [
+      'a hex escape in the name',
+      'p { background: repeating-radial-gradi\\65nt(red, blue); }',
+    ],
+    [
+      'a hex escape ending in a space',
+      'p { background: \\72 epeating-radial-gradient(red, blue); }',
+    ],
+    [
+      'an escaped letter',
+      'p { background: repeating-\\radial-gradient(red, blue); }',
+    ],
+  ])('refuses %s, beside css-escape', (_form, css) => {
+    const name = css.slice(css.indexOf(': ') + 2, css.indexOf('('));
+    const result = refused(pack({ css }), cssFile, [name]);
+    expect(result.issues.map(issue => issue.code)).toContain('css-escape');
+  });
+
+  it('names the function, the alternatives and a pt tile in the message', () => {
+    const [issue] = found(
+      checkPack(pack({ css: `p { background: ${rings}; }` })),
+    );
+    expect(issue?.message).toMatch(/repeating-radial-gradient/);
+    expect(issue?.message).toMatch(/<rect>/);
+    expect(issue?.message).toMatch(/linear-gradient\(/);
+    expect(issue?.message).toMatch(/ 4pt 100%/);
+    expect(issue?.message).not.toMatch(/\dpx/);
+  });
+
+  it.each([
+    ['a comment', '/* background: repeating-radial-gradient(red, blue); */'],
+    [
+      'a string',
+      'p::before { content: "repeating-radial-gradient(red, blue)"; }',
+    ],
+    [
+      'an identifier, not a function',
+      'p { animation-name: repeating-radial-gradient; }',
+    ],
+    [
+      'the name followed by a space, which CSS does not read as a function',
+      'p { background: repeating-radial-gradient (red, blue); }',
+    ],
+    [
+      'a longer name that ends like it',
+      'p { background: not-repeating-radial-gradient(red, blue); }',
+    ],
+  ])('accepts the name in %s', (_where, css) => {
+    accepted(pack({ css }));
+  });
+
+  it('refuses it in a <style> element', () => {
+    const template = `<head><style>\np { background: ${rings}; }\n</style></head>\n${paragraph}`;
+    refused(pack({ template }), templateFile, ['repeating-radial-gradient']);
+  });
+
+  it('refuses it in a style attribute', () => {
+    const template = `<p data-gt="paragraph" style="background: ${rings}">{{value}}</p>`;
+    refused(pack({ template }), templateFile, ['repeating-radial-gradient']);
+  });
+
+  it('refuses it when an HTML character reference spells part of the name', () => {
+    const template =
+      '<p data-gt="paragraph" style="background: repeating&#45;radial&#x2d;gradient(red, blue)">{{value}}</p>';
+    refused(pack({ template }), templateFile, [
+      'repeating&#45;radial&#x2d;gradient',
+    ]);
+  });
+
+  it('refuses it in an inline SVG style attribute and presentation attribute', () => {
+    const template = `<svg data-gt="image" viewBox="0 0 10 10"><rect width="10" height="10" style="fill: ${rings}"/><rect width="5" height="5" fill="${rings}"/></svg>${paragraph}`;
+    refused(pack({ template }), templateFile, [
+      'repeating-radial-gradient',
+      'repeating-radial-gradient',
+    ]);
+  });
+
+  it('refuses it inside {{#if}} branches and <template>', () => {
+    const template = `{{#if value}}<p data-gt="paragraph" style="background: ${rings}">{{value}}</p>{{else}}<p data-gt="paragraph" style="background: -webkit-${rings}">{{value}}</p>{{/if}}<template><p style="background: ${rings}">x</p></template>`;
+    refused(pack({ template }), templateFile, [
+      'repeating-radial-gradient',
+      '-webkit-repeating-radial-gradient',
+      'repeating-radial-gradient',
+    ]);
+  });
+
+  it('refuses it in a stylesheet a <link> loads', () => {
+    refused(
+      pack({
+        template: `<head><link rel="stylesheet" href="${extraFile}"></head>\n${paragraph}`,
+        extra: `p { background: ${rings}; }`,
+      }),
+      extraFile,
+      ['repeating-radial-gradient'],
+    );
+  });
+
+  it('refuses it in a stylesheet an @import loads', () => {
+    refused(
+      pack({
+        css: `@import "${extraFile}";`,
+        extra: `p { background: ${rings}; }`,
+      }),
+      extraFile,
+      ['repeating-radial-gradient'],
     );
   });
 });
