@@ -16,10 +16,10 @@ html, body { margin: 0; padding: 0; }
 #bordered { border: 1pt solid black; }
 #underline { border-bottom: 1pt solid black; }
 #barcode { position: relative; width: 100pt; height: 30pt; }
-/* CSS bars avoid an SVG's full-box clip hiding an internal bar displacement. */
-#barcode::before { content: ''; position: absolute; top: 0; bottom: 0;
-  left: 7pt; right: 7pt;
-  background: repeating-linear-gradient(90deg, black 0 2pt, transparent 2pt 4pt); }
+/* The bars' SVG covers only the bars (7pt insets), so its viewport clip
+   moves with them and cannot hide a bar displacement. SVG rects, not a CSS
+   repeating-linear-gradient, which pdf.js misreads (T14-11, T06-12). */
+#barcode svg { position: absolute; top: 0; left: 7pt; width: 86pt; height: 30pt; }
 #centred-dot, #corner-dots { position: relative; width: 100px; height: 100px; }
 #centred-dot i, #corner-dots i { position: absolute; width: 1px; height: 1px; background: black; }
 #centred-dot i { left: 49.5px; top: 49.5px; }
@@ -32,7 +32,7 @@ html, body { margin: 0; padding: 0; }
 <span id="checkbox" data-gt="checkbox"></span>
 <div id="bordered" data-gt="field"></div>
 <div id="underline" data-gt="field"></div>
-<div id="barcode" data-gt="image"></div>
+<div id="barcode" data-gt="image"><svg aria-hidden="true" viewBox="0 0 86 30" preserveAspectRatio="none"><rect x="0" width="2" height="30"/><rect x="4" width="2" height="30"/><rect x="8" width="2" height="30"/><rect x="12" width="2" height="30"/><rect x="16" width="2" height="30"/><rect x="20" width="2" height="30"/><rect x="24" width="2" height="30"/><rect x="28" width="2" height="30"/><rect x="32" width="2" height="30"/><rect x="36" width="2" height="30"/><rect x="40" width="2" height="30"/><rect x="44" width="2" height="30"/><rect x="48" width="2" height="30"/><rect x="52" width="2" height="30"/><rect x="56" width="2" height="30"/><rect x="60" width="2" height="30"/><rect x="64" width="2" height="30"/><rect x="68" width="2" height="30"/><rect x="72" width="2" height="30"/><rect x="76" width="2" height="30"/><rect x="80" width="2" height="30"/><rect x="84" width="2" height="30"/></svg></div>
 <div id="blank" data-gt="field"></div>
 <div id="centred-dot" data-gt="image"><i></i></div>
 <div id="corner-dots" data-gt="image"><i></i><i></i></div>

@@ -276,7 +276,7 @@ test('a black-rect SVG pattern is visible measurable ink', async () => {
   });
 });
 
-test('CSS repeating-gradient barcode bars are visible measurable ink', async () => {
+test('SVG rect barcode bars are visible measurable ink', async () => {
   expect(await checkPdf(pdf, gt('repeating-bars'))).toEqual({
     ok: true,
     differences: [],
