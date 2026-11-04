@@ -124,7 +124,13 @@ const print = (bucket: Bucket, digest: string) =>
 test('an overlapping upload that fails a file write leaves the completed upload complete', async () => {
   const bucket = memoryBucket();
   // The late upload's first read is answered with what it read, but only
-  // once the other upload has completed.
+  // once the other upload has completed. The other upload starts only once
+  // that read was made (the late upload first awaits its digest), so the
+  // late upload always reads "not complete" (T07-38).
+  let readMade: () => void = () => {};
+  const made = new Promise<void>(resolve => {
+    readMade = resolve;
+  });
   let release: () => void = () => {};
   const held = new Promise<void>(resolve => {
     release = resolve;
@@ -134,12 +140,16 @@ test('an overlapping upload that fails a file write leaves the completed upload 
     ...failingWrite(bucket, 'styles/report.css'),
     get: async key => {
       const read = bucket.get(key);
-      if (reads++ === 0) await held;
+      if (reads++ === 0) {
+        readMade();
+        await held;
+      }
       return read;
     },
   };
   const failing = upload(late);
   failing.catch(() => undefined);
+  await made;
   const digest = await upload(bucket);
   release();
   await expect(failing).rejects.toThrow('writing styles/report.css failed');
