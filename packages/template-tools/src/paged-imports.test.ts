@@ -112,6 +112,26 @@ describe('pagedImports', () => {
       loads: [['b.css', '"b.css"']],
     },
     {
+      name: 'strings inside element() spans, after other rewrites',
+      css: 'p{a:element(x)}@import {p{content:element \n("a.css") element("b.css")}}',
+      loads: [
+        ['a.css', '"a.css"'],
+        ['b.css', '"b.css"'],
+      ],
+    },
+    {
+      // Each @import's walk reads a then b: the second a lies in an earlier
+      // span than the b before it, so the mapping looks back (T06-17).
+      name: 'strings in two element() spans under nested imports',
+      css: '@import { @import {p{content:element("a.css") element("b.css")}} }',
+      loads: [
+        ['a.css', '"a.css"'],
+        ['b.css', '"b.css"'],
+        ['a.css', '"a.css"'],
+        ['b.css', '"b.css"'],
+      ],
+    },
+    {
       name: 'an import after element() inside a comment',
       css: '/* element(x) */@import "b.css";',
       loads: [['b.css', '"b.css"']],

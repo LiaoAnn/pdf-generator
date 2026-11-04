@@ -82,6 +82,14 @@ function elementMatches(css: string): ElementMatch[] {
   return matches;
 }
 
+/**
+ * For tests only (not exported from the package entry): `visited` grows by
+ * one for every rewrite span the offset mapping reads, so a test can tell a
+ * linear mapping from one that rescans every earlier span per @import
+ * (T06-17). Counting is noise next to the parse.
+ */
+export const pagedImportWork = { visited: 0 };
+
 /** "element-ident" without its parenthesis. */
 const elementIdentLength = 'element-ident'.length;
 
@@ -96,18 +104,33 @@ const elementIdentLength = 'element-ident'.length;
 export function pagedImports(css: string): PagedImport[] {
   // RunningHeaders.beforeTreeParse rewrites every element(…) to
   // element-ident(…), keeping the argument; record each span so offsets
-  // from the parsed text can point back into `css`.
-  const rewrites: { start: number; white: number; argLength: number }[] = [];
+  // from the parsed text can point back into `css`. Along with each span,
+  // record where it starts in `text` and how much the earlier spans shift
+  // it (each earlier span is 6 - white characters longer in `text`), so
+  // originalOffset below can binary-search the spans instead of rereading
+  // every earlier span per @import (T06-17).
+  const rewrites: {
+    start: number;
+    white: number;
+    argLength: number;
+    textStart: number;
+    shift: number;
+  }[] = [];
   // The rewritten text, as `css.replace(elementRewrite, 'element-ident($1)')`.
   let text = '';
   let at = 0;
+  let shift = 0;
   for (const match of elementMatches(css)) {
     const argument = css.slice(match.paren + 1, match.close);
+    const white = match.paren - match.start - elementNameLength;
     rewrites.push({
       start: match.start,
-      white: match.paren - match.start - elementNameLength,
+      white,
       argLength: argument.length,
+      textStart: match.start + shift,
+      shift,
     });
+    shift += 6 - white;
     text += `${css.slice(at, match.start)}element-ident(${argument})`;
     at = match.close + 1;
   }
@@ -126,19 +149,28 @@ export function pagedImports(css: string): PagedImport[] {
   // is the same character in the original span (the argument is copied
   // verbatim), and one past the span shifts by the length difference
   // ("element-ident(" is 6 longer than "element" + the whitespace + "(").
+  // Binary-search the spans (textStart is increasing) for the last span
+  // whose `text` start is at or before the offset — a forward cursor would
+  // not do, since a string under nested @imports is looked up once per
+  // enclosing @import, not in offset order.
   const originalOffset = (offset: number): number => {
-    let shift = 0;
-    for (const rewrite of rewrites) {
-      const start = rewrite.start + shift;
-      if (offset < start) break;
-      const paren = start + elementIdentLength;
-      if (offset < paren) return rewrite.start;
-      const spanEnd = paren + 1 + rewrite.argLength + 1;
-      if (offset < spanEnd)
-        return rewrite.start + 7 + rewrite.white + (offset - paren);
-      shift += 6 - rewrite.white;
+    let lo = -1;
+    let hi = rewrites.length;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >>> 1;
+      pagedImportWork.visited++;
+      if ((rewrites[mid]?.textStart ?? Infinity) <= offset) lo = mid;
+      else hi = mid;
     }
-    return offset - shift;
+    const rewrite = rewrites[lo];
+    if (rewrite === undefined) return offset;
+    pagedImportWork.visited++;
+    const paren = rewrite.textStart + elementIdentLength;
+    if (offset < paren) return rewrite.start;
+    const spanEnd = paren + 1 + rewrite.argLength + 1;
+    if (offset < spanEnd)
+      return rewrite.start + 7 + rewrite.white + (offset - paren);
+    return offset - (rewrite.shift + 6 - rewrite.white);
   };
 
   // Sheet.parse's replaceIds turns #id in every rule into
