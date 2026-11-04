@@ -12,12 +12,19 @@
 import type { PackIssue } from '@pdf-generator/template-tools';
 import {
   type FlateError,
+  type FlateStreamHandler,
   Inflate,
   Unzip,
   type UnzipDecoder,
   unzipSync,
 } from 'fflate';
 import { scanDeflate } from './deflate-blocks.ts';
+
+/** Test seam: makes the upload's inflaters and copies; upload-path.workerd.test.ts wraps them to count the bytes inflated and copied. */
+export const steps = {
+  inflater: (ondata: FlateStreamHandler) => new Inflate(ondata),
+  concat,
+};
 
 /** Input per step: one step inflates to at most ~1000 times this. */
 const slice = 8 * 1024;
@@ -112,7 +119,7 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
       this.#chunks.push(chunk);
       this.#size += chunk.byteLength;
       if (!final) return;
-      const stream = concat(this.#chunks, this.#size);
+      const stream = steps.concat(this.#chunks, this.#size);
       this.#chunks = [];
       const limit = declared.get(this.#name) ?? 0;
       const scan = scanDeflate(stream, limit);
@@ -133,7 +140,7 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
       // Bytes after the final block are left out: fflate would copy them
       // again on every push, quadratic in their length.
       const deflated = stream.subarray(0, scan.length);
-      const inflate = new Inflate((data, last) =>
+      const inflate = steps.inflater((data, last) =>
         this.ondata(null, data, last),
       );
       try {
@@ -253,7 +260,7 @@ export function unzipBounded(
         return;
       }
       chunks.push(data);
-      if (final) files[file.name] = concat(chunks, size);
+      if (final) files[file.name] = steps.concat(chunks, size);
     };
     file.start();
   });
