@@ -7,18 +7,32 @@
 // renderer — misreads, so checkPack reads every .svg file here, as XML
 // (parse5 would read HTML, not what Chrome sees in the image).
 //
+// Inside the image Chrome also reads a nested data:image/svg+xml image (the
+// same way, so this reads it recursively, nesting bounded) and applies a
+// data: stylesheet (<?xml-stylesheet?>, @import, XHTML <link> — refused as
+// asset-data), while it loads no other URL: every other URL in the file is
+// a string, never a fetch. Issues found inside a nested image are reported
+// once, at the data: URL as written in this file.
+//
 // One iterative pass over the text: no recursion over element depth, and
 // every scan for a terminator (-->, ]]>, ?>, a quote, >) resumes where it
 // stopped or jumps to the end when the terminator is missing, so crafted
 // inputs stay linear (svg-assets.test.ts times those against plain markup).
+// Recursion is over data: nesting only, bounded at maxSvgNesting, and each
+// level's text is no longer than the URL that carried it, so the total work
+// stays linear in the file size.
 
 import {
   cssEscapeMessage,
   dynamicAssetMessage,
   repeatingGradientMessage,
   spreadMethodMessage,
+  srcsetUrls,
+  urlEnd,
+  urlStart,
 } from './assets.ts';
 import { scanCss } from './css.ts';
+import { dataImageSvgText } from './data-url.ts';
 import { repeatingGradients } from './gradients.ts';
 import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { decode, position } from './text.ts';
@@ -152,15 +166,25 @@ type Open = {
 };
 
 /**
+ * How readText hands an issue up: on level 0 the file's own line and
+ * column, on deeper levels re-located to the data: URL that carried the
+ * text (see checkUrl), so everything lands in the file itself.
+ */
+type Report = (
+  code: PackIssueCode,
+  at: number | undefined,
+  message: string,
+) => void;
+
+/** Levels of nested data:image/svg+xml images read; level 0 is the file. */
+const maxSvgNesting = 8;
+
+/**
  * Where `text` names an encoding in its XML declaration: refused unless it
  * is UTF-8. Chrome reads an SVG image by its BOM and declaration, so a
  * UTF-16 declaration still prints; the check asks for the file as written.
  */
-function declaredEncodingIssues(
-  file: string,
-  text: string,
-  issues: CheckIssue[],
-): void {
+function declaredEncodingIssues(report: Report, text: string): void {
   if (!text.startsWith('<?xml')) return;
   const end = text.indexOf('?>', 5);
   const decl = text.slice(5, end < 0 ? text.length : end);
@@ -176,11 +200,11 @@ function declaredEncodingIssues(
   const close = decl.indexOf(quote, i + 1);
   const value = decl.slice(i + 1, close < 0 ? decl.length : close).trim();
   if (!/^utf-8$/i.test(value)) {
-    issues.push({
-      code: 'text-encoding',
-      file,
-      message: `its XML declaration names encoding "${value}": save the file as UTF-8`,
-    });
+    report(
+      'text-encoding',
+      undefined,
+      `its XML declaration names encoding "${value}": save the file as UTF-8`,
+    );
   }
 }
 
@@ -190,12 +214,7 @@ function declaredEncodingIssues(
  * of `<!DOCTYPE`; returns the index after `>`, quoted strings read
  * correctly.
  */
-function doctype(
-  file: string,
-  text: string,
-  at: number,
-  issues: CheckIssue[],
-): number {
+function doctype(report: Report, text: string, at: number): number {
   const n = text.length;
   let i = at + '<!DOCTYPE'.length;
   while (i < n) {
@@ -210,13 +229,11 @@ function doctype(
     i++;
   }
   if (i >= n) return n;
-  issues.push({
-    code: 'html-unsupported',
-    file,
-    ...position(text, at),
-    message:
-      "an SVG file's DOCTYPE may not have an internal subset (the […] part): Chrome applies its entity and attribute declarations, which this check does not read; delete the […] part",
-  });
+  report(
+    'html-unsupported',
+    at,
+    "an SVG file's DOCTYPE may not have an internal subset (the […] part): Chrome applies its entity and attribute declarations, which this check does not read; delete the […] part",
+  );
   const close = text.indexOf(']', i + 1);
   if (close < 0) return n;
   const end = text.indexOf('>', close + 1);
@@ -226,7 +243,8 @@ function doctype(
 /**
  * The issues of one SVG file, located in it by line and column of the raw
  * text: spreadMethod, SMIL setters of it, CSS in <style> and in attributes,
- * the DOCTYPE, and the file's encoding.
+ * nested data:image/svg+xml images and data: stylesheets, the DOCTYPE, and
+ * the file's encoding.
  */
 export function svgIssues(file: string, bytes: Uint8Array): CheckIssue[] {
   const issues: CheckIssue[] = [];
@@ -241,24 +259,99 @@ export function svgIssues(file: string, bytes: Uint8Array): CheckIssue[] {
     });
     return issues;
   }
-  readDocument(file, text, issues);
+  const report: Report = (code, at, message) =>
+    issues.push({
+      code,
+      file,
+      ...(at === undefined ? {} : position(text, at)),
+      message,
+    });
+  readText(report, text, 0);
   return issues;
 }
 
-function readDocument(file: string, text: string, issues: CheckIssue[]): void {
+/**
+ * Read one SVG document's text (the file itself at level 0, a decoded data:
+ * image deeper), reporting each issue through `report` as readText sees it.
+ */
+function readText(report: Report, text: string, level: number): void {
   const n = text.length;
   if (text.includes('\0')) {
-    issues.push({
-      code: 'text-encoding',
-      file,
-      message:
-        'contains a NUL character: another encoding read as UTF-8? Save the file as UTF-8',
-    });
+    report(
+      'text-encoding',
+      undefined,
+      'contains a NUL character: another encoding read as UTF-8? Save the file as UTF-8',
+    );
   } else {
-    declaredEncodingIssues(file, text, issues);
+    declaredEncodingIssues(report, text);
   }
-  const issue = (code: PackIssueCode, at: number, message: string) =>
-    issues.push({ code, file, ...position(text, at), message });
+  const issue = report;
+
+  /**
+   * A URL found inside this SVG text — an <image>/<img> href or src, a
+   * srcset candidate, or a CSS url() / image-set() string / @import — as
+   * the URL parser sees it: tab, LF and CR dropped anywhere, C0 controls
+   * and spaces trimmed at the ends. `stylesheet` is an @import, <link> or
+   * <?xml-stylesheet?> URL. An SVG image loads no other URL, so only data:
+   * matters: a nested image is read recursively, a stylesheet refused, the
+   * rest ignored. `rawAt` maps an offset in `url` to one in `text`.
+   */
+  const checkUrl = (
+    url: string,
+    kind: 'image' | 'stylesheet',
+    rawAt: (offset: number) => number,
+  ) => {
+    let view = '';
+    const toValue: number[] = [];
+    for (let k = 0; k < url.length; k++) {
+      const char = url.charCodeAt(k);
+      if (char === 0x09 || char === 0x0a || char === 0x0d) continue;
+      view += url[k];
+      toValue.push(k);
+    }
+    const start = urlStart(view);
+    const end = urlEnd(view);
+    if (start >= end) return;
+    const parsed = view.slice(start, end);
+    // The first character kept after trimming, where the issue points.
+    const at = rawAt(toValue[start] ?? url.length);
+    if (kind === 'stylesheet') {
+      if (parsed.slice(0, 5).toLowerCase() === 'data:') {
+        issue(
+          'asset-data',
+          at,
+          "a stylesheet in an SVG image may not be a data: URL: put its rules in the SVG's <style> element",
+        );
+      }
+      return;
+    }
+    const data = dataImageSvgText(parsed);
+    if (data === undefined) return;
+    if ('encoding' in data) {
+      issue(
+        'text-encoding',
+        at,
+        `in the data:image/svg+xml image here: ${data.encoding}`,
+      );
+      return;
+    }
+    if (level >= maxSvgNesting) {
+      issue(
+        'pack-too-complex',
+        at,
+        `data:image/svg+xml images nested more than ${maxSvgNesting} deep: the check reads at most ${maxSvgNesting} levels; put the inner image into the pack as a file`,
+      );
+      return;
+    }
+    // Every issue inside is reported once, re-located to this URL (and a
+    // deeper level's URL re-locates again to the outermost one).
+    readText(
+      (code, _at, message) =>
+        issue(code, at, `in the data:image/svg+xml image here: ${message}`),
+      data.text,
+      level + 1,
+    );
+  };
 
   /** The CSS checks shared with a template's attribute CSS (assets.ts). */
   const checkCss = (css: string, map: number[]) => {
@@ -266,12 +359,65 @@ function readDocument(file: string, text: string, issues: CheckIssue[]): void {
     for (const offset of repeatingGradients(css)) {
       issue('css-repeating-gradient', at(offset), repeatingGradientMessage);
     }
-    const { escapes, dynamic } = scanCss(css);
+    const { references, escapes, dynamic } = scanCss(css);
     for (const offset of escapes) {
       issue('css-escape', at(offset), cssEscapeMessage);
     }
     for (const offset of dynamic) {
       issue('asset-dynamic', at(offset), dynamicAssetMessage);
+    }
+    for (const reference of references) {
+      checkUrl(
+        reference.url,
+        reference.kind === 'stylesheet' ? 'stylesheet' : 'image',
+        offset => at(reference.offset + offset),
+      );
+    }
+  };
+
+  /**
+   * The pseudo-attributes of an xml-stylesheet processing instruction
+   * ([j, stop), before the ?>): an SVG image applies its stylesheet, so a
+   * data: href is refused. Located in the raw text: a PI has no character
+   * references.
+   */
+  const stylesheetPi = (j: number, stop: number) => {
+    while (j < stop) {
+      while (j < stop && ws(text[j])) j++;
+      if (j >= stop || text[j] === '?') break;
+      const nameStart = j;
+      while (
+        j < stop &&
+        !ws(text[j]) &&
+        text[j] !== '=' &&
+        text[j] !== '?' &&
+        text[j] !== '/'
+      ) {
+        j++;
+      }
+      const name = text.slice(nameStart, j).toLowerCase();
+      while (j < stop && ws(text[j])) j++;
+      if (text[j] !== '=') {
+        j++;
+        continue;
+      }
+      j++;
+      while (j < stop && ws(text[j])) j++;
+      const quote = text[j];
+      if (quote !== '"' && quote !== "'") {
+        j++;
+        continue;
+      }
+      const close = text.indexOf(quote, j + 1);
+      const vend = close < 0 || close > stop ? stop : close;
+      if (name === 'href') {
+        checkUrl(
+          text.slice(j + 1, vend),
+          'stylesheet',
+          offset => j + 1 + offset,
+        );
+      }
+      j = vend + 1;
     }
   };
 
@@ -336,10 +482,13 @@ function readDocument(file: string, text: string, issues: CheckIssue[]): void {
         i++;
         while (i < n && ws(text[i])) i++;
         const quote = text[i];
+        // XML reads a literal tab, LF or CR in an attribute value as a
+        // space; a character reference (&#9; …) is normalized BEFORE it, so
+        // it keeps its character. Same length, so the offsets still map.
         if (quote === '"' || quote === "'") {
           const end = text.indexOf(quote, i + 1);
           const raw = end < 0 ? text.slice(i + 1) : text.slice(i + 1, end);
-          const decoded = decodeEntities(raw, i + 1);
+          const decoded = decodeEntities(raw.replace(/[\t\n\r]/g, ' '), i + 1);
           value = decoded.decoded;
           rawOf = decoded.rawOf;
           i = end < 0 ? n : end + 1;
@@ -347,7 +496,10 @@ function readDocument(file: string, text: string, issues: CheckIssue[]): void {
           // An unquoted value is not well-formed; read to the delimiter.
           const start = i;
           while (i < n && !ws(text[i]) && text[i] !== '>') i++;
-          const decoded = decodeEntities(text.slice(start, i), start);
+          const decoded = decodeEntities(
+            text.slice(start, i).replace(/[\t\n\r]/g, ' '),
+            start,
+          );
           value = decoded.decoded;
           rawOf = decoded.rawOf;
         }
@@ -396,10 +548,23 @@ function readDocument(file: string, text: string, issues: CheckIssue[]): void {
       issue('css-repeating-gradient', lt, spreadMethodMessage);
     }
     // Every attribute value a stylesheet context could carry: the style
-    // attribute of foreignObject HTML, SVG presentation attributes, … Every
-    // but href: an SVG image loads nothing, so it is only a string here.
+    // attribute of foreignObject HTML, SVG presentation attributes, … But a
+    // URL attribute (an <image>'s href, any prefix; xlink:href too) is a
+    // URL the image loads instead: only data: does anything there.
     for (const attr of attrs) {
-      if (attr.local === 'href') continue;
+      const rawAt = (offset: number) => attr.rawOf[offset] ?? n;
+      if (attr.local === 'href' || attr.local === 'src') {
+        checkUrl(attr.value, local === 'link' ? 'stylesheet' : 'image', rawAt);
+        continue;
+      }
+      if (attr.local === 'srcset') {
+        for (const reference of srcsetUrls(attr.value)) {
+          checkUrl(reference.url, 'image', offset =>
+            rawAt(reference.offset + offset),
+          );
+        }
+        continue;
+      }
       checkCss(attr.value, attr.rawOf);
     }
     if (!closed) {
@@ -437,14 +602,22 @@ function readDocument(file: string, text: string, issues: CheckIssue[]): void {
         chunk(lt + 9, end < 0 ? n : end, true);
         i = end < 0 ? n : end + 3;
       } else if (text.slice(lt + 2, lt + 9).toLowerCase() === 'doctype') {
-        i = doctype(file, text, lt, issues);
+        i = doctype(report, text, lt);
       } else {
         const end = text.indexOf('>', lt + 2);
         i = end < 0 ? n : end + 1;
       }
     } else if (c === 0x3f) {
       // ? — a processing instruction; the declaration was read up front.
+      // <?xml-stylesheet href="…"?> loads a stylesheet in an SVG image.
       const end = text.indexOf('?>', lt + 2);
+      const stop = end < 0 ? n : end;
+      if (
+        text.startsWith('xml-stylesheet', lt + 2) &&
+        (lt + 16 >= stop || text[lt + 16] === '?' || ws(text[lt + 16]))
+      ) {
+        stylesheetPi(lt + 16, stop);
+      }
       i = end < 0 ? n : end + 2;
     } else if (c === 0x2f) {
       // / — an end tag.

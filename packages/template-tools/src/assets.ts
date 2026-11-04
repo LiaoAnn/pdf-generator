@@ -95,14 +95,15 @@ function resolve(
 /**
  * Where a URL starts and ends once the browser's URL parser has stripped the
  * C0 controls and spaces around it; it keeps the no-break space and other
- * Unicode spaces, which then name a file that isn't in the pack.
+ * Unicode spaces, which then name a file that isn't in the pack. (svg.ts
+ * puts data: URLs through the same trim.)
  */
-const urlStart = (url: string) => {
+export const urlStart = (url: string) => {
   let i = 0;
   while (i < url.length && url.charCodeAt(i) <= 0x20) i++;
   return i;
 };
-const urlEnd = (url: string) => {
+export const urlEnd = (url: string) => {
   let i = url.length;
   while (i > 0 && url.charCodeAt(i - 1) <= 0x20) i--;
   return i;
@@ -139,7 +140,8 @@ const binaryFile = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
  * splits them: a URL runs to the next whitespace (commas included, so data:
  * URLs survive), then a descriptor runs to the next comma.
  */
-function srcsetUrls(value: string): Reference[] {
+/** Exported for svg.ts, which runs the same URLs inside an SVG file. */
+export function srcsetUrls(value: string): Reference[] {
   const urls: Reference[] = [];
   let i = 0;
   while (i < value.length) {
