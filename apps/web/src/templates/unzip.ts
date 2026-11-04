@@ -9,7 +9,6 @@
 // files are counted from the directory too, before anything is inflated. And
 // a deflated entry's blocks are counted before it is inflated
 // (deflate-blocks).
-import type { PackIssue } from '@pdf-generator/template-tools';
 import {
   type FlateError,
   type FlateStreamHandler,
@@ -20,6 +19,7 @@ import {
   unzipSync,
 } from 'fflate';
 import { scanDeflate } from './deflate-blocks.ts';
+import type { UploadIssue, UploadIssueCode } from './issues.ts';
 
 /**
  * Test seam: makes the upload's unzip, inflaters and copies.
@@ -47,7 +47,7 @@ const ignored = (path: string) =>
   path === '.DS_Store' ||
   path.endsWith('/.DS_Store');
 
-const whole = (code: string, message: string): PackIssue => ({
+const whole = (code: UploadIssueCode, message: string): UploadIssue => ({
   code,
   file: '.',
   message,
@@ -71,7 +71,7 @@ const tooLarge = (size: number, maxBytes: number) =>
     `the pack is more than ${size} bytes uncompressed, more than the limit of ${maxBytes}`,
   );
 
-const duplicate = (name: string): PackIssue => ({
+const duplicate = (name: string): UploadIssue => ({
   code: 'zip-duplicate-name',
   file: name,
   message: `${name} is in the zip more than once`,
@@ -87,7 +87,7 @@ function concat(chunks: Uint8Array[], size: number): Uint8Array {
   return bytes;
 }
 
-const understated = (name: string, limit: number): PackIssue => ({
+const understated = (name: string, limit: number): UploadIssue => ({
   code: 'zip-invalid',
   file: name,
   message: `${name} holds more data than its zip header says (${limit} bytes)`,
@@ -96,9 +96,9 @@ const understated = (name: string, limit: number): PackIssue => ({
 /** Why a deflated entry was refused before inflating it. */
 class Refusal extends Error implements FlateError {
   code = 0;
-  readonly issue: PackIssue;
+  readonly issue: UploadIssue;
 
-  constructor(issue: PackIssue) {
+  constructor(issue: UploadIssue) {
     super(issue.message);
     this.issue = issue;
   }
@@ -176,7 +176,7 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
 export function unzipBounded(
   zip: Uint8Array,
   maxBytes: number,
-): { files: Record<string, Uint8Array> } | { issue: PackIssue } {
+): { files: Record<string, Uint8Array> } | { issue: UploadIssue } {
   // The central directory, read without inflating anything: what each entry
   // says it holds. Its errors read as checkPack's own zip-invalid.
   const declared = new Map<string, number>();
@@ -218,7 +218,7 @@ export function unzipBounded(
   const files: Record<string, Uint8Array> = {};
   let inflated = 0;
   const seen = new Set<string>();
-  let stop: PackIssue | undefined;
+  let stop: UploadIssue | undefined;
   const unzip = steps.unzipper(file => {
     if (stop) return;
     if (seen.size >= maxEntries) {

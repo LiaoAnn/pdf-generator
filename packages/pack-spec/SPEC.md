@@ -496,7 +496,7 @@ An upload is refused before the check when it breaks one of these (`apps/web/src
 | One text file (anything but `.png .jpg .jpeg .gif .webp .woff .woff2 .ttf .otf`) | 64 KiB |
 | All text files together | 256 KiB |
 
-Keep the template a template: a `{{#each}}` over rows, not 500 copied rows.
+A zip over 10 MiB is refused as a whole (HTTP 413); each other limit has its own code (§9). Keep the template a template: a `{{#each}}` over rows, not 500 copied rows.
 
 ## 9. Checking a pack
 
@@ -505,7 +505,7 @@ pnpm --filter @pdf-generator/<name> check-pack      # in this repo: ok: <id>, ex
 node packages/template-tools/src/cli.ts <dir or .zip> [--json]
 ```
 
-Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code: message`); 2: usage error. The web app runs the same check on upload and explains each code in Chinese. The codes:
+Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code: message`); 2: usage error. The web app runs the same check on upload and explains each code in Chinese. Six of the codes come only from the web upload, which refuses a pack that breaks §8's limits (or that its zip reader won't accept) before the check runs; `check-pack` never prints them, so a pass here doesn't mean the upload passes the limits. The codes:
 
 | Code | Meaning |
 | --- | --- |
@@ -521,6 +521,12 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |
 | `css-repeating-gradient` | A gradient the self-check's renderer misreads: `repeating-linear-gradient()` or `repeating-radial-gradient()`, or SVG `spreadMethod` `repeat`/`reflect` (§5) |
 | `gt-unmarked`, `gt-nested`, `gt-type`, `gt-attribute`, `gt-id`, `gt-branch`, `gt-table`, `gt-checkbox`, `gt-formula`, `gt-image-text` | Marking (§4) |
+| `pack-too-many-files` | Web upload only: more than 200 files, directories and macOS metadata left out, or more than 1000 zip entries, folders included (§8) |
+| `file-too-large` | Web upload only: one file over 16 MiB (the print service's limit), or one text file over 64 KiB (§8) |
+| `pack-text-too-large` | Web upload only: the pack's text files over 256 KiB together (§8) |
+| `zip-duplicate-name` | Web upload only: a name in the zip more than once |
+| `zip-too-many-blocks` | Web upload only: a deflated zip entry split into more deflate blocks than its data pays for (8, plus one per 4096 bytes) |
+| `pack-check-failed` | Web upload only: `checkPack` itself threw on this pack (a platform fault on that pack, not a rule it broke); report the zip to the platform maintainers |
 
 Passing the check is not the end: print a few records (the web app's preview, then a small batch) and read the self-check report. Something it flags is a defect of the pack.
 

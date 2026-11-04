@@ -1,11 +1,17 @@
 # check-pack codes and their fixes
 
-`check-pack` prints `file:line:column: code: message`; JSON issues end with `(at <json path>)`. Read the message first: it usually says exactly what to change. Section numbers refer to `$PDF_GENERATOR_REPO/packages/pack-spec/SPEC.md`.
+`check-pack` prints `file:line:column: code: message`; JSON issues end with `(at <json path>)`. A code marked "web upload only" never comes from `check-pack`: the platform's upload refuses such a zip before checking, so `check-pack` passing doesn't mean the upload passes the §8 limits. Read the message first: it usually says exactly what to change. Section numbers refer to `$PDF_GENERATOR_REPO/packages/pack-spec/SPEC.md`.
 
 | Code | Usual cause | Fix |
 | --- | --- | --- |
-| `zip-invalid` | The `.zip` is corrupt or not a zip | Check the folder instead, or re-zip it |
-| `pack-too-large` | Over a size or file-count limit (§8) | Smaller images; a `{{#each}}` instead of copied rows |
+| `zip-invalid` | The `.zip` is corrupt or not a zip; web upload only: an entry holding more data than its header says, or in the data but not the directory | Check the folder instead, or re-zip it |
+| `zip-duplicate-name` | Web upload only: a name twice in the zip | Re-zip a clean folder |
+| `zip-too-many-blocks` | Web upload only: a zip entry in more deflate blocks than its data pays for | Re-zip it with a normal zip tool |
+| `pack-too-large` | The pack unzipped over the total size limit: 20 MiB on upload (§8); `check-pack` alone allows 100 MiB | Smaller images; a `{{#each}}` instead of copied rows |
+| `pack-too-many-files` | Web upload only: over 200 files, or over 1000 zip entries (§8) | Fewer files: merge stylesheets, drop unused assets; re-zip without junk entries |
+| `file-too-large` | Web upload only: one file over 16 MiB, or one text file over 64 KiB (§8) | Smaller images; a `{{#each}}` instead of copied rows |
+| `pack-text-too-large` | Web upload only: the text files over 256 KiB together (§8) | A `{{#each}}` over rows, not copied rows |
+| `pack-check-failed` | Web upload only: `checkPack` itself threw on this pack (a platform fault, not a rule you broke); the message carries the error | Report the zip to the platform maintainers; meanwhile change whatever unusual construct the message points at |
 | `pack-too-complex` | Nesting too deep to check (rules or template) | Flatten nested `object`/`array` fields and nested blocks |
 | `path-invalid` | A file path with `..`, `./`, a leading `/`, a backslash | Plain relative `/`-separated paths |
 | `manifest-missing` | No `manifest.json` at the root (zipped the folder, not its contents) | Put `manifest.json` at the pack root |
