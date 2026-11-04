@@ -1136,7 +1136,7 @@
 - **Blocked by**：T14-10
 - **Blocks**：—
 - **撞車風險**：`apps/print` 的 print runtime 與 `lib.ts`；`apps/web/src/templates/explain.ts`；與其他改 print runtime 的 T07 票不要同時派
-- **驗收測試**：T14-10 的 r9、r10 樣板（VM 上 `/home/dev/repros/t14-9/`）（注意：那裡是 `readPdf` 腳本，原始標記超過上傳上限 64 KiB `template.hbs`；T07-33 改用 `<use>` 組出等效的樣板包）列印回 422 `pdf_unmeasurable` 並有中文說明；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
+- **驗收測試**：T14-10 的 r9、r10 樣板（VM 上 `/home/dev/repros/t14-9/`）（注意：那裡是 `readPdf` 腳本，原始標記超過上傳上限 64 KiB `template.hbs`；T07-33 改用 `<use>` 組出等效的樣板包；產生它們的腳本在 VM 的 `~/drafts/t07-36-textless-unmeasurable/accept-t07-36.sh`）列印回 422 `pdf_unmeasurable` 並有中文說明；6 個樣板各 10 份 gt.json 與 main 相同、自我檢查 60/60
 - **不做**：改 self-check 的上限
 - **來源**：PR #97（T14-10）
 
