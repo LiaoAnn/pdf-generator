@@ -374,6 +374,54 @@ describe('template author error explanations', () => {
     expect(issue?.explanation).toMatch(/改用|移除|避免|不要|勿|一樣|相同|同樣/);
   });
 
+  // T08-9: content-visibility: auto content Paged.js paginated while Chrome
+  // skipped it (at its skipped size) also grows only in print and is
+  // refused as print_overflow; without that cause the author looks for a
+  // print-only style that isn't there.
+  test('preview print_overflow also explains content-visibility: auto and how to fix it', () => {
+    const raw = 'page 2 p 1793.7px right of its content area';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'print_overflow', message: raw }],
+    });
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('print_overflow');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toContain('content-visibility: auto');
+    expect
+      .soft(issue?.explanation)
+      .toMatch(/content-visibility: auto.{0,120}(?:跳過|略過|不排版)/);
+    expect
+      .soft(issue?.explanation)
+      .toMatch(
+        /(?:拿掉|移除|刪除).{0,40}content-visibility: auto|content-visibility: auto.{0,40}(?:拿掉|移除|刪除)/,
+      );
+  });
+
+  // T08-9: an auto block Paged.js left near the bottom of a page at its
+  // skipped size grows in print and pushes the last content out of the page
+  // after Paged.js finished, so print refuses it as text_missing (the PDF
+  // lacks it), not print_overflow: the font advice alone misleads.
+  test('preview text_missing also names content-visibility: auto pushing content out of its page', () => {
+    const raw = 'page 1: 最後一段';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'text_missing', message: raw }],
+    });
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('text_missing');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toMatch(/字型/);
+    expect.soft(issue?.explanation).toContain('content-visibility: auto');
+    expect
+      .soft(issue?.explanation)
+      .toMatch(
+        /(?:拿掉|移除|刪除).{0,40}content-visibility: auto|content-visibility: auto.{0,40}(?:拿掉|移除|刪除)/,
+      );
+  });
+
   // Regression: a print-only size change needs different advice from loading
   // resources or moving page boxes: Paged.js never paginated the larger content.
   test('preview print_overflow refusals explain clipped content, print-only styles and how to keep pagination consistent', () => {

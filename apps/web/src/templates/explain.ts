@@ -133,7 +133,7 @@ const printIssues: Record<string, string> = {
   layout_unsettled:
     '印 PDF 的過程中版面還在變：通常是只在列印時才用到的圖片或字型（例如 data-pagedjs-ignore 或 @media print 裡引用的檔案）還在載入。PDF 和量測標準答案時的版面不同，PDF 會和標準答案對不上。請讓圖片與字型在螢幕和列印時用同樣的方式載入，不要用只在列印時才載入的資源。',
   print_overflow:
-    '有 data-gt 的內容只在列印時變高或變寬，超出頁面：Paged.js 在螢幕上分頁時沒有套用只在列印時生效的樣式（例如 data-pagedjs-ignore 樣式表或 <body> 裡的 <style> 中的 @media print），排好的頁面放不下列印時的尺寸。PDF 會把超出的部分裁切或漏印，和標準答案對不上。請讓螢幕和列印時的尺寸相同，或把列印樣式放進樣板包的一般樣式表，Paged.js 分頁時會套用。',
+    '有 data-gt 的內容只在列印時變高或變寬，超出頁面：Paged.js 在螢幕上分頁時沒有套用只在列印時生效的樣式（例如 data-pagedjs-ignore 樣式表或 <body> 裡的 <style> 中的 @media print），排好的頁面放不下列印時的尺寸。PDF 會把超出的部分裁切或漏印，和標準答案對不上。請讓螢幕和列印時的尺寸相同，或把列印樣式放進樣板包的一般樣式表，Paged.js 分頁時會套用。另一種情況是用了 content-visibility: auto：Paged.js 分頁時，瀏覽器會跳過畫面外 content-visibility: auto 元素裡的內容，只用 contain-intrinsic-size（沒設定時為零）的大小排頁，列印時才排出實際尺寸而超出頁面。請拿掉 content-visibility: auto（它不會讓列印變快）。',
   content_clipped:
     '有 data-gt 的內容被外層元素裁掉一部分：某個祖先元素（例如設了 overflow: hidden／clip／auto、contain: paint 或 clip-path）比裡面的 data-gt 框小，螢幕或列印時只顯示框內的一部分。標準答案會記下完整的框與文字，PDF 卻只印出沒被裁掉的部分，兩者對不上。請讓外層元素放得下裡面的 data-gt 內容（例如移除固定的高度或寬度），或不要在 data-gt 內容的外層使用 overflow、contain: paint 或 clip-path 裁切。另一種情況是 data-gt 內容放在設了 content-visibility: hidden 的元素裡（或該區塊本身設了它）：裡面的內容完全不會印出，標準答案卻仍會記下它。請拿掉 content-visibility: hidden，或把 data-gt 內容移到該元素之外。',
   page_box_moved:
@@ -145,7 +145,7 @@ const printIssues: Record<string, string> = {
   row_fragmented:
     '有表格列被切在兩頁之間。請讓每一列的高度小於一頁，或允許表格在列與列之間換頁。',
   text_missing:
-    '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。',
+    '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。另一種情況是頁面底部附近用了 content-visibility: auto：Paged.js 分頁時沒有把那裡的內容移到下一頁，列印時它被擠出頁面而沒有印出。請拿掉 content-visibility: auto。',
   text_zero_width:
     '有 data-gt 的文字排出來寬度是零：通常是負的 letter-spacing 或 word-spacing 把字元擠在同一個位置或反向排列，或 transform: scaleX(0) 把文字壓扁成零寬。PDF 也許還印得出字，但平台找不到它在頁面上的位置，無法確認它有印出來；標準答案的框也會是零寬，和 PDF 對不上。請移除負的 letter-spacing／word-spacing，或拿掉把文字壓扁的 transform，讓文字恢復正常的寬度。',
   text_zero_height:

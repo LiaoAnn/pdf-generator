@@ -1857,3 +1857,68 @@ export function collect() {
     elements,
   };
 }
+
+/**
+ * Runs in the browser, so it must stay self-contained: no imports and no
+ * references to anything outside its own body (the reader it calls is given
+ * as an argument). It also declares no named local functions: esbuild's
+ * keepNames (on in wrangler) wraps those in a helper that exists only in the
+ * bundle, under a name minify changes.
+ *
+ * T08-9: Chrome skips the contents of a content-visibility: auto element
+ * away from the viewport (page 2 onwards): innerText leaves out their text
+ * and layout gives them their skipped size (contain-intrinsic-size, or 0),
+ * which moves every box after them too. Printing lays all of it out. Chrome
+ * lays out content that is part of the selection, synchronously, so `read`
+ * runs with the whole body selected (nested auto elements and ones under
+ * user-select: none included), and the selection it found goes back on
+ * every exit, which skips that content again. Forcing content-visibility:
+ * visible instead would drop the containment auto keeps when printed, and
+ * lines would move (probed on local Chromium).
+ *
+ * @param {() => Measurement} read What reads the page, run with every
+ *   content-visibility: auto element laid out.
+ * @returns {Measurement}
+ */
+export function readAsPrinted(read) {
+  // Saved so a backward selection keeps its direction: anchor and focus as
+  // they were, null when nothing was selected. selectAllChildren guards a
+  // document without a body or selection.
+  const selection = document.getSelection();
+  /** @type {{ anchorNode: Node | null; anchorOffset: number; focusNode: Node | null; focusOffset: number } | null} */
+  const saved =
+    selection !== null && selection.rangeCount > 0
+      ? {
+          anchorNode: selection.anchorNode,
+          anchorOffset: selection.anchorOffset,
+          focusNode: selection.focusNode,
+          focusOffset: selection.focusOffset,
+        }
+      : null;
+  const body = document.body;
+  if (selection !== null && body !== null) {
+    selection.selectAllChildren(body);
+  }
+  try {
+    return read();
+  } finally {
+    // Whatever happened, the selection goes back exactly as it was: none
+    // stays none, and one keeps its direction — setBaseAndExtent(anchor,
+    // offset, focus, offset) restores a backward selection as backward.
+    if (selection !== null) {
+      selection.removeAllRanges();
+      if (
+        saved !== null &&
+        saved.anchorNode !== null &&
+        saved.focusNode !== null
+      ) {
+        selection.setBaseAndExtent(
+          saved.anchorNode,
+          saved.anchorOffset,
+          saved.focusNode,
+          saved.focusOffset,
+        );
+      }
+    }
+  }
+}

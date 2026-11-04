@@ -1,6 +1,6 @@
 import type { GroundTruth } from '@pdf-generator/contract';
 import { type BuildOptions, buildGroundTruth } from './build.ts';
-import { collect } from './collect.js';
+import { collect, readAsPrinted } from './collect.js';
 import type { Measurement } from './measurement.ts';
 import { builtInReaders } from './readers.ts';
 
@@ -31,4 +31,4 @@ export async function readGroundTruth(
   });
 }
 
-const collectExpression = `(${collect.toString()})()`;
+const collectExpression = `(${readAsPrinted.toString()})(${collect.toString()})`;
