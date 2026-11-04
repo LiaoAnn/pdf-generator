@@ -23,7 +23,7 @@ import {
   maxStylesheetBytes,
   maxStylesheetLoads,
 } from './import-expansion.ts';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { pageBoxProblems } from './page-box.ts';
 import { pagedImports } from './paged-imports.ts';
 import { isRefused } from './policy.ts';
@@ -47,7 +47,7 @@ type Source = { file: string; text: string };
 function resolve(
   file: string,
   url: string,
-): { path: string } | { code: string; message: string } | undefined {
+): { path: string } | { code: PackIssueCode; message: string } | undefined {
   if (url === '' || url.startsWith('#')) return;
   if (/^data:/i.test(url)) return;
   if (/^[a-z][a-z0-9+.-]*:/i.test(url) || url.startsWith('//')) {
@@ -62,7 +62,7 @@ function resolve(
   } catch {
     // A stray % stays as written.
   }
-  const outside = {
+  const outside: { code: PackIssueCode; message: string } = {
     code: 'asset-path',
     message: `${url} must be a path relative to ${file}, inside the pack`,
   };
@@ -200,8 +200,8 @@ export function assetIssues(
   template: Source & { html: TemplateHtml },
   styles: Source[],
   read: (path: string) => Uint8Array | undefined,
-): PackIssue[] {
-  const issues: PackIssue[] = [];
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
   const faces: (Source &
     FaceKind & { family: string; name: string; offset: number })[] = [];
   /** Whether anything asks for a bold or an italic face. */
@@ -232,7 +232,7 @@ export function assetIssues(
   const imports: { source: Source; at: number; path: string }[] = [];
 
   const issue = (
-    code: string,
+    code: PackIssueCode,
     source: Source,
     offset: number,
     message: string,

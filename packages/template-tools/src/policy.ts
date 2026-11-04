@@ -10,7 +10,7 @@ import {
   lastContent,
   type TemplateHtml,
 } from './html.ts';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { position } from './text.ts';
 
 const svg = 'http://www.w3.org/2000/svg';
@@ -224,9 +224,9 @@ export function policyIssues(
   source: string,
   { html, document, statements, branchAt, inBranch }: TemplateHtml,
   file: string,
-): PackIssue[] {
-  const issues: PackIssue[] = [];
-  const report = (code: string, offset: number, message: string) =>
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const report = (code: PackIssueCode, offset: number, message: string) =>
     issues.push({ code, file, ...position(source, offset), message });
 
   // Where statements may not appear (tags, HTML comments, CSS); the quoted

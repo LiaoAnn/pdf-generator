@@ -10,7 +10,7 @@ import {
   type TemplateHtml,
   tagLength,
 } from './html.ts';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { isRefused } from './policy.ts';
 import { position } from './text.ts';
 
@@ -116,9 +116,9 @@ export function markIssues(
   source: string,
   { html, document, printedCount }: TemplateHtml,
   file: string,
-): PackIssue[] {
-  const issues: PackIssue[] = [];
-  const report = (code: string, offset: number, message: string) =>
+): CheckIssue[] {
+  const issues: CheckIssue[] = [];
+  const report = (code: PackIssueCode, offset: number, message: string) =>
     issues.push({ code, file, ...position(source, offset), message });
 
   /** Offset of the first non-blank character of a text node, if any. */
