@@ -1425,3 +1425,12 @@
 - **驗收測試**：SVG 素材與 data: SVG 內的巢狀 `<image>` 與 `@import` 被以中文說明擋下（或警告）；6 個樣板（含 logo.svg、figure.svg）照常通過；行為與規格書一致
 - **不做**：讓這種引用能印出來
 - **來源**：PR #134（T06-13）
+
+### T06-17 樣板工具：paged-import 位移換算改成線性
+- **目標**：`pagedImports` 的 `originalOffset` 對每個 @import 位移都重新掃過之前所有的 element() 改寫，是 O(改寫數 × import 數)（早已存在；T06-15 的 Security 實測 61 KiB 的 `a{--x:element(x);}` 加多個 `@import` 會走 324 萬次迴圈，Worker CPU 數毫秒）。改用單調游標或二分搜尋，並加計數或刻意構造輸入的測試
+- **Blocked by**：T06-15
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的 paged-import 讀取；與 T06-16 不要同時派
+- **驗收測試**：上述刻意構造輸入的計數為線性；T06-9 的各種 Paged.js 專用 @import 形式照常被擋；6 個樣板照常通過
+- **不做**：改檢查行為
+- **來源**：PR #135（T06-15）
