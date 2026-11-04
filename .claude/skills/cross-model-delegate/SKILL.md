@@ -67,6 +67,7 @@ The child starts with no history and doesn't see your conversation or skills. pi
 ```text
 You are the implementer for slice <n> of ticket <TNN> in /data/worktrees/pdf-generator/<wt> (worktree name <wt>).
 Never commit, push, or run any git command that writes: I review and commit the slice myself.
+Never plant a mutation or a deliberate type error in the worktree, even briefly: do it in a copy outside it (T09-6, T07-38, T10-7 did it in place).
 Read AGENTS.md in that folder first; ~/.config/devvm/AGENTS.md (already loaded) says how to run things on this VM.
 
 Why: <the plan's Why, 2-4 lines>
