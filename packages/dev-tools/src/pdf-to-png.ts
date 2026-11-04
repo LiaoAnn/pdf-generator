@@ -95,11 +95,27 @@ function overlays(gt: GroundTruth, scale: number): Overlay[] {
   return pages;
 }
 
-/** One PNG file's bytes per page of `pdf`, in page order. */
-export async function pdfToPng(
+/** One page of a PDF as pdf.js (in Playwright's Chromium) drew it. */
+export interface PdfJsPage {
+  width: number;
+  height: number;
+  /** Canvas RGBA before any overlay is drawn, row-major from the top-left; only when asked for. */
+  rgba?: Uint8Array;
+  /** The canvas as PNG bytes, with the overlays drawn on it. */
+  png: Uint8Array;
+}
+
+/**
+ * Every page of `pdf` drawn by pdf.js at `scale` pixels per PDF point, with
+ * `overlays` drawn on top, and its pixels when `pixels` is set (about
+ * 11 MB of base64 per A4 page at scale 2, so only compare-renderers asks).
+ */
+export async function renderPdfJsPages(
   pdf: Uint8Array,
-  { scale = 2, gt }: PdfToPngOptions = {},
-): Promise<Uint8Array[]> {
+  scale: number,
+  overlays: Overlay[],
+  pixels = false,
+): Promise<PdfJsPage[]> {
   // unpdf's pdf.js build, the one packages/self-check reads PDFs with.
   const pdfjs = await readFile(
     fileURLToPath(import.meta.resolve('unpdf/pdfjs')),
@@ -120,14 +136,19 @@ export async function pdfToPng(
     });
     await page.goto(`${origin}/`);
     await page.waitForFunction(() => window.pdfjs);
-    const urls = await page.evaluate(
-      async ({ scale, overlays, labelHeight }) => {
+    const rendered = await page.evaluate(
+      async ({ scale, overlays, labelHeight, pixels }) => {
         if (!window.pdfjs) throw new Error('pdf.js did not load');
         const { getDocument } = window.pdfjs;
         const response = await fetch('/document.pdf');
         const data = new Uint8Array(await response.arrayBuffer());
         const document_ = await getDocument({ data }).promise;
-        const urls: string[] = [];
+        const pages: {
+          width: number;
+          height: number;
+          rgba?: string;
+          png: string;
+        }[] = [];
         for (let number = 1; number <= document_.numPages; number++) {
           const pdfPage = await document_.getPage(number);
           const viewport = pdfPage.getViewport({ scale });
@@ -138,6 +159,20 @@ export async function pdfToPng(
           if (!context) throw new Error('no 2d canvas');
           await pdfPage.render({ canvas, canvasContext: context, viewport })
             .promise;
+          // Pixels out as base64: an Array of every byte won't serialise
+          // cheaply, and a spread of the whole buffer overflows the stack.
+          let binary: string | undefined;
+          if (pixels) {
+            const rgba = context.getImageData(
+              0,
+              0,
+              canvas.width,
+              canvas.height,
+            ).data;
+            binary = '';
+            for (let i = 0; i < rgba.length; i += 0x8000)
+              binary += String.fromCharCode(...rgba.subarray(i, i + 0x8000));
+          }
           const overlay = overlays[number - 1];
           // Edges are snapped to whole pixels and filled, 2 px wide, the pixel
           // before and the one at each edge: no anti-aliased fringe.
@@ -164,16 +199,37 @@ export async function pdfToPng(
             context.fillStyle = color;
             context.fillText(text, left + 2, top + labelHeight / 2);
           }
-          urls.push(canvas.toDataURL('image/png'));
+          pages.push({
+            width: canvas.width,
+            height: canvas.height,
+            ...(binary === undefined ? {} : { rgba: btoa(binary) }),
+            png: canvas.toDataURL('image/png'),
+          });
         }
-        return urls;
+        return pages;
       },
-      { scale, overlays: gt ? overlays(gt, scale) : [], labelHeight },
+      { scale, overlays, labelHeight, pixels },
     );
-    return urls.map(url =>
-      Buffer.from(url.slice(url.indexOf(',') + 1), 'base64'),
-    );
+    return rendered.map(({ width, height, rgba, png }) => ({
+      width,
+      height,
+      ...(rgba === undefined ? {} : { rgba: Buffer.from(rgba, 'base64') }),
+      png: Buffer.from(png.slice(png.indexOf(',') + 1), 'base64'),
+    }));
   } finally {
     await browser.close();
   }
+}
+
+/** One PNG file's bytes per page of `pdf`, in page order. */
+export async function pdfToPng(
+  pdf: Uint8Array,
+  { scale = 2, gt }: PdfToPngOptions = {},
+): Promise<Uint8Array[]> {
+  const pages = await renderPdfJsPages(
+    pdf,
+    scale,
+    gt ? overlays(gt, scale) : [],
+  );
+  return pages.map(page => page.png);
 }

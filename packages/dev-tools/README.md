@@ -25,6 +25,19 @@ const pngs = await pdfToPng(pdfBytes, { scale: 2, gt }); // one PNG's bytes per 
 
 PDFs that rely on fonts they don't embed (the platform's prints embed theirs) may render with substitute glyphs: pdf.js gets no standard fonts or CMaps here.
 
+## compare-renderers
+
+T14-11's finding: Chromium prints a CSS `repeating-linear-gradient` as a function-based PDF shading, which pdf.js samples once per period, so it draws the stripes solid or blank while PDFium draws them — and the self-check reads PDFs with pdf.js, so it can check gt.json against the wrong ink. `compare-renderers` renders one PDF with both pdf.js (unpdf's build, the one `packages/self-check` uses) and PDFium (`@hyzyla/pdfium`, WASM, about 14 MB installed, a dev-tools-only dependency) and reports how much ink each drew inside every gt.json block. Run it in your stack, from the repo root:
+
+```bash
+pnpm compare-renderers <pdf> --gt <gt.json> [--out <dir>] [--scale <n>] [--threshold <n>]
+# the same: node packages/dev-tools/src/compare-renderers-cli.ts <pdf> …
+```
+
+- Prints one line per gt.json block, in gt order: `<id> p<page> pdf.js <share> PDFium <share> agree` (or `DIFFERS`), the shares with two decimals, then `blocks: <agreeing>/<total> agree`. A share is the fraction of the block's pixels darker than mid-grey (luminance below 128 over white). A block agrees when its two ink shares differ by at most `--threshold` (default 0.1).
+- `--scale` is pixels per PDF point (default 4). `--out <dir>` also writes each page as both renderers drew it, `<name>-p<N>.pdfjs.png` and `<name>-p<N>.pdfium.png`, to see the difference; keep the folder outside the worktree (the container's `/tmp`).
+- Exit 0 when every block agrees, 1 when any differs, 2 for usage and input errors (a missing `--gt`, an unreadable PDF, an invalid gt.json, a bad scale or threshold).
+
 ## dump-gt and compare-gt
 
 A ticket that changes print or ground-truth shows that every template's gt.json is still the same as on `main` (or lists what changed). `dump-gt` saves a batch's gt.json and self-check results from your local stack; `compare-gt` compares two dumps.
