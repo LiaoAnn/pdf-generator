@@ -4,6 +4,7 @@
 // T07-20).
 import type { Browser, BrowserContext, Page } from '@cloudflare/puppeteer';
 import {
+  countOperations,
   type ExpectedBlock,
   missingText,
   UnmeasurablePdfError,
@@ -919,41 +920,46 @@ async function print<T>(
       printed.zeroHeightText,
     );
   }
-  if (
-    printed.expectedText?.some(blocks =>
-      blocks.some(block => block.texts.length > 0),
-    )
-  ) {
-    // The self-check refuses to measure a PDF over its document budget
-    // (operators, nesting, decoded content; T14-10). That is a property of
-    // the pack — it draws more than the self-check can measure — so refuse
-    // it as pdf_unmeasurable instead of failing the request, as `checkPdf`
-    // reports it instead of throwing (T07-33). A file the scan can't read
-    // at all (`structure`) stays an error: it is the platform's own output
-    // it failed to parse, not a pack fault.
-    let missing: string[];
-    try {
-      missing = await missingText(pdf, printed.expectedText);
-    } catch (error) {
-      if (
-        !(error instanceof UnmeasurablePdfError) ||
-        error.limit === 'structure'
-      ) {
-        throw error;
+  // The self-check refuses to measure a PDF over its document budget
+  // (operators, nesting, decoded content; T14-10), so every print runs it
+  // (T07-36): through the text check when the pack has data-gt text (its
+  // `readPdf` scans first), through `countOperations` directly when it has
+  // none. Over the budget is a property of the pack — it draws more than
+  // the self-check can measure — so refuse it as pdf_unmeasurable instead
+  // of failing the request, as `checkPdf` reports it instead of throwing
+  // (T07-33). A file the scan can't read at all (`structure`) stays an
+  // error: it is the platform's own output it failed to parse, not a pack
+  // fault.
+  try {
+    if (
+      printed.expectedText?.some(blocks =>
+        blocks.some(block => block.texts.length > 0),
+      )
+    ) {
+      const missing = await missingText(pdf, printed.expectedText);
+      if (missing.length > 0) {
+        throw new RenderError(
+          'text_missing',
+          'Some data-gt text is missing from the PDF',
+          missing,
+        );
       }
-      throw new RenderError(
-        'pdf_unmeasurable',
-        'The printed PDF is too complex for the self-check to measure',
-        [error.message],
-      );
+    } else {
+      const count = await countOperations(pdf);
+      if (!count.ok) throw new UnmeasurablePdfError(count);
     }
-    if (missing.length > 0) {
-      throw new RenderError(
-        'text_missing',
-        'Some data-gt text is missing from the PDF',
-        missing,
-      );
+  } catch (error) {
+    if (
+      !(error instanceof UnmeasurablePdfError) ||
+      error.limit === 'structure'
+    ) {
+      throw error;
     }
+    throw new RenderError(
+      'pdf_unmeasurable',
+      'The printed PDF is too complex for the self-check to measure',
+      [error.message],
+    );
   }
   rejectMovedBoxes(printed.movedBoxes);
   rejectMovedBoxes(await scaledPages(printedPdf, printed.plainInk));

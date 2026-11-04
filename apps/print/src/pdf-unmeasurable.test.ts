@@ -3,6 +3,8 @@
 // `UnmeasurablePdfError`. The print Worker let it escape, so a pack with
 // data-gt text whose PDF the platform can't measure got a 500 from /print.
 // It is a property of the pack, so it is refused as 422 pdf_unmeasurable.
+// T07-36: a pack without data-gt text never reached the text check, so the
+// same drawing printed with 200; it is refused the same way.
 import { apiErrorSchema } from '@pdf-generator/contract';
 import { afterAll, beforeAll, expect, test } from 'vitest';
 import { type PrintWorker, startPrintWorker } from './test-worker.ts';
@@ -28,19 +30,21 @@ const nestedGroups = `${Array.from(
     `<g opacity="0.999"><rect width="50" height="50" fill="${i % 2 ? '#000001' : '#000000'}"/>`,
 ).join('')}${'</g>'.repeat(depth)}`;
 
-const html = `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">
+const page = (
+  body: string,
+) => `<!doctype html><html lang="zh-TW"><head><meta charset="utf-8">
 <style>
 @page { size: A4; margin: 20mm; }
 body { margin: 0; font: 16px/24px "Noto Sans TC"; }
 </style></head><body>
-<p data-gt="paragraph">量測上限的前文。</p>
-<div data-gt="image" data-gt-id="figure" style="width:100pt;height:100pt">
-<svg width="100pt" height="100pt" viewBox="0 0 100 100">${nestedGroups.repeat(2)}</svg>
-</div></body></html>`;
+${body}</body></html>`;
 
-// Regression: the nesting refusal escaped renderPdf and /print answered 500.
-test('a PDF with groups nested past the budget is refused as pdf_unmeasurable', async () => {
-  const response = await fetch(new URL('/print', (await worker.url).href), {
+const figure = `<div data-gt="image" data-gt-id="figure" style="width:100pt;height:100pt">
+<svg width="100pt" height="100pt" viewBox="0 0 100 100">${nestedGroups.repeat(2)}</svg>
+</div>`;
+
+async function print(html: string) {
+  return fetch(new URL('/print', (await worker.url).href), {
     method: 'POST',
     headers: {
       authorization: `Bearer ${token}`,
@@ -51,6 +55,9 @@ test('a PDF with groups nested past the budget is refused as pdf_unmeasurable', 
       page: { size: 'A4', orientation: 'portrait' },
     }),
   });
+}
+
+async function expectNestingRefused(response: Response) {
   expect(
     response.status,
     response.status === 200
@@ -62,4 +69,17 @@ test('a PDF with groups nested past the budget is refused as pdf_unmeasurable', 
   // The self-check's own reason, so the author sees which limit it was.
   expect(error.details).toHaveLength(1);
   expect(error.details?.[0]?.message).toContain('nesting past 64');
+}
+
+// Regression: the nesting refusal escaped renderPdf and /print answered 500.
+test('a PDF with groups nested past the budget is refused as pdf_unmeasurable', async () => {
+  await expectNestingRefused(
+    await print(page(`<p data-gt="paragraph">量測上限的前文。</p>\n${figure}`)),
+  );
+});
+
+// Regression: with no data-gt text the text check never ran, and /print
+// answered 200 with the unmeasurable PDF (T07-36).
+test('a textless PDF with groups nested past the budget is refused as pdf_unmeasurable', async () => {
+  await expectNestingRefused(await print(page(figure)));
 });
