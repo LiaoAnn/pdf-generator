@@ -94,6 +94,8 @@ Read AGENTS.md in that folder first; ~/.config/devvm/AGENTS.md (already loaded) 
 
 Job: <what to run or find out, step by step: commands, inputs, seeds, which templates, the baseline to compare against>
 Pass criterion: <what result counts as pass, and what to report if it isn't>
+Controls: <for a probe, a positive control that must show the effect and a negative one that must not; a probe whose "no effect" can't fail proves nothing (T06-10)>
+Stay in this turn until your job ends: wait on your own background jobs with `wt-wait … --max 110` in a loop; ending your turn ends the task (T06-10).
 Outputs: put logs and outputs under /tmp/<wt>/<job>/ in the container (or ~/.local/state/wt/jobs/<wt>/ for wt-bg logs), never in the worktree.
 
 Run every project command in the stack (`T3CODE_WORKTREE_PATH=... wt-exec`, heavy ones with `wt-bg ... --heavy` and `wt-wait ... --max 110` until it exits 0). Anything that starts a browser or Chrome, probes included, counts as heavy: unlocked probes next to running dev servers were OOM-killed (T08-5). Steps with `cd`, pipes, `rm` or quotes go in a script file under /tmp/<wt>/, run with `wt-bg ... --script <file>` (it drops the file's extension: a Node .mjs script must be written and run by a bash script). Start dev servers only if the job needs them, as `tmux new -d -s <wt>-<role> -- env T3CODE_WORKTREE_PATH=... wt-exec <cmd...>`, and stop them with `tmux kill-session` before you report.
