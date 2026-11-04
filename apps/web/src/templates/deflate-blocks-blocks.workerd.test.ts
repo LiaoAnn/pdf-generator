@@ -84,8 +84,8 @@ test.each<Kind>(['dynamic-1', 'dynamic-15', 'chain-15'])(
     // can fail under load (T09-4, PR #116), so count the tables it builds
     // instead. These ratios caught T15-4's first table builder (4.6x per
     // block, PR #57); a builder that makes bigger tables, more of them, or
-    // more for each later block is still caught, but one as slow per table
-    // with the same tables is not.
+    // more for each later block is still caught here; one as slow per table
+    // with the same tables is not, and the next test counts what made it so.
     let built = 0;
     let entries = 0;
     const create = tables.create;
@@ -111,6 +111,116 @@ test.each<Kind>(['dynamic-1', 'dynamic-15', 'chain-15'])(
     expect(entries).toBeLessThanOrEqual(
       blockCount * (3 * 2 ** 9 + longCodes[kind] * 2 ** 6),
     );
+  },
+  20_000,
+);
+
+/** Methods that call back once per element, as T15-4's first builder did. */
+const callbacks = [
+  'every',
+  'filter',
+  'find',
+  'findIndex',
+  'forEach',
+  'map',
+  'reduce',
+  'some',
+] as const;
+const typedArrays = [
+  'Int8Array',
+  'Uint8Array',
+  'Uint8ClampedArray',
+  'Int16Array',
+  'Uint16Array',
+  'Int32Array',
+  'Uint32Array',
+  'Float32Array',
+  'Float64Array',
+] as const;
+type Prototype = Record<string, (...args: unknown[]) => unknown>;
+
+/**
+ * Runs `scan` counting element callbacks and the bytes of every typed array
+ * it allocates; views of an existing buffer allocate nothing. Both are
+ * counted by patching globals from here, so the scanner needs no seam.
+ */
+function countAllocations(scan: () => void) {
+  const counted = { callbacks: 0, bytes: 0 };
+  const prototypes = [
+    Array.prototype,
+    Object.getPrototypeOf(Uint8Array.prototype),
+  ] as Prototype[];
+  const methods = prototypes.map(prototype =>
+    callbacks.map(name => prototype[name]),
+  );
+  const global = globalThis as unknown as Record<string, unknown>;
+  const constructors = typedArrays.map(name => global[name]);
+  for (const prototype of prototypes) {
+    for (const name of callbacks) {
+      const method = prototype[name];
+      if (!method) continue;
+      prototype[name] = function (this: unknown, fn: unknown, ...rest) {
+        const counting = (...args: unknown[]) => {
+          counted.callbacks++;
+          return (fn as (...args: unknown[]) => unknown)(...args);
+        };
+        return method.call(this, counting, ...rest);
+      };
+    }
+  }
+  for (const [i, name] of typedArrays.entries()) {
+    const Base = constructors[i] as Uint8ArrayConstructor;
+    global[name] = class extends Base {
+      constructor(...args: unknown[]) {
+        super(...(args as [number]));
+        if (!(args[0] instanceof ArrayBuffer)) counted.bytes += this.byteLength;
+      }
+    };
+  }
+  try {
+    scan();
+  } finally {
+    for (const [p, prototype] of prototypes.entries()) {
+      for (const [m, name] of callbacks.entries()) {
+        const method = methods[p]?.[m];
+        if (method) prototype[name] = method;
+      }
+    }
+    for (const [i, name] of typedArrays.entries()) {
+      global[name] = constructors[i];
+    }
+  }
+  return counted;
+}
+
+test.each<Kind>(['dynamic-1', 'dynamic-15', 'chain-15'])(
+  "builds %s's code tables in plain loops, with little scratch memory",
+  kind => {
+    const stream = streamFor(kind);
+    let entries = 0;
+    const create = tables.create;
+    tables.create = size => {
+      entries += size;
+      return create(size);
+    };
+    let counted: ReturnType<typeof countAllocations>;
+    try {
+      counted = countAllocations(() => scanDeflate(stream, maxOutput));
+    } finally {
+      tables.create = create;
+    }
+    // Timed ratios caught T15-4's first builder, which built the same
+    // tables 4.6x as slowly, and no table count can (T09-5). It called
+    // back for every code length, and made scratch arrays as large as a
+    // 512-slot root table for every table: each alone measured ~1.5x
+    // slower (T09-6). Scanning needs a block's code lengths and two 16-entry
+    // counters per table, a few hundred bytes: allow one root table, 2 KiB.
+    const scratch = counted.bytes - 4 * entries;
+    console.info(
+      `${kind}: callbacks: ${counted.callbacks}, scratch bytes: ${scratch}`,
+    );
+    expect(counted.callbacks).toBe(0);
+    expect(scratch).toBeLessThan(blockCount * 4 * 2 ** 9);
   },
   20_000,
 );

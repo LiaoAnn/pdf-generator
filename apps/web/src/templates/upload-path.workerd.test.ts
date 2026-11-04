@@ -1,10 +1,10 @@
 import { crc32, deflateRawSync } from 'node:zlib';
 import { strToU8 } from 'fflate';
 import { expect, test } from 'vitest';
-import { scanDeflate, tables } from './deflate-blocks.ts';
+import { scanDeflate } from './deflate-blocks.ts';
 import { assemble, longStream } from './deflate-fixtures.test-support.ts';
 import { unzipWithinLimits } from './limits.ts';
-import { steps } from './unzip.ts';
+import { countWork } from './upload-work.test-support.ts';
 
 // The upload used to be timed whole against T15-1's scan, which failed under
 // load (PR #116); T09-4 replaced that with counting the scan's table reads,
@@ -75,65 +75,6 @@ function zipOf(entries: Entry[]) {
 const ignored = (name: string) =>
   name.endsWith('/') || name.startsWith('__MACOSX/');
 
-/** Every typed array's `slice`, which copies; fflate never calls it. */
-const typedArray = Object.getPrototypeOf(Uint8Array.prototype) as {
-  slice(this: Uint8Array, start?: number, end?: number): Uint8Array;
-};
-
-/**
- * The work the upload of `zip` does, counted at the seams it runs through,
- * and every typed array `slice` it makes. Copies through `set` can't be
- * told apart from fflate's own, about five times the stream.
- */
-function count(zip: Uint8Array) {
-  const work = {
-    tables: 0,
-    inflaters: 0,
-    pushed: 0,
-    inflated: 0,
-    concatenated: 0,
-    sliced: 0,
-  };
-  const create = tables.create;
-  const inflater = steps.inflater;
-  const concat = steps.concat;
-  const slice = typedArray.slice;
-  tables.create = size => {
-    work.tables++;
-    return create(size);
-  };
-  steps.inflater = ondata => {
-    work.inflaters++;
-    const inflate = inflater((data, final) => {
-      work.inflated += data.length;
-      ondata(data, final);
-    });
-    const push = inflate.push.bind(inflate);
-    inflate.push = (chunk, final) => {
-      work.pushed += chunk.length;
-      push(chunk, final);
-    };
-    return inflate;
-  };
-  steps.concat = (chunks, size) => {
-    work.concatenated += size;
-    return concat(chunks, size);
-  };
-  typedArray.slice = function (start, end) {
-    const copy = slice.call(this, start, end);
-    work.sliced += copy.length;
-    return copy;
-  };
-  try {
-    return { result: unzipWithinLimits(zip), work };
-  } finally {
-    tables.create = create;
-    steps.inflater = inflater;
-    steps.concat = concat;
-    typedArray.slice = slice;
-  }
-}
-
 const tenBit = () => {
   const { stream, data } = longStream(
     10,
@@ -167,7 +108,7 @@ test.each([
 ])('uploading %s inflates and copies each entry once', (_, entries) => {
   const all: Entry[] = entries();
   const zip = zipOf(all);
-  const { result, work } = count(zip);
+  const { result, work } = countWork(() => unzipWithinLimits(zip));
   if (!('files' in result)) throw new Error(JSON.stringify(result));
   const files = all.filter(entry => !ignored(entry.name));
   expect(Object.keys(result.files).sort()).toEqual(
