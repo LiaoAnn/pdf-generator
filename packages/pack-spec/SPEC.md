@@ -165,7 +165,7 @@ A pack may use only what a printed document needs, so it prints the same way eve
 <p data-gt="paragraph" onclick="alert(1)">{{summary}}</p>
 ```
 
-The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`); a `data:image/svg+xml` image is checked like an SVG file (§5).
+The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`); a `data:image/svg+xml` image is checked like an SVG file (§5). Inside an SVG image (a pack `.svg` file or a `data:image/svg+xml` image) only `data:` URLs and same-document `#id`s load; any other reference there is `asset-svg-nested` (§5).
 
 **Pack files.** The preview and every batch send the pack's files to the print service, and the template is loaded at its own pack path, so a relative URL (`assets/logo.png` from `template.hbs`, `../assets/font.woff2` from `styles/report.css`) loads the file as in the pack. Nothing outside the pack loads, apart from the platform fonts.
 
@@ -363,11 +363,12 @@ html, body {
   - a DOCTYPE with an internal subset (`<!DOCTYPE svg [<!ENTITY …>]>`) is `html-unsupported`: Chrome applies its entity and attribute declarations, which the check does not read; delete the `[…]` part (a plain `<!DOCTYPE svg PUBLIC …>` is fine);
   - anything but UTF-8 is `text-encoding`: a UTF-16 file (Chrome renders it), a NUL, an XML declaration naming another `encoding`, a `data:` URL with another `charset`;
   - a `data:` stylesheet (`<?xml-stylesheet href="data:…"?>`, `@import url(data:…)`, an XHTML `<link>`) is `asset-data`: Chrome applies it; put its rules in the SVG's `<style>`;
-  - `data:` images nested more than 8 deep are `pack-too-complex`.
+  - `data:` images nested more than 8 deep are `pack-too-complex`;
+  - every other reference to a file or URL is `asset-svg-nested`: an `<image href="other.svg">` (or `xlink:href`), `<feImage>`, `<use href="x.svg#id">`, XHTML `<img src>`/`srcset` or `<link href>`, an `@import`, `<?xml-stylesheet href="…"?>`, and every CSS `url()`/`image-set()` (a background, `fill="url(paint.svg#g)"`, an `@font-face` `src`). Chrome loads none of them inside an SVG image, even when the file is in the pack, so they print nothing (T06-16's probes: blank ink, no request for the file). A `data:` URL and a same-document `#id` (`fill="url(#g)"`, `<use href="#r">`) still work. Draw the content in the SVG itself, make it a `data:` URL, or draw it in the template: inline `<svg>` written in the template is part of the page, not an SVG image, and loads its pack references as usual.
 
-  Scripts, event handlers and every other URL inside an SVG image are left alone: Chrome runs and loads none of them there (T06-13's probe), so they can't change the print; a nested pack file (`<image href="other.svg">`) simply doesn't show.
+  Scripts, event handlers and `<a href>` hyperlinks inside an SVG image are left alone: Chrome runs and follows none of them there (T06-13's probe), so they can't change the print.
 
-  Don't rely on the check's limits: it over-refuses two unusual spellings — either name as a hash token (`#repeating-linear-gradient(`, `#repeating-radial-gradient(`) and an SVG attribute value that looks like the function (`id="repeating-linear-gradient(x)"`), which you rename.
+  Don't rely on the check's limits: it over-refuses unusual spellings — either gradient name as a hash token (`#repeating-linear-gradient(`, `#repeating-radial-gradient(`), and an SVG attribute value that looks like CSS (`id="repeating-linear-gradient(x)"`, `aria-label="url(x)"`, read as the function or as a reference), which you rename.
 
   Draw stripes with SVG `<rect>` elements and rings with `<circle>` elements, or a plain `linear-gradient` repeated as a fixed-size tile: `background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%`. Size tiles in pt: a tile in px prints its stripes about a third dark instead of half, in both renderers, so the PDF differs from the screen, though the self-check still agrees.
 
@@ -524,6 +525,7 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `template-syntax`, `template-unsupported`, `template-unknown-field`, `template-render`, `template-structure` | Handlebars (§3) |
 | `html-active`, `html-unsupported` | The allowlist (§3) |
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `asset-stylesheet-type`, `css-escape` | Files the template or CSS loads |
+| `asset-svg-nested` | A file or URL referenced inside an SVG image (a pack `.svg` file or a `data:image/svg+xml` image) that isn't a `data:` URL or a same-document `#id`: Chrome loads none of them there, so they print nothing (§5) |
 | `css-import-cycle`, `css-import-expansion` | Stylesheet `@import`s: a cycle, or imports that load more than 64 stylesheets or 1 MiB of CSS in all (Chrome and Paged.js load a sheet again for every `@import` of it) |
 | `font-unused` | Fonts (§6) |
 | `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |

@@ -11,6 +11,9 @@ export const spreadMethodMessage =
 /** Why a backslash escape in CSS is refused. */
 export const cssEscapeMessage =
   'a backslash escape in CSS: write the character itself (packs are UTF-8)';
+/** Why a non-data:, non-#id reference inside an SVG image is refused. */
+export const svgNestedRefMessage = (url: string) =>
+  `an SVG image loads no other file or URL, so "${url}" prints nothing: draw it in this SVG, or use a data: URL (a #id in the same SVG is fine)`;
 /** Why a function inside image-set() is refused. */
 export const dynamicAssetMessage =
   'image-set() takes only url(), strings, type() and gradients: another function here (var(), if(), a custom function …) can supply a URL this check cannot see';
