@@ -26,6 +26,15 @@ const imageArguments =
 const identifier = /[A-Za-z0-9_\-\u0080-￿]/;
 
 /**
+ * Test seam: how much work scanCss did. Read only by
+ * css-work.test-support.ts, never in production, and deliberately not
+ * exported from index.ts. `scanning` is nonzero while a scan runs,
+ * `scanned` the characters handed to it, `read` the characters its own
+ * loops read by index.
+ */
+export const cssWork = { scanning: 0, scanned: 0, read: 0 };
+
+/**
  * The URLs a stylesheet loads (`url(…)`, `@import "…"`, strings in
  * `image-set(…)`) and every backslash outside comments: an escape can spell
  * `url` or `@import`, or end a string or url() where this scanner wouldn't,
@@ -38,6 +47,21 @@ export function scanCss(css: string): {
   /** var()/env()/attr() inside image-set(): a URL from elsewhere. */
   dynamic: number[];
 } {
+  cssWork.scanning++;
+  cssWork.scanned += css.length;
+  try {
+    return scan(css);
+  } finally {
+    cssWork.scanning--;
+  }
+}
+
+/** The scanner behind `scanCss`, which only counts the work. */
+function scan(css: string): {
+  references: Reference[];
+  escapes: number[];
+  dynamic: number[];
+} {
   const references: Reference[] = [];
   const escapes: number[] = [];
   const dynamic: number[] = [];
@@ -45,9 +69,14 @@ export function scanCss(css: string): {
   let insideImageSet = 0;
   let importing = false;
   let i = 0;
+  // Counted locally and added once: a store per character costs 2–3%.
+  let read = 0;
   while (i < css.length) {
+    read++;
     const c = css[i] ?? '';
+    // The comment check reads css[i + 1] too.
     if (c === '/' && css[i + 1] === '*') {
+      read++;
       const end = css.indexOf('*/', i + 2);
       i = end < 0 ? css.length : end + 2;
     } else if (c === '"' || c === "'") {
@@ -62,6 +91,7 @@ export function scanCss(css: string): {
         if (css[end] === '\\') escapes.push(end);
         end++;
       }
+      read += end - (i + 1);
       const inside = functions.at(-1) ?? '';
       if (importing || inside === 'url' || imageSets.has(inside)) {
         references.push({
@@ -78,6 +108,7 @@ export function scanCss(css: string): {
     } else if (c === '@' || identifier.test(c)) {
       let end = i + 1;
       while (end < css.length && identifier.test(css[end] ?? '')) end++;
+      read += end - (i + 1);
       const name = css.slice(c === '@' ? i + 1 : i, end).toLowerCase();
       // Paged.js reads an at-rule by its name without a vendor prefix, as
       // css-tree does: @-webkit-import is an @import too.
@@ -85,6 +116,7 @@ export function scanCss(css: string): {
       else if (css[end] === '(' && name === 'url') {
         let start = end + 1;
         while (cssSpace.test(css[start] ?? '')) start++;
+        read += start - (end + 1);
         if (css[start] === '"' || css[start] === "'") {
           functions.push('url');
           i = start;
@@ -95,10 +127,12 @@ export function scanCss(css: string): {
         for (let at = start; at < stop; at++) {
           if (css[at] === '\\') escapes.push(at);
         }
+        read += stop - start;
         // A backward scan, not /[ \t\n\r\f]+$/: that regex retries a space
         // run from each space in it (quadratic on `url(x   …   x)`).
         let last = stop;
         while (last > start && cssSpace.test(css[last - 1] ?? '')) last--;
+        read += stop - last;
         references.push({
           url: css.slice(start, last),
           offset: start,
@@ -130,6 +164,7 @@ export function scanCss(css: string): {
       i++;
     }
   }
+  cssWork.read += read;
   return { references, escapes, dynamic };
 }
 
