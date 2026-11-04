@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { scanDeflate } from './deflate-blocks.ts';
+import { scanDeflate, tables } from './deflate-blocks.ts';
 import { scanDeflateReference } from './deflate-blocks-reference.ts';
 import { Bits, chain, dynamic } from './deflate-fixtures.test-support.ts';
 
@@ -8,7 +8,7 @@ const blockCount = 30_000;
 const maxOutput = 2 ** 30;
 type Kind = 'dynamic-1' | 'dynamic-15' | 'chain-15';
 
-// T15-1's empty dynamic-block bombs, reduced to keep repeated scans cheap.
+// T15-1's empty dynamic-block bombs, reduced to keep the scans cheap.
 function emptyBlock(bits: Bits, wide: boolean, final: boolean) {
   bits.put(Number(final), 1);
   bits.put(2, 2);
@@ -59,18 +59,19 @@ function streamFor(kind: Kind) {
   return bits.bytes();
 }
 
-function measure(scan: typeof scanDeflate, stream: Uint8Array) {
-  const start = performance.now();
-  const result = scan(stream, maxOutput);
-  return { result, elapsed: performance.now() - start };
-}
-
-function median(times: number[]) {
-  return times.sort((a, b) => a - b)[2] ?? Number.POSITIVE_INFINITY;
-}
+/**
+ * Codes longer than the tables' 9-bit root in each block's three codes:
+ * none in dynamic-1, the end-of-block code in dynamic-15, and lengths 10–14
+ * plus two 15-bit codes in chain-15.
+ */
+const longCodes: Record<Kind, number> = {
+  'dynamic-1': 0,
+  'dynamic-15': 1,
+  'chain-15': 7,
+};
 
 test.each<Kind>(['dynamic-1', 'dynamic-15', 'chain-15'])(
-  'scans every %s block within 1.25x the reference table-building cost',
+  "builds three two-level code tables for each of %s's blocks",
   kind => {
     const stream = streamFor(kind);
     const expected = scanDeflateReference(stream, maxOutput);
@@ -79,30 +80,37 @@ test.each<Kind>(['dynamic-1', 'dynamic-15', 'chain-15'])(
       reason: 'too-many-blocks',
       blocks: blockCount,
     });
-    expect(scanDeflate(stream, maxOutput)).toEqual(expected);
-
-    const currentTimes: number[] = [];
-    const referenceTimes: number[] = [];
-    for (let run = 0; run < 5; run++) {
-      // Alternate which scanner runs first to balance warm-up and scheduling.
-      const scans =
-        run % 2 === 0
-          ? [scanDeflate, scanDeflateReference]
-          : [scanDeflateReference, scanDeflate];
-      for (const scan of scans) {
-        const { result, elapsed } = measure(scan, stream);
-        expect(result).toEqual(expected);
-        (scan === scanDeflate ? currentTimes : referenceTimes).push(elapsed);
-      }
+    // Timing this scan against T15-1's, even interleaved in the same run,
+    // can fail under load (T09-4, PR #116), so count the tables it builds
+    // instead. These ratios caught T15-4's first table builder (4.6x per
+    // block, PR #57); a builder that makes bigger tables, more of them, or
+    // more for each later block is still caught, but one as slow per table
+    // with the same tables is not.
+    let built = 0;
+    let entries = 0;
+    const create = tables.create;
+    tables.create = size => {
+      built++;
+      entries += size;
+      return create(size);
+    };
+    let result: ReturnType<typeof scanDeflate>;
+    try {
+      result = scanDeflate(stream, maxOutput);
+    } finally {
+      tables.create = create;
     }
-    const current = median(currentTimes);
-    const reference = median(referenceTimes);
+    expect(result).toEqual(expected);
     console.info(
-      `${kind}: ${blockCount} blocks; median of 5 (ms): new=${current}, reference=${reference}, ratio=${current / reference}`,
+      `${kind}: ${blockCount} blocks; tables: ${built}, entries: ${entries}`,
     );
-    // The shared VM can preempt either scan. Interleaving and medians discard
-    // isolated stalls; 25% headroom catches the prior 3–4.6x per-block slowdown.
-    expect(current).toBeLessThanOrEqual(reference * 1.25);
+    // A code-length, a literal/length and a distance table for every block.
+    expect(built).toBe(3 * blockCount);
+    // Each a 512-entry root, plus a subtable of at most 64 entries for each
+    // code longer than 9 bits; a one-level table for 15-bit codes is 32,768.
+    expect(entries).toBeLessThanOrEqual(
+      blockCount * (3 * 2 ** 9 + longCodes[kind] * 2 ** 6),
+    );
   },
   20_000,
 );
