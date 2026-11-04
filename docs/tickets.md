@@ -1337,7 +1337,7 @@
 - **來源**：PR #120（T06-12）
 
 ### T06-14 樣板工具：上傳時也拒絕 `repeating-radial-gradient`
-- **目標**：T10-5 的實測（本機平台印出、`pnpm compare-renderers`）顯示 CSS `repeating-radial-gradient` 和 SVG radialGradient repeat 一樣被 pdf.js 讀錯（pdf.js 0.31、PDFium 0.50，pdf.js 畫成亂紋；T14-11 的「一致」只是比例碰巧）。比照 T06-12，把它納入 `css-repeating-gradient`（含前綴、大小寫、跳脫、at-rule、自訂屬性），中文說明一併更新；規格書（packages/pack-spec）同一張票把它移到拒絕清單
+- **目標**：T10-5 的實測（本機平台印出、`pnpm compare-renderers`）顯示 CSS `repeating-radial-gradient` 和 SVG radialGradient repeat 一樣被 pdf.js 讀錯（pdf.js 0.31、PDFium 0.50，pdf.js 畫成亂紋；T14-11 的「一致」只是比例碰巧）。比照 T06-12，把它納入 `css-repeating-gradient`（含前綴、大小寫、跳脫、at-rule、自訂屬性），中文說明一併更新；規格書（packages/pack-spec）同一張票把它移到拒絕清單；並把中文說明裡建議的平鋪範例從 `4px` 改成 `4pt`（`4px` 平鋪印出來只有三分之一是黑的，規格書 T10-5 建議 pt）
 - **Blocked by**：T10-5
 - **Blocks**：—
 - **撞車風險**：`packages/template-tools` 的樣板包檢查、`apps/web/src/templates/explain.ts`、`packages/pack-spec`
