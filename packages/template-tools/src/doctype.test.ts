@@ -55,6 +55,13 @@ describe('checkPack: the template starts with <!doctype html>', () => {
       '{{! renders nothing }}\n<!doctype html>\n',
     ],
     ['a long Handlebars comment before', '{{!-- {{x}} --}}<!doctype html>'],
+    // Whitespace control strips only whitespace: still nothing before it.
+    [
+      'Handlebars comments with whitespace control before',
+      '{{~! note ~}}\n{{~!-- note --~}}\n<!doctype html>\n',
+    ],
+    // `--!>` ends a comment too (a parse error, but the comment ends there).
+    ['a comment ended by --!>', '<!-- note --!>\n<!doctype html>\n'],
   ])('accepts %s', (_, prefix) => {
     const result = checkPack(pack(`${prefix}${document}`));
     expect(result.issues).toEqual([]);
@@ -81,6 +88,23 @@ describe('checkPack: the template starts with <!doctype html>', () => {
     ['an unclosed comment around it', '<!-- note <!doctype html>', 1, 1],
     ['content after comments and blank lines', '\n\n<!-- c -->\n', 4, 1],
     ['content after a doctype-like comment', '<!-- <!doctype html> -->', 1, 25],
+    // The HTML tokenizer ends `<!-->` and `<!--->` at once (abrupt closing),
+    // so what follows is content, not the rest of a comment.
+    [
+      'a doctype after an abruptly closed comment',
+      '<!--><!doctype svg><!-- --><!doctype html>',
+      1,
+      6,
+    ],
+    [
+      'a doctype after a three-dash abruptly closed comment',
+      '<!---><!doctype svg><!-- --><!doctype html>',
+      1,
+      7,
+    ],
+    // Not a doctype name separator or terminator to the HTML tokenizer.
+    ['a no-break space inside it', '<!doctype html>', 1, 1],
+    ['a no-break space before its >', '<!doctype html >', 1, 1],
   ])(
     'refuses %s, at the first character that is not whitespace or a comment',
     (_, prefix, line, column) => {

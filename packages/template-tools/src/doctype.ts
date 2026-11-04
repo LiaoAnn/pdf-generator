@@ -4,45 +4,28 @@
 import type { PackIssue } from './issues.ts';
 import { position } from './text.ts';
 
-// The whitespace the HTML tokenizer skips before a doctype: tab, LF, FF, CR
-// and space. Not JavaScript's `\s`: U+00A0 & co. are characters to the HTML
-// parser and start the document in quirks mode before the doctype.
-const asciiWhitespace = (c: string): boolean =>
-  c === ' ' || c === '\t' || c === '\n' || c === '\f' || c === '\r';
+// What may come before the doctype, one piece at a time:
+// - the whitespace the HTML tokenizer skips there: tab, LF, FF, CR and space.
+//   Not JavaScript's `\s`: U+00A0 & co. are characters to the HTML parser and
+//   start the document in quirks mode before the doctype;
+// - an HTML comment, ending where the tokenizer ends it: `<!-->` and `<!--->`
+//   at once (abrupt closing), otherwise at the first `-->` or `--!>`;
+// - a Handlebars comment, which renders to nothing, with or without `~`.
+const skippable =
+  /[\t\n\f\r ]+|<!--(?:-?>|[\s\S]*?--!?>)|\{\{~?!--[\s\S]*?--~?\}\}|\{\{~?![\s\S]*?\}\}/y;
 
 // `<!doctype` + ASCII whitespace + `html` + optional ASCII whitespace + `>`.
 const doctype = /<!doctype[\t\n\f\r ]+html[\t\n\f\r ]*>/iy;
 
 /**
  * The pack's template must start with the HTML5 doctype, preceded only by
- * ASCII whitespace, HTML comments (`<!--` … first `-->`) or Handlebars
- * comments. One issue, at the first character that is neither.
+ * ASCII whitespace, HTML comments or Handlebars comments. One issue, at the
+ * first character that is neither (an unclosed comment's start).
  */
 export function doctypeIssues(text: string, file: string): PackIssue[] {
   let offset = 0;
-  for (;;) {
-    while (offset < text.length && asciiWhitespace(text[offset] ?? ''))
-      offset += 1;
-    if (text.startsWith('<!--', offset)) {
-      const end = text.indexOf('-->', offset + 4);
-      if (end === -1) break;
-      offset = end + 3;
-      continue;
-    }
-    if (text.startsWith('{{!--', offset)) {
-      const end = text.indexOf('--}}', offset + 5);
-      if (end === -1) break;
-      offset = end + 4;
-      continue;
-    }
-    if (text.startsWith('{{!', offset)) {
-      const end = text.indexOf('}}', offset + 3);
-      if (end === -1) break;
-      offset = end + 2;
-      continue;
-    }
-    break;
-  }
+  skippable.lastIndex = 0;
+  while (skippable.test(text)) offset = skippable.lastIndex;
   doctype.lastIndex = offset;
   if (doctype.test(text)) return [];
   return [
