@@ -85,14 +85,7 @@ const unescapeName = (raw: string): string => {
  * full Unicode fold (toLowerCase) could turn a different name into it.
  */
 const foldCase = (name: string) =>
-  [...name]
-    .map(char => {
-      const code = char.charCodeAt(0);
-      return code >= 0x41 && code <= 0x5a
-        ? String.fromCharCode(code + 0x20)
-        : char;
-    })
-    .join('');
+  name.replace(/[A-Z]/g, char => char.toLowerCase());
 
 /** The function names the upload refuses, vendor prefix included. */
 const repeatingLinearGradient = /^(?:-[a-z]+-)?repeating-linear-gradient$/;

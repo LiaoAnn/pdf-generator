@@ -525,10 +525,12 @@ export function assetIssues(
           // by the SVG name it restores.
           const spreadAt = location?.attrs?.spreadmethod;
           if (spread !== undefined && spreadAt !== undefined) {
-            const method = spread.value
-              .replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '')
-              .replace(/[A-Z]/g, c => c.toLowerCase());
-            if (method === 'repeat' || method === 'reflect') {
+            // One match anchored at the start: an unanchored trailing-space
+            // trim retries from every space (quadratic). Without the u flag,
+            // i folds ASCII letters only.
+            if (
+              /^[\t\n\f\r ]*(?:repeat|reflect)[\t\n\f\r ]*$/i.test(spread.value)
+            ) {
               issue(
                 'css-repeating-gradient',
                 template,
