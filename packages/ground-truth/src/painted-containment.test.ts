@@ -413,6 +413,23 @@ describe('readGroundTruth: overflow clips round in the frame of the element that
       ).toEqual({ glow: [55.5, 75.75, 115.5, 114] });
     });
   }, 30_000);
+
+  test('an outline is cut where the container’s clip paints in its frame', async () => {
+    await withPage(async page => {
+      // The .spot's 30 px outline rings 57..167 x 77..157 px in the frame,
+      // cut by the same 80.25 x 50.75 px container at 74..154 x 101..152
+      // (page rounding: 74..155 x 101..151).
+      expect(
+        await read(
+          page,
+          inside(
+            'contain: paint; width: 80.25px; height: 50.75px',
+            `<div data-gt="paragraph" data-gt-id="loop" class="spot" style="outline: 30px solid #000"></div>`,
+          ),
+        ),
+      ).toEqual({ loop: [55.5, 75.75, 115.5, 114] });
+    });
+  }, 30_000);
 });
 
 describe('readGroundTruth: an inset() clip-path region moves with the frame of the element it is on', () => {
