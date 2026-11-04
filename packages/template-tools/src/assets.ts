@@ -513,11 +513,13 @@ export function assetIssues(
       });
       // SVG presentation attributes take url() too (fill, mask, clip-path…).
       if (element.namespaceURI === 'http://www.w3.org/2000/svg') {
-        // T14-11: repeat and reflect print as the same function-based
-        // shading as repeating-linear-gradient(), which the self-check's
-        // renderer samples once per stripe; the ticket refuses them on
-        // linearGradient only (T06-12).
-        if (element.tagName === 'linearGradient') {
+        // T14-11: repeat and reflect print as a shading the self-check's
+        // renderer misreads; pdf.js misreads them on both linearGradient
+        // and radialGradient, so the ticket refuses them on both (T06-12).
+        if (
+          element.tagName === 'linearGradient' ||
+          element.tagName === 'radialGradient'
+        ) {
           const spread = attributeOf(element, 'spreadMethod');
           // parse5 keys locations by the name as scanned (lowercase), not
           // by the SVG name it restores.

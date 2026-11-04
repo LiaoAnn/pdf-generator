@@ -1,7 +1,9 @@
-// T14-11: Chromium prints an SVG <linearGradient spreadMethod="repeat"> or
-// "reflect" as the same function-based shading as repeating-linear-gradient(),
-// which pdf.js samples once per stripe. The upload refuses both values
-// (css-repeating-gradient, T06-12).
+// T14-11, T06-12: Chromium prints an SVG gradient with spreadMethod="repeat"
+// or "reflect" as the same function-based shading as
+// repeating-linear-gradient(), which pdf.js samples once per stripe or ring:
+// linearGradient by T14-11's measurements, radialGradient by T06-12's
+// (pdf.js draws a scrambled pattern where PDFium draws rings). The upload
+// refuses both values on both (css-repeating-gradient).
 import { describe, expect, it } from 'vitest';
 import { withHead } from '../fixtures/document.ts';
 import { checkPack, type PackFiles } from './index.ts';
@@ -10,8 +12,11 @@ const code = 'css-repeating-gradient';
 const templateFile = 'report.hbs';
 const paragraph = '<p data-gt="paragraph">{{value}}</p>';
 
-const svg = (gradient: string) =>
-  `<svg data-gt="image" viewBox="0 0 10 10"><defs>${gradient}<stop offset="0" stop-color="black"/><stop offset="0.5" stop-color="white"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/></svg>`;
+/** An SVG filled by `gradient`, the start tag of a linear or radial gradient. */
+const svg = (gradient: string) => {
+  const end = /^<radial/i.test(gradient) ? 'radialGradient' : 'linearGradient';
+  return `<svg data-gt="image" viewBox="0 0 10 10"><defs>${gradient}<stop offset="0" stop-color="black"/><stop offset="0.5" stop-color="white"/></${end}></defs><rect width="10" height="10" fill="url(#g)"/></svg>`;
+};
 
 function pack(template: string): PackFiles {
   return {
@@ -102,6 +107,18 @@ describe('css-repeating-gradient for SVG spreadMethod', () => {
       'an unquoted value',
       '<linearGradient id="g" spreadMethod=reflect x2="0.1">',
     ],
+    [
+      'a radialGradient with repeat',
+      '<radialGradient id="g" spreadMethod="repeat" r="0.1">',
+    ],
+    [
+      'a radialGradient with reflect',
+      '<radialGradient id="g" r="0.1" spreadMethod="reflect">',
+    ],
+    [
+      'a radialGradient in another case',
+      '<RADIALGRADIENT id="g" SpreadMethod="Reflect" r="0.1">',
+    ],
   ])('refuses %s', (_form, gradient) => {
     const at = gradient.search(/spreadmethod/i);
     refused(pack(svg(gradient)), [
@@ -130,19 +147,11 @@ describe('css-repeating-gradient for SVG spreadMethod', () => {
       '<linearGradient id="g" spreadMethod="pad" x2="0.1">',
     ],
     [
-      // T14-11 measured repeating-radial-gradient as agreeing in both renderers
-      // and did not measure SVG radial gradients; the ticket refuses linear only.
-      'a radialGradient with spreadMethod="repeat"',
-      '<radialGradient id="g" spreadMethod="repeat" r="0.1">',
+      'a radialGradient with spreadMethod="pad"',
+      '<radialGradient id="g" spreadMethod="pad" r="0.1">',
     ],
   ])('accepts %s', (_form, gradient) => {
-    const template = svg(gradient).replace(
-      '</linearGradient>',
-      gradient.startsWith('<radial')
-        ? '</radialGradient>'
-        : '</linearGradient>',
-    );
-    accepted(pack(template));
+    accepted(pack(svg(gradient)));
   });
 
   it('accepts spreadMethod in text or in an HTML attribute', () => {
