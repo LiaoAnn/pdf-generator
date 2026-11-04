@@ -75,11 +75,29 @@ function zipOf(entries: Entry[]) {
 const ignored = (name: string) =>
   name.endsWith('/') || name.startsWith('__MACOSX/');
 
-/** The work the upload of `zip` does, counted at the seams it runs through. */
+/** Every typed array's `slice`, which copies; fflate never calls it. */
+const typedArray = Object.getPrototypeOf(Uint8Array.prototype) as {
+  slice(this: Uint8Array, start?: number, end?: number): Uint8Array;
+};
+
+/**
+ * The work the upload of `zip` does, counted at the seams it runs through,
+ * and every typed array `slice` it makes. Copies through `set` can't be
+ * told apart from fflate's own, about five times the stream.
+ */
 function count(zip: Uint8Array) {
-  const work = { tables: 0, inflaters: 0, pushed: 0, inflated: 0 };
+  const work = {
+    tables: 0,
+    inflaters: 0,
+    pushed: 0,
+    inflated: 0,
+    concatenated: 0,
+    sliced: 0,
+  };
   const create = tables.create;
   const inflater = steps.inflater;
+  const concat = steps.concat;
+  const slice = typedArray.slice;
   tables.create = size => {
     work.tables++;
     return create(size);
@@ -97,11 +115,22 @@ function count(zip: Uint8Array) {
     };
     return inflate;
   };
+  steps.concat = (chunks, size) => {
+    work.concatenated += size;
+    return concat(chunks, size);
+  };
+  typedArray.slice = function (start, end) {
+    const copy = slice.call(this, start, end);
+    work.sliced += copy.length;
+    return copy;
+  };
   try {
     return { result: unzipWithinLimits(zip), work };
   } finally {
     tables.create = create;
     steps.inflater = inflater;
+    steps.concat = concat;
+    typedArray.slice = slice;
   }
 }
 
@@ -135,7 +164,7 @@ const pack = () => {
 test.each([
   ['a nearly 10 MiB 10-bit literal entry', tenBit],
   ['a pack of deflated, stored, padded and ignored entries', pack],
-])('uploading %s inflates each deflated entry once', (_, entries) => {
+])('uploading %s inflates and copies each entry once', (_, entries) => {
   const all: Entry[] = entries();
   const zip = zipOf(all);
   const { result, work } = count(zip);
@@ -173,4 +202,14 @@ test.each([
   // One scan of each stream: three tables per dynamic block at most, plus
   // the two fixed ones, built once.
   expect(work.tables).toBeLessThanOrEqual(3 * blocks + 2);
+  // Copied once: each deflated entry's stream, padding included, to scan
+  // it whole, and each file's contents, from the chunks they arrive in.
+  expect(work.concatenated).toBe(
+    sum(
+      deflated.map(
+        entry => (entry.deflated?.length ?? 0) + (entry.padding ?? 0),
+      ),
+    ) + sum(files.map(entry => entry.data.length)),
+  );
+  expect(work.sliced).toBe(0);
 });

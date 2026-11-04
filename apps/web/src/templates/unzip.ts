@@ -20,9 +20,10 @@ import {
 } from 'fflate';
 import { scanDeflate } from './deflate-blocks.ts';
 
-/** Test seam: makes blockCheckedInflate()'s inflaters; upload-path.workerd.test.ts wraps them to count inflated bytes. */
+/** Test seam: makes the upload's inflaters and copies; upload-path.workerd.test.ts wraps them to count the bytes inflated and copied. */
 export const steps = {
   inflater: (ondata: FlateStreamHandler) => new Inflate(ondata),
+  concat,
 };
 
 /** Input per step: one step inflates to at most ~1000 times this. */
@@ -118,7 +119,7 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
       this.#chunks.push(chunk);
       this.#size += chunk.byteLength;
       if (!final) return;
-      const stream = concat(this.#chunks, this.#size);
+      const stream = steps.concat(this.#chunks, this.#size);
       this.#chunks = [];
       const limit = declared.get(this.#name) ?? 0;
       const scan = scanDeflate(stream, limit);
@@ -259,7 +260,7 @@ export function unzipBounded(
         return;
       }
       chunks.push(data);
-      if (final) files[file.name] = concat(chunks, size);
+      if (final) files[file.name] = steps.concat(chunks, size);
     };
     file.start();
   });
