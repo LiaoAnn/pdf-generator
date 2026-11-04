@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { checkPack, packIssueCodes } from '@pdf-generator/template-tools';
 import { describe, expect, it } from 'vitest';
+import { uploadIssueCodes } from '../../../apps/web/src/templates/issues.ts';
 import { packWith, snippets } from './spec-fixtures.ts';
 
 const repoUrl = new URL('../../../', import.meta.url);
@@ -190,6 +191,23 @@ describe('template-pack skill stays usable by pack authors', () => {
     expect(
       packIssueCodes.filter(code => !inRepairs.has(code)),
       'checkPack codes missing from skill/references/check-codes.md',
+    ).toEqual([]);
+  });
+
+  it('catches a web upload code that SPEC.md §9 or check-codes.md leaves unexplained', () => {
+    expect(
+      uploadIssueCodes.length,
+      'apps/web must list the codes its upload reports',
+    ).toBeGreaterThan(0);
+    const inSpec = new Set(specCodes());
+    const inRepairs = new Set(repairCodes());
+    expect(
+      uploadIssueCodes.filter(code => !inSpec.has(code)),
+      'web upload codes missing from SPEC.md §9',
+    ).toEqual([]);
+    expect(
+      uploadIssueCodes.filter(code => !inRepairs.has(code)),
+      'web upload codes missing from skill/references/check-codes.md',
     ).toEqual([]);
   });
 
