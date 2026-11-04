@@ -45,6 +45,8 @@ function watched(copy: Uint8Array, limit: number, read: { bytes: number }) {
   });
 }
 
+type Options = { readLimit?: number };
+
 /**
  * Runs `run` with every seam wrapped to count, and restores them after.
  * Copies through `set` can't be told apart from fflate's own, about five
@@ -54,8 +56,35 @@ function watched(copy: Uint8Array, limit: number, read: { bytes: number }) {
  */
 export function countWork<T>(
   run: () => T,
-  { readLimit }: { readLimit?: number } = {},
+  options: Options = {},
 ): { result: T; work: Work; read: number } {
+  const { work, read, restore } = install(options);
+  try {
+    return { result: run(), work, read: read.bytes };
+  } finally {
+    restore();
+  }
+}
+
+/**
+ * `countWork` for an upload sent to the fetch handler in this process: the
+ * seams stay wrapped until `run`'s promise settles. Anything else that
+ * unzips meanwhile is counted too, so run nothing else alongside it.
+ */
+export async function countWorkAsync<T>(
+  run: () => Promise<T>,
+  options: Options = {},
+): Promise<{ result: T; work: Work; read: number }> {
+  const { work, read, restore } = install(options);
+  try {
+    return { result: await run(), work, read: read.bytes };
+  } finally {
+    restore();
+  }
+}
+
+/** Wraps every seam to count into `work`; `restore` puts them back. */
+function install({ readLimit }: Options) {
   const read = { bytes: 0 };
   const work: Work = {
     tables: 0,
@@ -96,12 +125,11 @@ export function countWork<T>(
     work.sliced += copy.length;
     return copy;
   };
-  try {
-    return { result: run(), work, read: read.bytes };
-  } finally {
+  const restore = () => {
     tables.create = create;
     steps.inflater = inflater;
     steps.concat = concat;
     typedArray.slice = slice;
-  }
+  };
+  return { work, read, restore };
 }
