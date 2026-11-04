@@ -51,8 +51,8 @@ describe('pagedImports offset mapping: linear in the stylesheet', () => {
       css: fill('a{--x:element \t(x);}', half) + fill('@import "x.css";', half),
     },
     {
-      // A string under nested @imports loads once for each, out of order
-      // with the next one's: a cursor that only moves forward would break.
+      // A string under nested @imports is mapped once for each of them
+      // (paged-imports.test.ts pins the lookups that go back a span).
       name: 'element() rules, then imports nested in import blocks',
       css: fill(rule, half) + fill('@import { @import "x.css"; }', half),
       loadsEach: 2,
