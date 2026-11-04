@@ -1317,3 +1317,21 @@
 - **驗收測試**：`content-visibility: hidden` 內含 `data-gt` 區塊的樣板包，gt.json 與 PDF 一致（或被以中文說明拒絕）；6 個樣板 `compare-gt` 60/60 相同
 - **不做**：改共用契約
 - **來源**：PR #118（T08-7）
+
+### T06-13 樣板工具：上傳檢查也讀 SVG 素材與 SVG data: URL
+- **目標**：上傳檢查從不解析 `files.assets` 裡的 `.svg` 檔（例如 bank-statement 的 logo.svg、monthly-report 的 figure.svg）與 `data:image/svg+xml` 圖片，所以其中的重複漸層、`spreadMethod` 以及範本檢查會找的其他東西都沒被檢查就印出。讓這些 SVG 也走同一套檢查（T06-12 的 `css-repeating-gradient` 與其他適用的規則）
+- **Blocked by**：T06-12
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的樣板包檢查
+- **驗收測試**：SVG 素材檔與 `data:image/svg+xml` 內的重複漸層被擋並有中文說明；6 個樣板（含 logo.svg、figure.svg）照常通過；檢查時間仍為線性
+- **不做**：改 print runtime
+- **來源**：PR #120（T06-12）
+
+### T14-14 開發工具：`compare-renderers` 也比較墨跡的位置
+- **目標**：`compare-renderers` 只比較每個 gt 區塊的墨跡比例，SVG radialGradient repeat 雖然 pdf.js 畫成亂紋，比例 0.48 對 0.50 仍判為一致（T06-12）。加上位置比較（例如分格比例或兩個遮罩的 XOR），讓保留總量但畫錯位置的誤讀也會被抓到
+- **Blocked by**：T14-11
+- **Blocks**：—
+- **撞車風險**：`packages/dev-tools`
+- **驗收測試**：radialGradient repeat 的探測 PDF 回報不一致；T14-11 列為一致的寫法仍一致；6 個樣板各 1 份仍全部一致
+- **不做**：改自我檢查
+- **來源**：PR #120（T06-12）
