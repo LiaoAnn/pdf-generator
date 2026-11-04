@@ -110,7 +110,7 @@ const packIssues: Record<string, string> = {
   'css-page-box':
     'CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的邊界、內距、框線、定位或變形。這會讓 PDF 印出的位置和標準答案對不上。請用 @page 設定頁邊界，html／body 的這些屬性維持 0 或 none。',
   'css-repeating-gradient':
-    'CSS 的 repeating-linear-gradient（或 SVG 漸層的 spreadMethod="repeat"／"reflect"）印成 PDF 後，自我檢查用的 pdf.js 會把條紋讀成整塊黑色或整塊空白，標準答案因此對不上。請改用 SVG 的 <rect> 畫條紋，或用固定大小的 linear-gradient 平鋪，例如 background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%。',
+    'CSS 的 repeating-linear-gradient 和 repeating-radial-gradient（或 SVG 漸層的 spreadMethod="repeat"／"reflect"）印成 PDF 後，自我檢查用的 pdf.js 會讀錯：條紋讀成整塊黑色或整塊空白，同心圓環變成雜亂的花紋，標準答案因此對不上。請改用 SVG 的 <rect> 或 <circle> 畫條紋和圓環，或用以 pt 為單位的固定大小 linear-gradient 平鋪，例如 background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%。',
   'css-import-cycle':
     'CSS 檔案用 @import 繞成一圈（例如 a.css 引用 b.css，b.css 又引用 a.css，或檔案引用自己）。Paged.js 會一直重複載入，印到逾時也印不出來。每個位置是圈上的一個 @import，原始訊息依序列出整圈的檔案；請拿掉其中一個 @import 打斷循環。',
   'css-import-expansion':

@@ -1,9 +1,13 @@
-// Chromium prints a repeating-linear-gradient() as a function-based PDF
-// shading, which pdf.js — the self-check's renderer — samples once per
-// stripe, so the printed stripes read as solid black or blank and the
-// ground truth no longer matches (T14-11). The upload check refuses the
-// token wherever the print reads CSS (T06-12; the issue is raised at the
-// call site, in assets.ts, which hands this finder every such CSS text).
+// Chromium prints a repeating-linear-gradient() or a
+// repeating-radial-gradient() as a function-based PDF shading, which
+// pdf.js — the self-check's renderer — misreads: a linear one samples
+// once per stripe, so the printed stripes read as solid black or blank
+// (T14-11), and T10-5 measured the radial form misread the same way
+// (pdf.js 0.31 ink vs PDFium's 0.50, its rings a scrambled pattern), so
+// the ground truth no longer matches either way (T06-14). The upload
+// check refuses both tokens wherever the print reads CSS (T06-12; the
+// issue is raised at the call site, in assets.ts, which hands this
+// finder every such CSS text).
 //
 // One linear pass, strings, comments and unquoted url() content skipped —
 // csstree.tokenize cannot stand in: its balance-table fill walks from an
@@ -87,8 +91,9 @@ const unescapeName = (raw: string): string => {
 const foldCase = (name: string) =>
   name.replace(/[A-Z]/g, char => char.toLowerCase());
 
+// T06-14: T10-5 measured repeating-radial-gradient misread the same way.
 /** The function names the upload refuses, vendor prefix included. */
-const repeatingLinearGradient = /^(?:-[a-z]+-)?repeating-linear-gradient$/;
+const repeatingGradient = /^(?:-[a-z]+-)?repeating-(?:linear|radial)-gradient$/;
 
 /**
  * The index after the escape that starts at `at` (css[at] is `\` and the
@@ -104,12 +109,13 @@ const escapedEnd = (text: string, at: number): number => {
 };
 
 /**
- * The offset of each repeating-linear-gradient( function in `css`,
- * vendor-prefixed or not, in either case, escapes in the name included.
- * Function tokens only: the name inside a comment or string, or not
- * followed immediately by `(`, is not a function and never matches.
+ * The offset of each repeating-linear-gradient( or
+ * repeating-radial-gradient( function in `css`, vendor-prefixed or not,
+ * in either case, escapes in the name included. Function tokens only:
+ * the name inside a comment or string, or not followed immediately by
+ * `(`, is not a function and never matches.
  */
-export function repeatingLinearGradients(css: string): number[] {
+export function repeatingGradients(css: string): number[] {
   const offsets: number[] = [];
   let i = 0;
   while (i < css.length) {
@@ -170,7 +176,7 @@ export function repeatingLinearGradients(css: string): number[] {
         }
         continue;
       }
-      if (repeatingLinearGradient.test(name)) offsets.push(start);
+      if (repeatingGradient.test(name)) offsets.push(start);
     } else {
       i++;
     }

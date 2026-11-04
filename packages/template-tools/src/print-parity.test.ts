@@ -719,13 +719,13 @@ describe('print parity: round 6 image-set direct function allowlist', () => {
     for (const argument of [
       'url(a.png) 1x, "b.png" 2x',
       '"a.png" type("image/png")',
-      // repeating-linear-gradient is a css-repeating-gradient issue (T06-12,
-      // repeating-gradient.test.ts), wherever it is.
+      // repeating-linear-gradient and repeating-radial-gradient are
+      // css-repeating-gradient issues (T06-12, T06-14,
+      // repeating-gradient.test.ts), wherever they are.
       ...[
         'linear-gradient',
         'radial-gradient',
         'conic-gradient',
-        'repeating-radial-gradient',
         'repeating-conic-gradient',
       ].flatMap(gradient =>
         ['', '-webkit-'].map(

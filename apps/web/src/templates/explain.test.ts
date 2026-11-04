@@ -334,8 +334,10 @@ describe('template author error explanations', () => {
     const text = issue?.explanation;
     expect(text).toMatch(cjk);
     expect(text).not.toBe(fallback());
-    // What is refused: the CSS function and the SVG gradient attribute values.
+    // What is refused: the CSS functions and the SVG gradient attribute values.
     expect.soft(text).toContain('repeating-linear-gradient');
+    // T06-14: pdf.js misreads the radial form too (T10-5).
+    expect.soft(text).toContain('repeating-radial-gradient');
     expect.soft(text).toContain('spreadMethod');
     expect.soft(text).toContain('repeat');
     expect.soft(text).toContain('reflect');
@@ -346,11 +348,13 @@ describe('template author error explanations', () => {
     expect.soft(text).toContain('標準答案');
     // What to write instead: both alternatives T14-11 found the renderers agree on.
     expect.soft(text).toContain('<rect>');
+    // The tile sized in pt: a 4px tile prints a third dark, not half (T10-5, T06-14).
     expect
       .soft(text)
       .toContain(
-        'linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+        'linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%',
       );
+    expect.soft(text).not.toMatch(/\dpx/);
   });
 
   test('preview css_animation refusals explain animation drift and how to remove its causes', () => {
