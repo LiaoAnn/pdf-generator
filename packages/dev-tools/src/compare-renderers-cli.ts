@@ -4,8 +4,10 @@
 //
 //   node packages/dev-tools/src/compare-renderers-cli.ts <pdf> --gt <gt.json> [--out <dir>] [--scale <n>] [--threshold <n>]
 //
-// One line per block, `<id> p<page> pdf.js <share> PDFium <share> agree|DIFFERS`,
-// then `blocks: <agreeing>/<total> agree`. With `--out`, also writes each
+// One line per block, `<id> p<page> pdf.js <share> PDFium <share> position
+// <position> agree|DIFFERS`, then `blocks: <agreeing>/<total> agree`;
+// agreement also needs the ink in the same place (position ≤ --threshold),
+// not only the same amount of it. With `--out`, also writes each
 // page as both renderers drew it, `<name>-p<N>.pdfjs.png` and `.pdfium.png`.
 // Exit 0 when every block agrees, 1 when any differs, 2 for usage and input
 // errors.
@@ -47,7 +49,7 @@ try {
   });
   for (const block of result.blocks) {
     console.log(
-      `${block.id} p${block.page} pdf.js ${block.pdfjs.toFixed(2)} PDFium ${block.pdfium.toFixed(2)} ${block.agree ? 'agree' : 'DIFFERS'}`,
+      `${block.id} p${block.page} pdf.js ${block.pdfjs.toFixed(2)} PDFium ${block.pdfium.toFixed(2)} position ${block.position.toFixed(2)} ${block.agree ? 'agree' : 'DIFFERS'}`,
     );
   }
   console.log(

@@ -1,6 +1,7 @@
 // Measures how much ink pdf.js and PDFium each draw inside every gt.json
-// block of one PDF, so renderer disagreements are found and shown (Chromium
-// prints a CSS repeating gradient as a shading pdf.js can't draw, T14-11).
+// block of one PDF, and where they draw it, so renderer disagreements are
+// found and shown (Chromium prints a CSS repeating gradient as a shading
+// pdf.js can't draw, T14-11).
 // A dev tool only; nothing in the product imports it.
 import { crc32, deflateSync } from 'node:zlib';
 import { PDFiumLibrary } from '@hyzyla/pdfium';
@@ -10,7 +11,11 @@ import { renderPdfJsPages } from './pdf-to-png.ts';
 export interface CompareRenderersOptions {
   /** Pixels per PDF point (default 4). */
   scale?: number;
-  /** |pdfjs - pdfium| ink-share difference still counted as agreement. */
+  /**
+   * |pdfjs - pdfium| ink-share difference and the position difference still
+   * counted as agreement; position ≥ the share difference, so in practice
+   * position decides.
+   */
   threshold?: number;
 }
 
@@ -19,6 +24,8 @@ export interface RendererInk {
   page: number;
   pdfjs: number;
   pdfium: number;
+  /** Where the ink is, not only how much; see compareInk. */
+  position: number;
   agree: boolean;
 }
 
@@ -30,45 +37,95 @@ export interface CompareRenderersResult {
 }
 
 /** One page's RGBA pixels, row-major from the top-left. */
-interface PagePixels {
+export interface PagePixels {
   width: number;
   height: number;
   rgba: Uint8Array;
 }
 
+/** One box's ink in two page images (compareInk). */
+export interface BoxInk {
+  /** Share of the box's pixels pdf.js draws dark. */
+  pdfjs: number;
+  /** Share of the box's pixels PDFium draws dark. */
+  pdfium: number;
+  /**
+   * Where the ink is, independent of how much: the box's pixel rect is split
+   * into 4 pt cells from its top-left pixel, and the per-cell difference of
+   * the two renderers' dark-pixel counts is summed over the box's pixels
+   * (the area-weighted mean per-cell share difference, always ≥ |pdfjs −
+   * pdfium|). Same ink in the same cells measures 0 however it sits inside
+   * each cell; the same amount of ink 4 pt over measures 1.
+   */
+  position: number;
+}
+
 /**
- * Ink share of one box in one page image: the pixels whose centres lie inside
- * the box (gt.json points × scale, y down from the page top, the same corner
- * both renderers draw from), and of those the share that are dark: luminance
- * 0.299R + 0.587G + 0.114B, composited over white by the pixel's alpha, below
- * 128. A box no pixel centre falls into has share 0.
+ * Measures one box (gt.json points × scale) on two page images: each
+ * renderer's ink share — the same rule as inkShare, pixel centres inside the
+ * box, dark below mid-grey composited over white, a missing page all blank —
+ * plus `position`, which also compares where the ink is so a misread that
+ * redraws it in the wrong place no longer passes: the box's pixel rect is
+ * split into square cells of max(1, round(4 × scale)) pixels (4 PDF points)
+ * starting at the box's top-left pixel, the last row and column possibly
+ * partial, and position is Σ |pdf.js's − PDFium's dark pixels| per cell over
+ * the box's pixels. 4 pt because on the known probes 2 pt cells see
+ * one-pixel rendering offsets of fine tiles and 8 pt cells average the
+ * misread away. A box no pixel centre falls into measures all 0.
  */
-function inkShare(
-  { width, height, rgba }: PagePixels,
-  [x0, y0, x1, y1]: readonly [number, number, number, number],
+export function compareInk(
+  pdfjs: PagePixels | undefined,
+  pdfium: PagePixels | undefined,
+  bbox: readonly [number, number, number, number],
   scale: number,
-): number {
-  const left = Math.max(0, Math.ceil(x0 * scale - 0.5));
-  const top = Math.max(0, Math.ceil(y0 * scale - 0.5));
-  const right = Math.min(width, Math.ceil(x1 * scale - 0.5));
-  const bottom = Math.min(height, Math.ceil(y1 * scale - 0.5));
-  let dark = 0;
+): BoxInk {
+  const zero: BoxInk = { pdfjs: 0, pdfium: 0, position: 0 };
+  const page = pdfjs ?? pdfium;
+  if (!page) return zero;
+  const { width, height } = page;
+  const left = Math.max(0, Math.ceil(bbox[0] * scale - 0.5));
+  const top = Math.max(0, Math.ceil(bbox[1] * scale - 0.5));
+  const right = Math.min(width, Math.ceil(bbox[2] * scale - 0.5));
+  const bottom = Math.min(height, Math.ceil(bbox[3] * scale - 0.5));
   const total = (right - left) * (bottom - top);
-  if (total <= 0) return 0;
-  for (let y = top; y < bottom; y++) {
-    for (let x = left; x < right; x++) {
-      const i = (y * width + x) * 4;
-      const alpha = (rgba[i + 3] ?? 0) / 255;
-      const composite = (channel: number) =>
-        channel * alpha + 255 * (1 - alpha);
-      const luminance =
-        0.299 * composite(rgba[i] ?? 0) +
-        0.587 * composite(rgba[i + 1] ?? 0) +
-        0.114 * composite(rgba[i + 2] ?? 0);
-      if (luminance < 128) dark++;
+  if (total <= 0) return zero;
+  const dark = (source: PagePixels, x: number, y: number) => {
+    const i = (y * source.width + x) * 4;
+    const alpha = (source.rgba[i + 3] ?? 0) / 255;
+    const composite = (channel: number) => channel * alpha + 255 * (1 - alpha);
+    return (
+      0.299 * composite(source.rgba[i] ?? 0) +
+        0.587 * composite(source.rgba[i + 1] ?? 0) +
+        0.114 * composite(source.rgba[i + 2] ?? 0) <
+      128
+    );
+  };
+  const cellPx = Math.max(1, Math.round(4 * scale));
+  let pdfjsDark = 0;
+  let pdfiumDark = 0;
+  let difference = 0;
+  for (let cellTop = top; cellTop < bottom; cellTop += cellPx) {
+    const cellBottom = Math.min(bottom, cellTop + cellPx);
+    for (let cellLeft = left; cellLeft < right; cellLeft += cellPx) {
+      const cellRight = Math.min(right, cellLeft + cellPx);
+      let a = 0;
+      let b = 0;
+      for (let y = cellTop; y < cellBottom; y++) {
+        for (let x = cellLeft; x < cellRight; x++) {
+          if (pdfjs && dark(pdfjs, x, y)) a++;
+          if (pdfium && dark(pdfium, x, y)) b++;
+        }
+      }
+      pdfjsDark += a;
+      pdfiumDark += b;
+      difference += Math.abs(a - b);
     }
   }
-  return dark / total;
+  return {
+    pdfjs: pdfjsDark / total,
+    pdfium: pdfiumDark / total,
+    position: difference / total,
+  };
 }
 
 // RGBA as a minimal PNG: unfiltered rows, one zlib-deflated IDAT.
@@ -102,9 +159,11 @@ function png({ width, height, rgba }: PagePixels): Uint8Array {
 
 /**
  * Renders `pdf` with both pdf.js (the build packages/self-check reads PDFs
- * with) and PDFium, and returns each block's ink share in both, `agree` when
- * the shares differ by at most `threshold`, plus every page as both renderers
- * drew it.
+ * with) and PDFium, and returns each block's ink share in both and the
+ * position difference of where that ink is, `agree` when both the shares and
+ * the position differ by at most `threshold` (position ≥ the share
+ * difference, so in practice position decides), plus every page as both
+ * renderers drew it.
  */
 export async function compareRenderers(
   pdf: Uint8Array,
@@ -151,15 +210,17 @@ export async function compareRenderers(
     blocks: gt.blocks.map(block => {
       const pdfjs = pdfjsPages[block.page - 1];
       const pdfium = pdfiumPages[block.page - 1];
-      const ink: RendererInk = {
+      const measured = compareInk(pdfjs, pdfium, block.bbox, scale);
+      return {
         id: block.id,
         page: block.page,
-        pdfjs: pdfjs ? inkShare(pdfjs, block.bbox, scale) : 0,
-        pdfium: pdfium ? inkShare(pdfium, block.bbox, scale) : 0,
-        agree: false,
+        pdfjs: measured.pdfjs,
+        pdfium: measured.pdfium,
+        position: measured.position,
+        agree:
+          Math.abs(measured.pdfjs - measured.pdfium) <= threshold &&
+          measured.position <= threshold,
       };
-      ink.agree = Math.abs(ink.pdfjs - ink.pdfium) <= threshold;
-      return ink;
     }),
     pages: pdfjsPages.map((page, index) => {
       const pdfium = pdfiumPages[index];

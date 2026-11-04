@@ -16,7 +16,17 @@ const blocks = {
   'page-two': [80, 20, 120, 40],
 } as const;
 
+// Misreads that keep the ink share: pdf.js scrambles both radial repeats
+// while PDFium draws the rings, at about half ink in each (T06-12, T10-5).
+// Positions as in T06-12's probe; SVG rects are the agreeing control.
+const radial = {
+  'svg-radial-repeat': [140, 190, 215, 220],
+  'css-repeating-radial': [20, 140, 95, 170],
+  'svg-rects': [270, 190, 345, 220],
+} as const;
+
 let pdf: Uint8Array;
+let radialPdf: Uint8Array;
 
 beforeAll(async () => {
   const browser = await chromium.launch({ headless: true });
@@ -38,6 +48,25 @@ beforeAll(async () => {
     </section>
     <section><i style="${at(blocks['page-two'])};background:black"></i></section>`);
     pdf = new Uint8Array(
+      await page.pdf({ preferCSSPageSize: true, printBackground: true }),
+    );
+    const stops =
+      '<stop offset="0" stop-color="black"/><stop offset="0.5" stop-color="black"/>' +
+      '<stop offset="0.5" stop-color="white"/><stop offset="1" stop-color="white"/>';
+    const rects = Array.from(
+      { length: 25 },
+      (_, i) => `<rect x="${i * 4}" width="2" height="40"/>`,
+    ).join('');
+    const place = ([x0, y0]: readonly number[]) =>
+      `position:absolute;display:block;line-height:0;left:${x0}pt;top:${y0}pt`;
+    await page.setContent(`<!doctype html><style>
+      @page { size: 400pt 300pt; margin: 0 }
+      body { margin: 0 }
+    </style>
+    <i style="${place(radial['svg-radial-repeat'])}"><svg viewBox="0 0 100 40" style="width:100px;height:40px;display:block"><defs><radialGradient id="r" r="0.04" spreadMethod="repeat">${stops}</radialGradient></defs><rect width="100" height="40" fill="url(#r)"/></svg></i>
+    <i style="${place(radial['css-repeating-radial'])}"><div style="width:100px;height:40px;print-color-adjust:exact;background:repeating-radial-gradient(circle, black 0 2px, transparent 2px 4px)"></div></i>
+    <i style="${place(radial['svg-rects'])}"><svg viewBox="0 0 100 40" style="width:100px;height:40px;display:block">${rects}</svg></i>`);
+    radialPdf = new Uint8Array(
       await page.pdf({ preferCSSPageSize: true, printBackground: true }),
     );
   } finally {
@@ -69,6 +98,27 @@ function gt(): GroundTruth {
   });
 }
 
+function radialGt(): GroundTruth {
+  return gtSchema.parse({
+    schemaVersion: 1,
+    source: {
+      templateId: 'compare-renderers-radial',
+      templateVersion: 1,
+      seed: 'T14-14',
+      index: 0,
+    },
+    pages: [{ width: 400, height: 300 }],
+    blocks: Object.entries(radial).map(([id, bbox], order) => ({
+      id,
+      type: 'image',
+      page: 1,
+      order,
+      text: '',
+      bbox,
+    })),
+  });
+}
+
 test('measures each block in both renderers and flags where they disagree', async () => {
   const { blocks: measured } = await compareRenderers(pdf, gt());
   const byId = Object.fromEntries(measured.map(block => [block.id, block]));
@@ -84,7 +134,14 @@ test('measures each block in both renderers and flags where they disagree', asyn
     expect(byId[id]?.pdfium).toBeGreaterThan(0.95);
     expect(byId[id]?.agree).toBe(true);
   }
-  expect(byId.empty).toMatchObject({ pdfjs: 0, pdfium: 0, agree: true });
+  expect(byId.empty).toMatchObject({
+    pdfjs: 0,
+    pdfium: 0,
+    position: 0,
+    agree: true,
+  });
+  for (const id of ['solid', 'left-half', 'page-two'])
+    expect(byId[id]?.position).toBeLessThan(0.05);
   for (const renderer of ['pdfjs', 'pdfium'] as const) {
     expect(byId['left-half']?.[renderer]).toBeGreaterThan(0.45);
     expect(byId['left-half']?.[renderer]).toBeLessThan(0.55);
@@ -96,14 +153,37 @@ test('measures each block in both renderers and flags where they disagree', asyn
   expect(
     Math.abs((byId.stripes?.pdfjs ?? 0) - (byId.stripes?.pdfium ?? 0)),
   ).toBeGreaterThan(0.3);
+  expect(byId.stripes?.position).toBeGreaterThan(0.3);
   expect(byId.stripes?.agree).toBe(false);
 });
 
-test('agreement uses the given threshold on the ink shares', async () => {
-  const { blocks: measured } = await compareRenderers(pdf, gt(), {
-    threshold: 1,
-  });
-  expect(measured.every(block => block.agree)).toBe(true);
+test('a misread that keeps the ink share but moves the ink differs on position', async () => {
+  const { blocks: measured } = await compareRenderers(radialPdf, radialGt());
+  const byId = Object.fromEntries(measured.map(block => [block.id, block]));
+  for (const id of ['svg-radial-repeat', 'css-repeating-radial']) {
+    const block = byId[id];
+    // The shares alone would agree at the default threshold of 0.1 …
+    expect(Math.abs((block?.pdfjs ?? 0) - (block?.pdfium ?? 0))).toBeLessThan(
+      0.1,
+    );
+    // … but pdf.js puts the ink elsewhere (measured 0.18 and 0.29).
+    expect(block?.position).toBeGreaterThan(0.15);
+    expect(block?.agree).toBe(false);
+  }
+  expect(byId['svg-rects']?.position).toBeLessThan(0.05);
+  expect(byId['svg-rects']?.agree).toBe(true);
+});
+
+test('agreement uses the given threshold on the ink shares and position', async () => {
+  for (const [document_, truth] of [
+    [pdf, gt()],
+    [radialPdf, radialGt()],
+  ] as const) {
+    const { blocks: measured } = await compareRenderers(document_, truth, {
+      threshold: 1,
+    });
+    expect(measured.every(block => block.agree)).toBe(true);
+  }
 });
 
 test('returns each page drawn by both renderers as PNGs at the scale', async () => {

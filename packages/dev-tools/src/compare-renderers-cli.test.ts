@@ -8,8 +8,11 @@ import { afterAll, beforeAll, expect, test } from 'vitest';
 
 // One page: a solid block both renderers draw alike, and CSS repeating-gradient
 // stripes pdf.js draws solid or blank where PDFium draws stripes (T14-11).
+// A second PDF holds an SVG radialGradient repeat at T06-12's probe
+// position: about half ink in both renderers, but pdf.js scrambles the rings.
 let directory: string;
 let pdfPath: string;
+let radialPath: string;
 
 const block = (id: string, bbox: number[]) => ({
   id,
@@ -43,6 +46,16 @@ beforeAll(async () => {
       pdfPath,
       await page.pdf({ preferCSSPageSize: true, printBackground: true }),
     );
+    await page.setContent(`<!doctype html><style>
+      @page { size: 400pt 300pt; margin: 0 }
+      body { margin: 0 }
+    </style>
+    <i style="position:absolute;display:block;line-height:0;left:140pt;top:190pt"><svg viewBox="0 0 100 40" style="width:100px;height:40px;display:block"><defs><radialGradient id="r" r="0.04" spreadMethod="repeat"><stop offset="0" stop-color="black"/><stop offset="0.5" stop-color="black"/><stop offset="0.5" stop-color="white"/><stop offset="1" stop-color="white"/></radialGradient></defs><rect width="100" height="40" fill="url(#r)"/></svg></i>`);
+    radialPath = join(directory, 'radial.pdf');
+    await writeFile(
+      radialPath,
+      await page.pdf({ preferCSSPageSize: true, printBackground: true }),
+    );
   } finally {
     await browser.close();
   }
@@ -54,6 +67,13 @@ beforeAll(async () => {
         block('stripes', [20, 55, 95, 85]),
       ]),
     ),
+  );
+  await writeFile(
+    join(directory, 'radial.gt.json'),
+    JSON.stringify({
+      ...gt([block('radial-repeat', [140, 190, 215, 220])]),
+      pages: [{ width: 400, height: 300 }],
+    }),
   );
   await writeFile(
     join(directory, 'solid.gt.json'),
@@ -90,7 +110,7 @@ function runCli(args: string[]) {
   );
 }
 
-test('lists every block with both ink shares and exits 1 when a block differs', async () => {
+test('lists every block with both ink shares and the position, and exits 1 when a block differs', async () => {
   const { code, stdout, stderr } = await runCli([
     pdfPath,
     '--gt',
@@ -101,12 +121,31 @@ test('lists every block with both ink shares and exits 1 when a block differs', 
   const lines = stdout.trim().split('\n');
   expect(lines).toHaveLength(3);
   expect(lines[0]).toMatch(
-    /^solid p1 pdf\.js (0\.9\d|1\.00) PDFium (0\.9\d|1\.00) agree$/,
+    /^solid p1 pdf\.js (0\.9\d|1\.00) PDFium (0\.9\d|1\.00) position 0\.0\d agree$/,
   );
   expect(lines[1]).toMatch(
-    /^stripes p1 pdf\.js (0|1)\.\d\d PDFium 0\.[45]\d DIFFERS$/,
+    /^stripes p1 pdf\.js (0|1)\.\d\d PDFium 0\.[45]\d position 0\.[3-9]\d DIFFERS$/,
   );
   expect(lines[2]).toBe('blocks: 1/2 agree');
+});
+
+test('a block whose ink shares agree but whose ink is elsewhere differs', async () => {
+  const { code, stdout, stderr } = await runCli([
+    radialPath,
+    '--gt',
+    join(directory, 'radial.gt.json'),
+  ]);
+  expect(stderr).toBe('');
+  expect(code).toBe(1);
+  const [line, summary] = stdout.trim().split('\n');
+  const match = line?.match(
+    /^radial-repeat p1 pdf\.js (\d\.\d\d) PDFium (\d\.\d\d) position (\d\.\d\d) DIFFERS$/,
+  );
+  expect(match).not.toBeNull();
+  const [, pdfjs, pdfium, position] = (match ?? []).map(Number);
+  expect(Math.abs((pdfjs ?? 0) - (pdfium ?? 0))).toBeLessThan(0.1);
+  expect(position).toBeGreaterThan(0.15);
+  expect(summary).toBe('blocks: 0/1 agree');
 });
 
 test('exits 0 when every block agrees', async () => {
