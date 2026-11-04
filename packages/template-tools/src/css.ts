@@ -26,6 +26,15 @@ const imageArguments =
 const identifier = /[A-Za-z0-9_\-\u0080-￿]/;
 
 /**
+ * Test seam: how much work scanCss did. Read only by
+ * css-work.test-support.ts, never in production, and deliberately not
+ * exported from index.ts. `scanning` is nonzero while a scan runs,
+ * `scanned` the characters handed to it, `read` the characters its own
+ * loops read by index.
+ */
+export const cssWork = { scanning: 0, scanned: 0, read: 0 };
+
+/**
  * The URLs a stylesheet loads (`url(…)`, `@import "…"`, strings in
  * `image-set(…)`) and every backslash outside comments: an escape can spell
  * `url` or `@import`, or end a string or url() where this scanner wouldn't,
@@ -38,6 +47,21 @@ export function scanCss(css: string): {
   /** var()/env()/attr() inside image-set(): a URL from elsewhere. */
   dynamic: number[];
 } {
+  cssWork.scanning++;
+  cssWork.scanned += css.length;
+  try {
+    return scan(css);
+  } finally {
+    cssWork.scanning--;
+  }
+}
+
+/** The scanner behind `scanCss`, which only counts the work. */
+function scan(css: string): {
+  references: Reference[];
+  escapes: number[];
+  dynamic: number[];
+} {
   const references: Reference[] = [];
   const escapes: number[] = [];
   const dynamic: number[] = [];
@@ -45,9 +69,14 @@ export function scanCss(css: string): {
   let insideImageSet = 0;
   let importing = false;
   let i = 0;
+  // Counted locally and added once: a store per character costs 2–3%.
+  let read = 0;
   while (i < css.length) {
+    read++;
     const c = css[i] ?? '';
+    // The comment check reads css[i + 1] too.
     if (c === '/' && css[i + 1] === '*') {
+      read++;
       const end = css.indexOf('*/', i + 2);
       i = end < 0 ? css.length : end + 2;
     } else if (c === '"' || c === "'") {
@@ -62,6 +91,7 @@ export function scanCss(css: string): {
         if (css[end] === '\\') escapes.push(end);
         end++;
       }
+      read += end - (i + 1);
       const inside = functions.at(-1) ?? '';
       if (importing || inside === 'url' || imageSets.has(inside)) {
         references.push({
@@ -78,6 +108,7 @@ export function scanCss(css: string): {
     } else if (c === '@' || identifier.test(c)) {
       let end = i + 1;
       while (end < css.length && identifier.test(css[end] ?? '')) end++;
+      read += end - (i + 1);
       const name = css.slice(c === '@' ? i + 1 : i, end).toLowerCase();
       // Paged.js reads an at-rule by its name without a vendor prefix, as
       // css-tree does: @-webkit-import is an @import too.
@@ -85,6 +116,7 @@ export function scanCss(css: string): {
       else if (css[end] === '(' && name === 'url') {
         let start = end + 1;
         while (cssSpace.test(css[start] ?? '')) start++;
+        read += start - (end + 1);
         if (css[start] === '"' || css[start] === "'") {
           functions.push('url');
           i = start;
@@ -95,10 +127,12 @@ export function scanCss(css: string): {
         for (let at = start; at < stop; at++) {
           if (css[at] === '\\') escapes.push(at);
         }
+        read += stop - start;
         // A backward scan, not /[ \t\n\r\f]+$/: that regex retries a space
         // run from each space in it (quadratic on `url(x   …   x)`).
         let last = stop;
         while (last > start && cssSpace.test(css[last - 1] ?? '')) last--;
+        read += stop - last;
         references.push({
           url: css.slice(start, last),
           offset: start,
@@ -130,10 +164,27 @@ export function scanCss(css: string): {
       i++;
     }
   }
+  cssWork.read += read;
   return { references, escapes, dynamic };
 }
 
 const facePattern = /@font-face\s*\{[^}]*\}/gi;
+
+/**
+ * The text up to and including its last `}`. A facePattern match always
+ * ends at a `}`, so no start past that last one can match and every
+ * earlier match lies whole inside the head: on the head the regex sees
+ * the same matches, at the same offsets, in one pass. On the whole text
+ * it retries the scan for `}` from every later `@font-face`, quadratic
+ * on a run of unclosed `@font-face{`.
+ */
+const faceHead = (css: string) => css.slice(0, css.lastIndexOf('}') + 1);
+
+/** `css` with its @font-face rules dropped: `.replace(facePattern, '')`. */
+const withoutFaces = (css: string) => {
+  const head = faceHead(css);
+  return head.replace(facePattern, '') + css.slice(head.length);
+};
 
 /** Family name as compared: unquoted, whitespace collapsed, lower case. */
 const normalize = (name: string) =>
@@ -154,28 +205,30 @@ const isSlanted = (value: string) => /\b(?:italic|oblique)\b/i.test(value);
 export function fontFaces(
   css: string,
 ): ({ family: string; name: string; offset: number } & FaceKind)[] {
-  return [...withoutComments(css).matchAll(facePattern)].flatMap(match => {
-    const descriptor = (name: string) =>
-      new RegExp(`${name}\\s*:\\s*([^;}]+)`, 'i').exec(match[0])?.[1];
-    const family = descriptor('font-family');
-    // normal, bold, a number or a range of two numbers (a variable face).
-    const weights = (descriptor('font-weight') ?? 'normal')
-      .trim()
-      .split(/\s+/)
-      .map(token => (/^bold$/i.test(token) ? 700 : Number(token) || 400));
-    return family === undefined
-      ? []
-      : [
-          {
-            family: normalize(family),
-            name: family.replace(/["']/g, '').trim(),
-            offset: match.index,
-            regular: Math.min(...weights) < 600,
-            bold: Math.max(...weights) >= 600,
-            slanted: isSlanted(descriptor('font-style') ?? ''),
-          },
-        ];
-  });
+  return [...faceHead(withoutComments(css)).matchAll(facePattern)].flatMap(
+    match => {
+      const descriptor = (name: string) =>
+        new RegExp(`${name}\\s*:\\s*([^;}]+)`, 'i').exec(match[0])?.[1];
+      const family = descriptor('font-family');
+      // normal, bold, a number or a range of two numbers (a variable face).
+      const weights = (descriptor('font-weight') ?? 'normal')
+        .trim()
+        .split(/\s+/)
+        .map(token => (/^bold$/i.test(token) ? 700 : Number(token) || 400));
+      return family === undefined
+        ? []
+        : [
+            {
+              family: normalize(family),
+              name: family.replace(/["']/g, '').trim(),
+              offset: match.index,
+              regular: Math.min(...weights) < 600,
+              bold: Math.max(...weights) >= 600,
+              slanted: isSlanted(descriptor('font-style') ?? ''),
+            },
+          ];
+    },
+  );
 }
 
 /** A trailing `!important` on a declaration value (any case, spaced `!`). */
@@ -186,7 +239,7 @@ const importantSuffix = /!\s*important\s*$/i;
  * (or oblique): font-weight, font-style and the font shorthand.
  */
 export function fontRequests(css: string): { bold: boolean; slanted: boolean } {
-  const text = withoutComments(css).replace(facePattern, '');
+  const text = withoutFaces(withoutComments(css));
   let bold = false;
   let slanted = false;
   for (const match of text.matchAll(
@@ -212,7 +265,7 @@ export function usedFamilies(css: string): {
   families: Set<string>;
   shorthandFirsts: string[];
 } {
-  const text = withoutComments(css).replace(facePattern, '');
+  const text = withoutFaces(withoutComments(css));
   const families = new Set<string>();
   const shorthandFirsts: string[] = [];
   // Custom properties count too: `--body: Report` used as var(--body).
