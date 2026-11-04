@@ -1398,3 +1398,12 @@
 - **驗收測試**：這些測試不再以耗時判斷是否變慢；滿載 CPU 下連跑 40 次都過；對應的改慢版本（逐項目變慢、多一次 inflate、CSS 解析變二次方）會失敗；新接口的成本量測為雜訊
 - **不做**：改上傳上限
 - **來源**：PR #127（T09-6）
+
+### T08-9 標準答案：畫面外 `content-visibility: auto` 的文字
+- **目標**：T08-8 的探測顯示，`content-visibility: auto` 的區塊落在第 2 頁以後時，readGt 讀的 innerText 會跳過畫面外 auto 子樹的文字，但 PDF 印出來了（gt「可見文字戊」、PDF「可見文字戊隱藏文字己」）。自我檢查會抓到差異，所以這種樣板包每份 fixture 都失敗。讓 gt 讀到列印時實際印出的文字（例如讀取前暫時解除 auto 的跳過，並完整還原），或改成在列印時以中文說明拒絕，二選一要有實測依據
+- **Blocked by**：T08-8
+- **Blocks**：—
+- **撞車風險**：`packages/ground-truth`（collect.js 的文字讀取）；可能動到 `apps/print`
+- **驗收測試**：第 2 頁以後的 `content-visibility: auto` 區塊，gt 文字與 PDF 相同、自我檢查通過（或被以中文說明拒絕）；第 1 頁與 visible 的照常；6 個樣板 `compare-gt` 60/60 相同
+- **不做**：改共用契約
+- **來源**：T08-8 的探測（VM `~/drafts/t08-8-content-visibility-hidden/evidence/`）
