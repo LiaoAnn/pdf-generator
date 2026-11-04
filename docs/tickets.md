@@ -1409,10 +1409,19 @@
 - **來源**：T08-8 的探測（VM `~/drafts/t08-8-content-visibility-hidden/evidence/`）
 
 ### T06-15 樣板工具：checkPack 的 CSS 解析工作量要能計數
-- **目標**：T09-7 的 API review 測試只在二進位內容送進解析器時才抓得到「CSS 解析變二次方」，單純讓 `scanCss` 變二次方時（main 的 5 秒上限也一樣）抓不到，因為測試樣板的 CSS 太小。在 template-tools 加一個只給測試用的計數（例如 `scanCss` 走過的字元數，不從套件入口匯出、量測為雜訊），配一個 64 KiB 文字樣式表的測試，讓二次方的掃描在計數上失敗
+- **目標**：T09-7 的 API review 測試只在二進位內容送進解析器時才抓得到「CSS 解析變二次方」，單純讓 `scanCss` 變二次方時（main 的 5 秒上限也一樣）抓不到，因為測試樣板的 CSS 太小。在 template-tools 加一個只給測試用的計數（例如 `scanCss` 走過的字元數，不從套件入口匯出、量測為雜訊），配一個 64 KiB 文字樣式表的測試，讓二次方的掃描在計數上失敗；並把上傳路徑上 template-tools 其餘的正規式掃一遍（T06-13 的 review 找到兩個早已存在、SVG 讀取後才碰得到的二次方結尾比對：srcset `/,+$/`、scanCss url() 的空白），用 64 KiB 刻意構造輸入的測試確認每個都是線性
 - **Blocked by**：T06-14
 - **Blocks**：—
-- **撞車風險**：`packages/template-tools` 的 CSS 掃描；與 T06-13 不要同時派
+- **撞車風險**：`packages/template-tools` 的 CSS 掃描與上傳檢查的正規式
 - **驗收測試**：二次方的 `scanCss` 改壞版本在計數上失敗；原本的線性實作通過；計數接口的成本量測為雜訊；6 個樣板照常通過 checkPack
 - **不做**：改檢查行為
 - **來源**：PR #130（T09-7）
+
+### T06-16 樣板工具：SVG 圖片裡的巢狀引用印不出來時要提醒
+- **目標**：T06-13 的探測顯示，當 SVG 以圖片載入時，裡面的 `<image href="other.svg">` 與樣板包內的 `@import` 在列印時什麼都不會畫，現在卻靜默通過。上傳時以中文說明拒絕（或至少警告）這種引用，讓作者知道它不會印出
+- **Blocked by**：T06-13
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的 SVG 讀取；與 T06-15 不要同時派
+- **驗收測試**：SVG 素材與 data: SVG 內的巢狀 `<image>` 與 `@import` 被以中文說明擋下（或警告）；6 個樣板（含 logo.svg、figure.svg）照常通過；行為與規格書一致
+- **不做**：讓這種引用能印出來
+- **來源**：PR #134（T06-13）
