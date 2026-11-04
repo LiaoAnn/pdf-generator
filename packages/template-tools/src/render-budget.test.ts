@@ -40,7 +40,7 @@ function pack(template: string, data: unknown) {
         sample: 'sample.json',
       },
     }),
-    'budget.hbs': `<head></head>\n<div data-gt="paragraph">${template}</div>`,
+    'budget.hbs': `<!doctype html><head></head>\n<div data-gt="paragraph">${template}</div>`,
     'base.css': '',
     'rules.json': JSON.stringify({
       schemaVersion: 1,

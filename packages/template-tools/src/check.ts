@@ -7,6 +7,7 @@ import {
 import { type FakeRecord, recordSchema } from '@pdf-generator/fake-data';
 import type { z } from 'zod';
 import { assetIssues } from './assets.ts';
+import { doctypeIssues } from './doctype.ts';
 import { type PackFiles, readFiles } from './files.ts';
 import { parseTemplate, renderTemplate, TemplateError } from './fill.ts';
 import { templateHtml } from './html.ts';
@@ -200,6 +201,7 @@ function check(
     validate(recordSchema(parsedRules), sampleJson, sample, 'sample-invalid');
 
   if (templateText !== undefined) {
+    issues.push(...doctypeIssues(templateText, template));
     const parsed = parseTemplate(templateText, template);
     issues.push(...parsed.issues);
     if (parsed.ast !== undefined) {

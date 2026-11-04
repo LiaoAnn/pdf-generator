@@ -158,7 +158,7 @@ describe('Node check-pack CLI for local pack authors', () => {
     writeFileSync(join(directory, 'z-extra.txt'), 'accidentally included');
     writeFileSync(
       join(directory, 'templates/report.hbs'),
-      '<head></head>\n<p data-gt="field">{{missing}}</p>\n<p data-gt="field">{{otherMissing}}</p><p>unmarked<span>also unmarked</span></p>\n',
+      '<!doctype html><head></head>\n<p data-gt="field">{{missing}}</p>\n<p data-gt="field">{{otherMissing}}</p><p>unmarked<span>also unmarked</span></p>\n',
     );
     const expected = checkPack(filesIn(directory));
     expect(expected.issues.length).toBeGreaterThan(3);

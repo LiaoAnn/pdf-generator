@@ -2,6 +2,12 @@
   "description": "rejects a headless fragment at the start of the file",
   "issues": [
     {
+      "code": "template-doctype",
+      "file": "templates/report.hbs",
+      "line": 1,
+      "column": 1
+    },
+    {
       "code": "template-structure",
       "file": "templates/report.hbs",
       "line": 1,
