@@ -165,7 +165,7 @@ A pack may use only what a printed document needs, so it prints the same way eve
 <p data-gt="paragraph" onclick="alert(1)">{{summary}}</p>
 ```
 
-The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`).
+The print browser runs no pack JavaScript and loads nothing from the network; a URL that leaves the pack is `asset-external`, a root-relative or escaping one is `asset-path`, a missing file is `asset-missing`. `data:` URLs are accepted (not as a stylesheet: `asset-data`); a `data:image/svg+xml` image is checked like an SVG file (§5).
 
 **Pack files.** The preview and every batch send the pack's files to the print service, and the template is loaded at its own pack path, so a relative URL (`assets/logo.png` from `template.hbs`, `../assets/font.woff2` from `styles/report.css`) loads the file as in the pack. Nothing outside the pack loads, apart from the platform fonts.
 
@@ -359,7 +359,15 @@ html, body {
 
   Data can't produce either form: `{{…}}` inside a `style` attribute, an SVG attribute or a `<style>` element is already `template-structure` (§3), so no field value becomes CSS.
 
-  Don't rely on the check's limits: it over-refuses two unusual spellings — either name as a hash token (`#repeating-linear-gradient(`, `#repeating-radial-gradient(`) and an SVG attribute value that looks like the function (`id="repeating-linear-gradient(x)"`), which you rename — and it doesn't read SVG files in `files.assets` or `data:image/svg+xml` images, where the same gradient misprints the same way, so the rule holds there too.
+  SVG images misprint the same way (T06-13): an `.svg` file of the pack (any case of the extension, referenced or not; shown by `<img>`, CSS `url()` or SVG `<image>`) and every `data:image/svg+xml` image, base64 or percent-encoded, in the template, in a stylesheet or inside another SVG. `checkPack` reads each as Chrome reads an SVG image — as XML: character references, CDATA, namespace prefixes (`<s:linearGradient>`) and SMIL (`<set attributeName="spreadMethod" to="repeat">` is refused too) — and refuses both forms in its `<style>` text and attribute values, also CSS in `<foreignObject>` HTML. An issue in an `.svg` file points into that file; one in a `data:` image points at its URL, the message starting `in the data:image/svg+xml image here:`. In an SVG file or `data:` image, also:
+  - a DOCTYPE with an internal subset (`<!DOCTYPE svg [<!ENTITY …>]>`) is `html-unsupported`: Chrome applies its entity and attribute declarations, which the check does not read; delete the `[…]` part (a plain `<!DOCTYPE svg PUBLIC …>` is fine);
+  - anything but UTF-8 is `text-encoding`: a UTF-16 file (Chrome renders it), a NUL, an XML declaration naming another `encoding`, a `data:` URL with another `charset`;
+  - a `data:` stylesheet (`<?xml-stylesheet href="data:…"?>`, `@import url(data:…)`, an XHTML `<link>`) is `asset-data`: Chrome applies it; put its rules in the SVG's `<style>`;
+  - `data:` images nested more than 8 deep are `pack-too-complex`.
+
+  Scripts, event handlers and every other URL inside an SVG image are left alone: Chrome runs and loads none of them there (T06-13's probe), so they can't change the print; a nested pack file (`<image href="other.svg">`) simply doesn't show.
+
+  Don't rely on the check's limits: it over-refuses two unusual spellings — either name as a hash token (`#repeating-linear-gradient(`, `#repeating-radial-gradient(`) and an SVG attribute value that looks like the function (`id="repeating-linear-gradient(x)"`), which you rename.
 
   Draw stripes with SVG `<rect>` elements and rings with `<circle>` elements, or a plain `linear-gradient` repeated as a fixed-size tile: `background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%`. Size tiles in pt: a tile in px prints its stripes about a third dark instead of half, in both renderers, so the PDF differs from the screen, though the self-check still agrees.
 
