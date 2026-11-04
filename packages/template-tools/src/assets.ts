@@ -513,6 +513,29 @@ export function assetIssues(
       });
       // SVG presentation attributes take url() too (fill, mask, clip-path…).
       if (element.namespaceURI === 'http://www.w3.org/2000/svg') {
+        // T14-11: repeat and reflect print as the same function-based
+        // shading as repeating-linear-gradient(), which the self-check's
+        // renderer samples once per stripe; the ticket refuses them on
+        // linearGradient only (T06-12).
+        if (element.tagName === 'linearGradient') {
+          const spread = attributeOf(element, 'spreadMethod');
+          // parse5 keys locations by the name as scanned (lowercase), not
+          // by the SVG name it restores.
+          const spreadAt = location?.attrs?.spreadmethod;
+          if (spread !== undefined && spreadAt !== undefined) {
+            const method = spread.value
+              .replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '')
+              .replace(/[A-Z]/g, c => c.toLowerCase());
+            if (method === 'repeat' || method === 'reflect') {
+              issue(
+                'css-repeating-gradient',
+                template,
+                spreadAt.startOffset,
+                'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+              );
+            }
+          }
+        }
         for (const attr of element.attrs) {
           if (attr.name === 'font-weight' || attr.name === 'font-style') {
             request(fontRequests(`${attr.name}:${attr.value}`));
