@@ -12,7 +12,7 @@ import type { ApiError } from '@pdf-generator/contract';
 import { GroundTruthError, readGroundTruth } from '@pdf-generator/ground-truth';
 import {
   closeIdleSessions,
-  connectSession,
+  closeSession,
   openBrowser,
   packLimits,
   packSizeIssues,
@@ -168,11 +168,15 @@ async function print(
     const pack = parsed.data.pack;
     // In a kept-alive session, prints of one batch share one browser
     // context (the pack's cacheable files load once per session). The key
-    // scopes what the cache can leak across to this browser, origin, batch
-    // and digest; one-request browsers and inline packs never share.
+    // scopes what the cache can leak across, beyond the session, to this
+    // origin, batch and digest; the entry dies with the session.
+    // One-request browsers and inline packs never share.
     const sharedContext =
       sessionId && pack && 'batch' in pack
-        ? `${sessionId}\n${assetOrigin}\n${pack.batch}\n${pack.digest}`
+        ? {
+            session: sessionId,
+            key: `${assetOrigin}\n${pack.batch}\n${pack.digest}`,
+          }
         : undefined;
     // With a source, the ground truth is read on the paginated tab that
     // printed the PDF, in print media (T03 Must 3, T07-20).
@@ -302,12 +306,10 @@ async function endBatch(env: PrintEnv, batch: string): Promise<Response> {
   return new Response(null, { status: 204 });
 }
 
-async function closeSession(env: PrintEnv, id: string): Promise<Response> {
-  const browser = await connectSession(env.BROWSER, id);
-  if (!browser) {
+async function endSession(env: PrintEnv, id: string): Promise<Response> {
+  if (!(await closeSession(env.BROWSER, id))) {
     return apiError(404, 'session_not_found', `No browser session ${id}`);
   }
-  await browser.close();
   return new Response(null, { status: 204 });
 }
 
@@ -345,7 +347,7 @@ export default {
     if (session && request.method === 'DELETE') {
       return (
         (await denied(request, env)) ??
-        closeSession(env, decodeURIComponent(session))
+        endSession(env, decodeURIComponent(session))
       );
     }
     return apiError(
