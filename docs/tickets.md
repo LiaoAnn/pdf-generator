@@ -1380,3 +1380,12 @@
 - **驗收測試**：這些測試不再依賴耗時；滿載 CPU 下連跑 40 次都過；對應的改慢版本會失敗；上傳回應與 main 相同
 - **不做**：改上傳上限或壓縮行為
 - **來源**：PR #124（T09-5）
+
+### T07-38 印 PDF：`batch-pack-upload` 的重疊上傳測試靠時序
+- **目標**：`apps/print` 的 `batch-pack-upload.test.ts`「an overlapping upload that fails a file write leaves the completed upload complete」在 CI 失敗過一次（預期被拒絕的上傳反而成功；PR #126 的 test (3/4)，重跑通過）。這個測試（T07-34）讓一個上傳的第一次讀取停住、同時跑另一個上傳，結果取決於時序。改成以明確的同步點（promise／latch）控制交錯，讓結果不依賴排程
+- **Blocked by**：T07-34
+- **Blocks**：—
+- **撞車風險**：`apps/print` 的批次樣板包測試；與其他改 print 的 T07 票不要同時派
+- **驗收測試**：該測試在滿載 CPU 下連跑 40 次都過；把 T07-34 的修正拿掉時仍會失敗
+- **不做**：改上傳協定
+- **來源**：PR #126 的 CI
