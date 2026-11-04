@@ -16,6 +16,7 @@
     "vitest": "catalog:"
   },
   "dependencies": {
+    "@hyzyla/pdfium": "3.0.0",
     "@pdf-generator/contract": "workspace:*",
     "fflate": "^0.8.3",
     "playwright-core": "1.63.0",
