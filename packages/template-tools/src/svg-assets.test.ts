@@ -469,6 +469,10 @@ describe('SVG files: linear time', () => {
     ['style text chunks', svg(`<style>${fill('a<![CDATA[b]]>')}</style>`)],
     ['attributes', svg(`<g ${fill('a="b" ')}/>`)],
     [
+      'an unquoted url() with a space run before more URL',
+      svg(`<rect style="fill:url(x${fill(' ')}x)"/>`),
+    ],
+    [
       'a srcset comma run followed by more URL',
       svg(`<image srcset="x${fill(',')}x,"/>`),
     ],

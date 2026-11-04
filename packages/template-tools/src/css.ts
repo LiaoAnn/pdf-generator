@@ -95,8 +95,12 @@ export function scanCss(css: string): {
         for (let at = start; at < stop; at++) {
           if (css[at] === '\\') escapes.push(at);
         }
+        // A backward scan, not /[ \t\n\r\f]+$/: that regex retries a space
+        // run from each space in it (quadratic on `url(x   …   x)`).
+        let last = stop;
+        while (last > start && cssSpace.test(css[last - 1] ?? '')) last--;
         references.push({
-          url: css.slice(start, stop).replace(/[ \t\n\r\f]+$/, ''),
+          url: css.slice(start, last),
           offset: start,
           ...(importing ? { kind: 'stylesheet' as const } : {}),
         });
