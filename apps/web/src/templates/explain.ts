@@ -145,7 +145,7 @@ const printIssues: Record<string, string> = {
   row_fragmented:
     '有表格列被切在兩頁之間。請讓每一列的高度小於一頁，或允許表格在列與列之間換頁。',
   text_missing:
-    '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。',
+    '印出來的 PDF 少了一些文字，通常是字型缺字。請改用平台內建的中文字型，或檢查特殊符號。另一種情況是頁面底部附近用了 content-visibility: auto：Paged.js 分頁時沒有把那裡的內容移到下一頁，列印時它被擠出頁面而沒有印出。請拿掉 content-visibility: auto。',
   text_zero_width:
     '有 data-gt 的文字排出來寬度是零：通常是負的 letter-spacing 或 word-spacing 把字元擠在同一個位置或反向排列，或 transform: scaleX(0) 把文字壓扁成零寬。PDF 也許還印得出字，但平台找不到它在頁面上的位置，無法確認它有印出來；標準答案的框也會是零寬，和 PDF 對不上。請移除負的 letter-spacing／word-spacing，或拿掉把文字壓扁的 transform，讓文字恢復正常的寬度。',
   text_zero_height:
