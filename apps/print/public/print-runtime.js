@@ -884,13 +884,6 @@
         '[data-gt], [data-gt] *',
       )) {
         const marked = element.hasAttribute('data-gt');
-        if (
-          !marked &&
-          element instanceof SVGElement &&
-          !(element instanceof SVGTextContentElement)
-        ) {
-          continue;
-        }
         if (element.getClientRects().length === 0) continue;
         // A content-visibility: hidden ancestor skips the element's
         // contents: they keep their client rects but paint nothing
@@ -917,6 +910,16 @@
           hidden.push(
             `page ${index + 1} ${element.localName} inside content-visibility: hidden`,
           );
+          continue;
+        }
+        // An SVG's drawing is checked for hidden content above (it never
+        // prints there either), not for clipping: its <svg> clips it by
+        // design.
+        if (
+          !marked &&
+          element instanceof SVGElement &&
+          !(element instanceof SVGTextContentElement)
+        ) {
           continue;
         }
         const copy =

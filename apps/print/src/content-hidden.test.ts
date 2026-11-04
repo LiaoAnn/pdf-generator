@@ -105,6 +105,10 @@ const unprinted = [
     body: '<div data-gt="paragraph" class="host">看得見的文字<div class="cv below"><div class="fill"></div></div></div>',
   },
   {
+    name: "a visible data-gt block's descendant SVG inside a hidden container",
+    body: '<div data-gt="image" class="host box"><div class="cv below"><svg width="100" height="40"><rect width="100" height="40" fill="black"/></svg></div></div>',
+  },
+  {
     name: 'a hidden bordered data-gt block with a decoration inside',
     body: '<div data-gt="image" class="cv frame"><div class="kid"></div></div>',
   },
@@ -138,6 +142,19 @@ test('prints decoration inside content-visibility: auto on the second page', asy
       document(
         '<div class="next"><p data-gt="paragraph">第二頁</p><div class="cv sized"><div data-gt="image" class="box"></div></div><div class="cv"><div data-gt="image" class="frame"><div class="kid"></div></div></div></div>',
         'auto',
+      ),
+    ),
+  );
+});
+
+// SVG parts that render no box of their own (definitions, a gradient's
+// stops, a clip path, a title) are not hidden content.
+test('prints an inline SVG with definitions in a visible data-gt block', async () => {
+  await expectPdf(
+    await post(
+      document(
+        '<div data-gt="image"><svg width="100" height="40"><title>圖</title><defs><linearGradient id="g"><stop offset="0" stop-color="black"/><stop offset="1" stop-color="gray"/></linearGradient><clipPath id="c"><rect width="90" height="40"/></clipPath></defs><rect width="100" height="40" fill="url(#g)" clip-path="url(#c)"/></svg></div>',
+        'hidden',
       ),
     ),
   );
