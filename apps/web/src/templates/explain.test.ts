@@ -436,6 +436,30 @@ describe('template author error explanations', () => {
     expect.soft(issue?.explanation).toMatch(/請|移除|調整|增加|改用|避免|不要/);
   });
 
+  // T08-8: print reports data-gt content inside content-visibility: hidden
+  // as content_clipped; the explanation must name that cause and its fix,
+  // or the author looks for a too-small box that isn't there.
+  test('preview content_clipped also explains content-visibility: hidden and how to fix it', () => {
+    const raw = 'page 1 p inside content-visibility: hidden';
+    const result = explain({
+      code: 'preview_failed',
+      message: 'Printing failed',
+      details: [{ code: 'content_clipped', message: raw }],
+    });
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('content_clipped');
+    expect(issue?.raw).toBe(raw);
+    expect.soft(issue?.explanation).toContain('content-visibility: hidden');
+    expect
+      .soft(issue?.explanation)
+      .toMatch(/content-visibility: hidden.{0,80}(?:不會|不).{0,4}印/);
+    expect
+      .soft(issue?.explanation)
+      .toMatch(
+        /(?:拿掉|移除|刪除).{0,40}content-visibility|content-visibility.{0,40}(?:拿掉|移除|刪除)/,
+      );
+  });
+
   // T07-30: text squeezed to zero width is printed but can't be checked;
   // text_missing's font advice would send the author after the wrong cause.
   test('preview text_zero_width explains squeezed data-gt text and tells authors to remove the negative spacing', () => {

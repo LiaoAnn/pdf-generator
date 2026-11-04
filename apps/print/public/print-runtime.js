@@ -862,11 +862,18 @@
   // element that shows at most 1px of it, as KaTeX's CSS hides its MathML
   // copy. What the browser shows decides, not the class or the CSS: a pack
   // can name any element katex-mathml and style it to look hidden.
+  // Also skipped content of a content-visibility: hidden element (T08-8):
+  // Chrome lays it out (it has client rects) but paints none of it, so a
+  // data-gt block there would be described in gt.json and missing from the
+  // PDF. The IntersectionObserver can't see that (the boxes keep their
+  // geometry), so each target is asked first.
   async function clippedContent() {
     const tolerance = 1;
     const round = (/** @type {number} */ value) => value.toFixed(1);
     /** @type {{ element: Element, page: number, area: DOMRect, copy: boolean }[]} */
     const targets = [];
+    /** @type {string[]} */
+    const hidden = [];
     pagedPages().forEach((page, index) => {
       const content = page.querySelector(
         ':scope > .pagedjs_sheet > .pagedjs_pagebox > .pagedjs_area > .pagedjs_page_content',
@@ -877,6 +884,37 @@
         '[data-gt], [data-gt] *',
       )) {
         const marked = element.hasAttribute('data-gt');
+        if (element.getClientRects().length === 0) continue;
+        // A content-visibility: hidden ancestor skips the element's
+        // contents: they keep their client rects but paint nothing
+        // (checkVisibility() with its default options says no exactly for
+        // that skip; content-visibility: visible and auto paint everything,
+        // so it says yes for them). The hidden element's own box paints, so
+        // it still answers yes; text it holds directly (inside no element,
+        // caught nowhere else) needs its style asked instead, and counts
+        // only when it holds printing characters (not only whitespace,
+        // default-ignorable or control ones; mirrors holdsPrinting in
+        // expectedText(), plus whitespace).
+        if (
+          !element.checkVisibility() ||
+          (getComputedStyle(element).contentVisibility === 'hidden' &&
+            [...element.childNodes].some(
+              node =>
+                node.nodeType === Node.TEXT_NODE &&
+                (node.textContent ?? '').replace(
+                  /[\p{Default_Ignorable_Code_Point}\p{Cc}\s]/gu,
+                  '',
+                ) !== '',
+            ))
+        ) {
+          hidden.push(
+            `page ${index + 1} ${element.localName} inside content-visibility: hidden`,
+          );
+          continue;
+        }
+        // An SVG's drawing is checked for hidden content above (it never
+        // prints there either), not for clipping: its <svg> clips it by
+        // design.
         if (
           !marked &&
           element instanceof SVGElement &&
@@ -884,7 +922,6 @@
         ) {
           continue;
         }
-        if (element.getClientRects().length === 0) continue;
         const copy =
           !marked &&
           element.namespaceURI === 'http://www.w3.org/1998/Math/MathML' &&
@@ -892,7 +929,7 @@
         targets.push({ element, page: index + 1, area, copy });
       }
     });
-    if (targets.length === 0) return [];
+    if (targets.length === 0) return hidden.slice(0, 50);
     /** @type {Map<Element, IntersectionObserverEntry>} */
     const seen = new Map();
     // Every target is reported at the next rendering update; one that isn't
@@ -955,7 +992,7 @@
         );
       }
     }
-    return clipped.slice(0, 50);
+    return [...hidden, ...clipped].slice(0, 50);
   }
 
   // Rows with text that are split or reach outside their page's content
