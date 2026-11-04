@@ -1362,3 +1362,12 @@
 - **驗收測試**：這些測試不再依賴耗時比例；滿載 CPU 下連跑 40 次都過；多一次 inflate、多一次複製、掃描變二次方的改壞版本都會失敗；上傳行為不變
 - **不做**：改壓縮行為
 - **來源**：PR #121（T09-4）
+
+### T10-7 規格書：網站上傳代碼也寫進 §9
+- **目標**：apps/web 的上傳自己產生的代碼（`zip-duplicate-name`、`zip-too-many-blocks`、`pack-too-many-files`、`file-too-large`、`pack-text-too-large`，以及只在 explain.ts 出現的 `pack-check-failed`）不在 SPEC §9 與 `skill/references/check-codes.md`。補上，並比照 T10-6 讓 apps/web 有一份 tsc 會強制更新的代碼清單、pack-spec 測試要求每個都有寫進文件
+- **Blocked by**：T10-6
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`、`apps/web/src/templates`（unzip.ts、limits.ts、explain.ts）
+- **驗收測試**：這些代碼都有說明；從文件刪掉一個時測試失敗並指出是哪個；網站行為不變
+- **不做**：改上傳上限
+- **來源**：PR #123（T10-6）
