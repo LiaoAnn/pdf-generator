@@ -68,6 +68,8 @@ const packIssues: Record<string, string> = {
     '樣板用到一個資料裡沒有的欄位，常見原因是拼錯字。請對照假資料規則的欄位名稱。',
   'template-unsupported':
     '樣板用到平台不支援的 Handlebars 寫法（例如 {{{ }}}、partial 或自訂 helper）。請改用支援的寫法。',
+  'template-doctype':
+    '樣板第一行必須是 <!doctype html>，開頭前面只能有空行或註解。少了它，瀏覽器會用相容模式（quirks mode）列印：表格會退回預設字體大小，版面和分頁都和預覽不同，印出的 PDF 與標準答案就對不上。請在樣板最前面寫上 <!doctype html>。',
   'html-active':
     '樣板裡有會執行程式或自動跳轉的內容（例如 <script>、onclick、meta refresh）。樣板包不能帶程式，請移除。',
   'html-unsupported':
