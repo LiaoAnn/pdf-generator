@@ -64,6 +64,11 @@ const codes = new Uint16Array(320);
 const widest = new Uint8Array(1 << rootBits);
 const offsets = new Uint16Array(1 << rootBits);
 
+/** Test seam: makes huffman()'s tables; deflate-blocks-speed.workerd.test.ts wraps them to count reads. */
+export const tables = {
+  create: (size: number): Huffman => new Int32Array(size),
+};
+
 function huffman(lengths: Uint8Array): Huffman {
   const count = new Uint16Array(16);
   for (let value = 0; value < lengths.length; value++) {
@@ -103,7 +108,7 @@ function huffman(lengths: Uint8Array): Huffman {
   }
   // Input bits come least significant first, so a code fills every slot
   // whose low bits are the code reversed.
-  const table = new Int32Array(size);
+  const table = tables.create(size);
   for (const root of roots) {
     table[root] = link | ((widest[root] ?? 0) << 16) | (offsets[root] ?? 0);
   }

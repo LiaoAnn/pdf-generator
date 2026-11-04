@@ -1,15 +1,20 @@
 import { createHash } from 'node:crypto';
 import { crc32, inflateRawSync } from 'node:zlib';
 import { expect, test } from 'vitest';
-import { scanDeflateReference } from './deflate-blocks-reference.ts';
+import { tables } from './deflate-blocks.ts';
 import { assemble, longStream } from './deflate-fixtures.test-support.ts';
 import { unzipWithinLimits } from './limits.ts';
 
 const hash = (data: Uint8Array) =>
   createHash('sha256').update(data).digest('hex');
-const median = (times: number[]) => [...times].sort((a, b) => a - b)[1] ?? 0;
+/**
+ * Table reads decoding a dynamic block's header may take beyond its
+ * literals: at most 316 code lengths and the end-of-block code, each read in
+ * one or two.
+ */
+const headerReads = 1024;
 test.each([10, 15])(
-  'accepts a nearly 10 MiB honest %i-bit literal zip in under 0.8 of the reference scan time',
+  'accepts a nearly 10 MiB honest %i-bit literal zip reading at most two table entries per literal',
   width => {
     const { stream, data } = longStream(
       width,
@@ -26,46 +31,39 @@ test.each([10, 15])(
     const inflated = new Uint8Array(inflateRawSync(stream));
     expect(inflated.length).toBe(data.length);
     expect(hash(inflated)).toBe(hash(data));
-    const warm = longStream(width, 4096);
-    unzipWithinLimits(
-      assemble(
-        [
-          {
-            name: 'warm.png',
-            stream: warm.stream,
-            method: 8,
-            crc: crc32(warm.data),
-          },
-        ],
-        new Map([['warm.png', warm.data.length]]),
-      ),
-    );
-    scanDeflateReference(warm.stream, warm.data.length);
-    // Absolute bounds fail on slower machines (a GitHub runner took 310 ms
-    // where this VM takes 240 ms), so time T15-1's frozen scan on the same
-    // stream in the same run and compare with it. Rounds interleave the two
-    // so a slow spell of the machine slows both.
-    const times: number[] = [];
-    const reference: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      let start = performance.now();
-      const result = unzipWithinLimits(zip);
-      times.push(performance.now() - start);
-      expect(result).not.toHaveProperty('issues');
-      if (!('files' in result)) throw new Error(JSON.stringify(result));
-      expect(result.files['x.png']?.length).toBe(0);
-      start = performance.now();
-      const scan = scanDeflateReference(stream, data.length);
-      reference.push(performance.now() - start);
-      expect(scan).toMatchObject({ ok: true, output: data.length });
+    // Timing the upload, even against T15-1's frozen scan in the same run,
+    // failed under load (1040 ms against 882 ms, PR #116), so count the work
+    // instead: every read of a decoding table. Every literal here is a 10- or
+    // 15-bit code, which the two-level tables decode in two reads; T15-1's
+    // scan took a step per bit, and a second pass over the stream would
+    // double the count.
+    let reads = 0;
+    const create = tables.create;
+    tables.create = size =>
+      new Proxy(create(size), {
+        get(table, key) {
+          reads++;
+          return Reflect.get(table, key);
+        },
+        set: (table, key, value) => Reflect.set(table, key, value),
+      });
+    let result: ReturnType<typeof unzipWithinLimits>;
+    try {
+      result = unzipWithinLimits(zip);
+    } finally {
+      tables.create = create;
     }
+    expect(result).not.toHaveProperty('issues');
+    if (!('files' in result)) throw new Error(JSON.stringify(result));
+    expect(result.files['x.png']?.length).toBe(0);
     console.info(
-      `${width}-bit literal timings (ms): ${times.join(', ')}; reference scan: ${reference.join(', ')}`,
+      `${width}-bit literals: ${data.length}, table reads: ${reads}`,
     );
-    // Medians tolerate one scheduling outlier in either series. Here the
-    // whole unzip takes 0.38-0.54 of the reference scan, and T15-1's scan in
-    // its place took 1.25, so 0.8 leaves room both ways.
-    expect(median(times)).toBeLessThan(median(reference) * 0.8);
+    // At least one per literal: the upload did scan the stream.
+    expect(reads).toBeGreaterThanOrEqual(data.length);
+    expect(reads).toBeLessThanOrEqual(2 * data.length + headerReads);
   },
-  30_000,
+  // A hang guard, not a speed bound: reading the tables through the Proxy
+  // took 4-11 s a case on the VM, idle to every CPU busy.
+  60_000,
 );
