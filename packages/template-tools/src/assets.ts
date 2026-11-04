@@ -11,6 +11,7 @@ import {
   scanCss,
   usedFamilies,
 } from './css.ts';
+import { repeatingLinearGradients } from './gradients.ts';
 import {
   attributeOf,
   decodedOffsets,
@@ -377,6 +378,16 @@ export function assetIssues(
         'a backslash escape in CSS: write the character itself (packs are UTF-8)',
       );
     }
+    // T14-11: Chromium prints repeating-linear-gradient() as a shading the
+    // self-check's renderer misreads, whichever CSS context it prints in.
+    for (const offset of repeatingLinearGradients(css)) {
+      issue(
+        'css-repeating-gradient',
+        source,
+        at(offset),
+        'repeating-linear-gradient() prints as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+      );
+    }
     if (rules) {
       // Paged.js's Sheet.parse also reads @import forms Chrome's parser
       // skips (paged-imports.ts): feed the loads the scanner missed through
@@ -502,6 +513,33 @@ export function assetIssues(
       });
       // SVG presentation attributes take url() too (fill, mask, clip-path…).
       if (element.namespaceURI === 'http://www.w3.org/2000/svg') {
+        // T14-11: repeat and reflect print as a shading the self-check's
+        // renderer misreads; pdf.js misreads them on both linearGradient
+        // and radialGradient, so the ticket refuses them on both (T06-12).
+        if (
+          element.tagName === 'linearGradient' ||
+          element.tagName === 'radialGradient'
+        ) {
+          const spread = attributeOf(element, 'spreadMethod');
+          // parse5 keys locations by the name as scanned (lowercase), not
+          // by the SVG name it restores.
+          const spreadAt = location?.attrs?.spreadmethod;
+          if (spread !== undefined && spreadAt !== undefined) {
+            // One match anchored at the start: an unanchored trailing-space
+            // trim retries from every space (quadratic). Without the u flag,
+            // i folds ASCII letters only.
+            if (
+              /^[\t\n\f\r ]*(?:repeat|reflect)[\t\n\f\r ]*$/i.test(spread.value)
+            ) {
+              issue(
+                'css-repeating-gradient',
+                template,
+                spreadAt.startOffset,
+                'spreadMethod="repeat" and "reflect" print as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+              );
+            }
+          }
+        }
         for (const attr of element.attrs) {
           if (attr.name === 'font-weight' || attr.name === 'font-style') {
             request(fontRequests(`${attr.name}:${attr.value}`));

@@ -11,7 +11,7 @@ const variants = {
   normal: '',
   'page-frame': '.pagedjs_page { margin-top: -20mm !important; }',
   'body-padding': 'body { padding-left: 10mm; }',
-  'barcode-sideways': '#barcode::before { transform: translateX(3pt); }',
+  'barcode-sideways': '#barcode svg { transform: translateX(3pt); }',
   'underline-up':
     '#underline { border: 0; position: relative; } #underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: 4pt; border-bottom: 1pt solid black; }',
 };

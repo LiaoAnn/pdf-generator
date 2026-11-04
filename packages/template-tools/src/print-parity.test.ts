@@ -648,6 +648,20 @@ it('checks 40,000 nested var() functions without super-linear scanning relative 
   relativeCheckTimings(files, baseline, 'Nested var() functions');
 }, 30_000);
 
+it('reads a spreadMethod value of 60,000 inner spaces without super-linear scanning relative to a space-free baseline', () => {
+  // T06-12 review: trimming the value with an unanchored trailing-space
+  // pattern retried from every space (about 5 s for this template).
+  const gradient = (value: string) =>
+    pack(
+      `<svg data-gt="image"><linearGradient id="g" spreadMethod="${value}"></linearGradient></svg>`,
+    );
+  relativeCheckTimings(
+    gradient(`x${' '.repeat(60_000)}x`),
+    gradient(`x${'a'.repeat(60_000)}x`),
+    'Spaces inside spreadMethod',
+  );
+}, 60_000);
+
 describe('print parity: round 6 image-set direct function allowlist', () => {
   const contexts = [
     'file',
@@ -705,11 +719,12 @@ describe('print parity: round 6 image-set direct function allowlist', () => {
     for (const argument of [
       'url(a.png) 1x, "b.png" 2x',
       '"a.png" type("image/png")',
+      // repeating-linear-gradient is a css-repeating-gradient issue (T06-12,
+      // repeating-gradient.test.ts), wherever it is.
       ...[
         'linear-gradient',
         'radial-gradient',
         'conic-gradient',
-        'repeating-linear-gradient',
         'repeating-radial-gradient',
         'repeating-conic-gradient',
       ].flatMap(gradient =>

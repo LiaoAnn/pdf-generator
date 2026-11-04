@@ -174,6 +174,7 @@ describe('template author error explanations', () => {
     'css-import-cycle',
     'css-import-expansion',
     'css-page-box',
+    'css-repeating-gradient',
     'font-unused',
   ];
   const printCodes = [
@@ -281,6 +282,45 @@ describe('template author error explanations', () => {
     expect.soft(text).toMatch(/頁面大小|紙張大小|紙張尺寸|頁面尺寸/);
     expect.soft(text).toContain('PDF');
     expect.soft(text).toContain('標準答案');
+  });
+
+  test('upload repeating-gradient refusals explain the pdf.js misread and both alternatives', () => {
+    const raw =
+      'repeating-linear-gradient() prints as a shading the self-check reads once per stripe';
+    const result = invalid([
+      {
+        code: 'css-repeating-gradient',
+        file: 'styles/report.css',
+        line: 3,
+        column: 15,
+        message: raw,
+      },
+    ]);
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('css-repeating-gradient');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.location).toContain('styles/report.css');
+    const text = issue?.explanation;
+    expect(text).toMatch(cjk);
+    expect(text).not.toBe(fallback());
+    // What is refused: the CSS function and the SVG gradient attribute values.
+    expect.soft(text).toContain('repeating-linear-gradient');
+    expect.soft(text).toContain('spreadMethod');
+    expect.soft(text).toContain('repeat');
+    expect.soft(text).toContain('reflect');
+    // Why: the self-check's renderer misreads the stripes.
+    expect.soft(text).toContain('pdf.js');
+    expect.soft(text).toMatch(/黑/);
+    expect.soft(text).toMatch(/空白/);
+    expect.soft(text).toContain('標準答案');
+    // What to write instead: both alternatives T14-11 found the renderers agree on.
+    expect.soft(text).toContain('<rect>');
+    expect
+      .soft(text)
+      .toContain(
+        'linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
+      );
   });
 
   test('preview css_animation refusals explain animation drift and how to remove its causes', () => {
