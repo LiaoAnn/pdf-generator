@@ -1,6 +1,7 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { type ApiError, apiErrorSchema } from '@pdf-generator/contract';
+import { packIssueCodes } from '@pdf-generator/template-tools';
 import { drizzle } from 'drizzle-orm/d1';
 import { migrate } from 'drizzle-orm/d1/migrator';
 import { zipSync } from 'fflate';
@@ -8,6 +9,7 @@ import { beforeEach, describe, expect, test } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { createFetchHandler } from '../worker.ts';
+import { uploadIssueCodes } from './issues.ts';
 
 type ErrorBody = ApiError['error'];
 type Detail = NonNullable<ErrorBody['details']>[number];
@@ -130,53 +132,11 @@ describe('template author error explanations', () => {
     }
   }, 60_000);
 
-  const uploadCodes = [
-    'zip-invalid',
-    'path-invalid',
-    'pack-too-large',
-    'pack-too-complex',
-    'pack-too-many-files',
-    'file-too-large',
-    'pack-text-too-large',
-    'pack-check-failed',
-    'manifest-missing',
-    'manifest-invalid',
-    'file-missing',
-    'file-unlisted',
-    'text-encoding',
-    'json-syntax',
-    'rules-invalid',
-    'sample-invalid',
-    'template-syntax',
-    'template-render',
-    'template-structure',
-    'template-unknown-field',
-    'template-unsupported',
-    'template-doctype',
-    'html-active',
-    'html-unsupported',
-    'gt-unmarked',
-    'gt-type',
-    'gt-nested',
-    'gt-id',
-    'gt-attribute',
-    'gt-branch',
-    'gt-checkbox',
-    'gt-formula',
-    'gt-image-text',
-    'gt-table',
-    'asset-external',
-    'asset-path',
-    'asset-missing',
-    'asset-data',
-    'asset-dynamic',
-    'asset-stylesheet-type',
-    'css-escape',
-    'css-import-cycle',
-    'css-import-expansion',
-    'css-page-box',
-    'css-repeating-gradient',
-    'font-unused',
+  // Every code checkPack and the web upload report: tsc keeps both lists
+  // complete (template-tools' packIssueCodes, ./issues.ts uploadIssueCodes),
+  // so a new code fails here until explain.ts explains it.
+  const uploadCodes: string[] = [
+    ...new Set<string>([...packIssueCodes, ...uploadIssueCodes]),
   ];
   const printCodes = [
     'css_import_loop',

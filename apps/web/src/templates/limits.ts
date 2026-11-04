@@ -6,7 +6,8 @@
 // and together. Images and fonts only count toward the total size, and
 // checkPack gets them empty: it only checks that they exist, and a stylesheet
 // that @imports or <link>s one must not make it parse megabytes of CSS.
-import type { PackFiles, PackIssue } from '@pdf-generator/template-tools';
+import type { PackFiles } from '@pdf-generator/template-tools';
+import type { UploadIssue, UploadIssueCode } from './issues.ts';
 import { unzipBounded } from './unzip.ts';
 
 /** Largest upload body: the zip as sent. */
@@ -24,7 +25,7 @@ const maxTextBytes = 256 * 1024;
 
 const binary = /\.(?:png|jpe?g|gif|webp|woff2?|ttf|otf)$/i;
 
-const whole = (code: string, message: string): PackIssue => ({
+const whole = (code: UploadIssueCode, message: string): UploadIssue => ({
   code,
   file: '.',
   message,
@@ -36,11 +37,11 @@ const whole = (code: string, message: string): PackIssue => ({
  */
 export function unzipWithinLimits(
   zip: Uint8Array,
-): { files: PackFiles } | { issues: PackIssue[] } {
+): { files: PackFiles } | { issues: UploadIssue[] } {
   const unzipped = unzipBounded(zip, maxPackBytes);
   if ('issue' in unzipped) return { issues: [unzipped.issue] };
   const entries = Object.entries(unzipped.files);
-  const issues: PackIssue[] = [];
+  const issues: UploadIssue[] = [];
   let text = 0;
   for (const [path, bytes] of entries) {
     if (bytes.byteLength > maxFileBytes) {

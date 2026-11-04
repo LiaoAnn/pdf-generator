@@ -10,6 +10,7 @@ import { Effect } from 'effect';
 import { render } from '../batch/fixture.ts';
 import { PrintFailure } from '../batch/printer.ts';
 import { Database, Files, Print } from '../services.ts';
+import type { UploadIssue } from '../templates/issues.ts';
 import {
   maxPackBytes,
   maxUploadBytes,
@@ -200,13 +201,12 @@ export const uploadTemplate = (request: Request) =>
       try: () => checkPack(limited.files, { maxBytes: maxPackBytes }),
       catch: cause => {
         console.error('templates: checkPack threw', cause);
-        return invalid([
-          {
-            code: 'pack-check-failed',
-            file: '.',
-            message: `the pack could not be checked: ${String(cause).slice(0, 300)}`,
-          },
-        ]);
+        const issue: UploadIssue = {
+          code: 'pack-check-failed',
+          file: '.',
+          message: `the pack could not be checked: ${String(cause).slice(0, 300)}`,
+        };
+        return invalid([issue]);
       },
     });
     if (!checked.ok || !checked.pack) return yield* invalid(checked.issues);
