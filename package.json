@@ -13,6 +13,7 @@
     "pdf-to-png": "node packages/dev-tools/src/cli.ts",
     "dump-gt": "node packages/dev-tools/src/dump-gt-cli.ts",
     "compare-gt": "node packages/dev-tools/src/compare-gt-cli.ts",
+    "compare-renderers": "node packages/dev-tools/src/compare-renderers-cli.ts",
     "test": "vitest run && pnpm test:cron",
     "test:watch": "vitest",
     "test:cron": "node --test .devcontainer/scripts/*.test.mjs",
