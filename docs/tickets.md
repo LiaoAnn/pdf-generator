@@ -1335,3 +1335,21 @@
 - **驗收測試**：radialGradient repeat 的探測 PDF 回報不一致；T14-11 列為一致的寫法仍一致；6 個樣板各 1 份仍全部一致
 - **不做**：改自我檢查
 - **來源**：PR #120（T06-12）
+
+### T06-14 樣板工具：上傳時也拒絕 `repeating-radial-gradient`
+- **目標**：T10-5 的實測（本機平台印出、`pnpm compare-renderers`）顯示 CSS `repeating-radial-gradient` 和 SVG radialGradient repeat 一樣被 pdf.js 讀錯（pdf.js 0.31、PDFium 0.50，pdf.js 畫成亂紋；T14-11 的「一致」只是比例碰巧）。比照 T06-12，把它納入 `css-repeating-gradient`（含前綴、大小寫、跳脫、at-rule、自訂屬性），中文說明一併更新；規格書（packages/pack-spec）同一張票把它移到拒絕清單
+- **Blocked by**：T10-5
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的樣板包檢查、`apps/web/src/templates/explain.ts`、`packages/pack-spec`
+- **驗收測試**：各種 `repeating-radial-gradient` 寫法在上傳時被拒並有中文說明；`radial-gradient`、一般 `linear-gradient`、平鋪寫法、`conic-gradient` 照常通過；6 個樣板照常上傳；規格書與行為一致
+- **不做**：改自我檢查（conic 的 `ink` 無法量測另議）
+- **來源**：T10-5 的探測（VM `~/drafts/t10-5-spec-repeating-gradient/evidence/`）
+
+### T10-6 規格書：§9 代碼表補上缺的 checkPack 代碼
+- **目標**：SPEC §9 的代碼表缺 `asset-stylesheet-type`（T06-7）、`css-import-cycle`、`css-import-expansion`（T06-4／T06-7／T06-9）。補上，並加一個測試：checkPack 能產生的每個代碼都在 §9 與 `skill/references/check-codes.md` 裡
+- **Blocked by**：—
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`；與 T10-5 不要同時派
+- **驗收測試**：三個代碼有說明；新測試在代碼表缺一個時失敗；`skill.test.ts` 通過
+- **不做**：改平台程式
+- **來源**：T10-5
