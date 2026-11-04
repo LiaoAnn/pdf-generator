@@ -1407,3 +1407,12 @@
 - **驗收測試**：第 2 頁以後的 `content-visibility: auto` 區塊，gt 文字與 PDF 相同、自我檢查通過（或被以中文說明拒絕）；第 1 頁與 visible 的照常；6 個樣板 `compare-gt` 60/60 相同
 - **不做**：改共用契約
 - **來源**：T08-8 的探測（VM `~/drafts/t08-8-content-visibility-hidden/evidence/`）
+
+### T06-15 樣板工具：checkPack 的 CSS 解析工作量要能計數
+- **目標**：T09-7 的 API review 測試只在二進位內容送進解析器時才抓得到「CSS 解析變二次方」，單純讓 `scanCss` 變二次方時（main 的 5 秒上限也一樣）抓不到，因為測試樣板的 CSS 太小。在 template-tools 加一個只給測試用的計數（例如 `scanCss` 走過的字元數，不從套件入口匯出、量測為雜訊），配一個 64 KiB 文字樣式表的測試，讓二次方的掃描在計數上失敗
+- **Blocked by**：T06-14
+- **Blocks**：—
+- **撞車風險**：`packages/template-tools` 的 CSS 掃描；與 T06-13 不要同時派
+- **驗收測試**：二次方的 `scanCss` 改壞版本在計數上失敗；原本的線性實作通過；計數接口的成本量測為雜訊；6 個樣板照常通過 checkPack
+- **不做**：改檢查行為
+- **來源**：PR #130（T09-7）
