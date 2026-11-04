@@ -71,6 +71,9 @@ function request(path: string, body?: Uint8Array) {
   );
 }
 
+/** Most text a pack may hold in all (limits.ts maxTextBytes). */
+const textBudget = 256 * 1024;
+
 // A 1x1 PNG with a valid ancillary tEXt chunk, exceeding both text budgets.
 function largePng(): Uint8Array {
   const png = new Uint8Array(
@@ -158,14 +161,30 @@ test.each(['@import', '<link>'])(
       );
     }
     const zip = zipSync(files);
-    const start = performance.now();
-    const response = await request('/api/templates', zip);
-    await response.arrayBuffer();
-    // checkPack runs synchronously: also catch blocked event-loop time, when
-    // Vitest's timeout callback cannot fire until parsing has returned.
-    expect(performance.now() - start).toBeLessThan(5_000);
-    expect([201, 400]).toContain(response.status);
+    // checkPack's time grows faster than linearly with the text it parses
+    // (limits.ts): handed this megabyte as CSS, it took 263 s. So count the
+    // bytes the upload hands it, within the text budget, instead of timing
+    // the upload: load can't fail a count (T09-7).
+    const checker = vi.spyOn(templateTools, 'checkPack');
+    try {
+      const response = await request('/api/templates', zip);
+      await response.arrayBuffer();
+      expect([201, 400]).toContain(response.status);
+      expect(checker).toHaveBeenCalledOnce();
+      const handed = Object.values(checker.mock.calls[0]?.[0] ?? {});
+      const bytes = handed.reduce(
+        (sum, data) =>
+          sum + (typeof data === 'string' ? strToU8(data) : data).byteLength,
+        0,
+      );
+      expect(bytes).toBeLessThanOrEqual(textBudget);
+    } finally {
+      checker.mockRestore();
+    }
   },
+  // A hang backstop, not a speed bound: checkPack is synchronous, so this
+  // fails the test only once it returns.
+  60_000,
 );
 
 test.each(['../outside.txt', '/abs.txt'])(

@@ -14,6 +14,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { templates } from '../db/schema.ts';
+import { countWorkAsync } from '../templates/upload-work.test-support.ts';
 import { createFetchHandler } from '../worker.ts';
 
 type Files = Record<string, Uint8Array>;
@@ -32,6 +33,10 @@ const MiB = 1024 * 1024;
 const manyFiles = 180_000;
 const manyDirectories = 250_000;
 const manyListed = 115_000;
+// A hang backstop, not a speed bound: refused() counts the entries walked
+// instead. The unzip is synchronous, so this fails the test only once it
+// returns.
+const timeout = 60_000;
 
 async function readPack(root: URL, prefix = ''): Promise<Files> {
   const files: Files = {};
@@ -198,15 +203,25 @@ async function listed() {
   return templateListSchema.parse(await response.json()).templates;
 }
 
-/** The upload is refused promptly as an invalid pack and nothing is stored. */
-async function refused(zip: Uint8Array) {
-  const start = performance.now();
-  const response = await request('/api/templates', zip);
-  const body = await response.json();
-  // The unzip is synchronous: Vitest's timeout cannot fire until it returns,
-  // so also bound the time itself.
-  expect(performance.now() - start).toBeLessThan(3_000);
-  expect(response.status).toBe(400);
+/**
+ * Most local entries a refused upload may walk: no more than a pack may
+ * have (1000, directories included), so a flood of them is never walked to
+ * its end. Counted rather than timed, so load can't fail it (T09-7).
+ */
+const maxWalked = 1000;
+
+/**
+ * The upload is refused as an invalid pack and nothing is stored, having
+ * walked between `walked.min` and `walked.max` local entries.
+ */
+async function refused(zip: Uint8Array, walked: { min: number; max: number }) {
+  const { result: body, work } = await countWorkAsync(async () => {
+    const response = await request('/api/templates', zip);
+    expect(response.status).toBe(400);
+    return response.json();
+  });
+  expect(work.walked).toBeGreaterThanOrEqual(walked.min);
+  expect(work.walked).toBeLessThanOrEqual(walked.max);
   expect(body).toMatchObject({ error: { code: 'invalid_template_pack' } });
   const error = apiErrorSchema.parse(body).error;
   expect(error.details?.length).toBeGreaterThan(0);
@@ -276,23 +291,37 @@ test('the crafted zips are what the tests claim', () => {
   }
 });
 
-test('refuses 180,000 empty local entries missing from the central directory, promptly and storing nothing', async () => {
-  // Regression: walking local headers (fflate's streaming Unzip) before any
-  // limit on their number is checked, so one under-10 MiB upload keeps the
-  // Worker busy for ~10 s, and the entries it never listed join the pack.
-  const { parts, sizes } = validParts();
-  const fillers = entryNames(manyFiles, '').map(name => part(name));
-  await refused(assemble(parts, sizes, fillers));
-}, 60_000);
+test(
+  'refuses 180,000 empty local entries missing from the central directory, promptly and storing nothing',
+  async () => {
+    // Regression: walking local headers (fflate's streaming Unzip) before any
+    // limit on their number is checked, so one under-10 MiB upload keeps the
+    // Worker busy for ~10 s, and the entries it never listed join the pack.
+    const { parts, sizes } = validParts();
+    const fillers = entryNames(manyFiles, '').map(name => part(name));
+    await refused(assemble(parts, sizes, fillers), {
+      min: parts.length,
+      max: maxWalked,
+    });
+  },
+  timeout,
+);
 
-test('refuses 250,000 unlisted empty directory entries, promptly and storing nothing', async () => {
-  // Regression: skipping `x/` names as directories only after the whole
-  // local-header walk, so the same flood of unlisted entries is slow and the
-  // pack is even accepted.
-  const { parts, sizes } = validParts();
-  const fillers = entryNames(manyDirectories, '/').map(name => part(name));
-  await refused(assemble(parts, sizes, fillers));
-}, 60_000);
+test(
+  'refuses 250,000 unlisted empty directory entries, promptly and storing nothing',
+  async () => {
+    // Regression: skipping `x/` names as directories only after the whole
+    // local-header walk, so the same flood of unlisted entries is slow and the
+    // pack is even accepted.
+    const { parts, sizes } = validParts();
+    const fillers = entryNames(manyDirectories, '/').map(name => part(name));
+    await refused(assemble(parts, sizes, fillers), {
+      min: parts.length,
+      max: maxWalked,
+    });
+  },
+  timeout,
+);
 
 test.each([
   ['directory entries', '/'],
@@ -305,28 +334,36 @@ test.each([
     // (or instead of) the 200-file limit applying.
     const { parts, sizes } = validParts();
     const many = entryNames(manyListed, suffix).map(name => part(name));
-    await refused(assemble([...parts, ...many], sizes));
+    // Refused from the directory alone, before any local entry is walked.
+    await refused(assemble([...parts, ...many], sizes), { min: 0, max: 0 });
   },
-  30_000,
+  timeout,
 );
 
-test('refuses an empty local entry that the manifest lists but the central directory does not', async () => {
-  // Regression: an entry the directory does not list being read as pack
-  // content (its empty size "matches" the missing declaration, and the
-  // manifest finds its file) instead of the zip being refused as
-  // inconsistent.
-  const files = { ...valid };
-  const manifest = manifestSchema.parse(
-    JSON.parse(strFromU8(files['manifest.json'] as Uint8Array)),
-  );
-  manifest.files.assets = [
-    ...(manifest.files.assets ?? []),
-    'assets/extra.png',
-  ];
-  files['manifest.json'] = strToU8(JSON.stringify(manifest));
-  const { parts, sizes } = validParts(files);
-  await refused(assemble(parts, sizes, [part('assets/extra.png')]));
-});
+test(
+  'refuses an empty local entry that the manifest lists but the central directory does not',
+  async () => {
+    // Regression: an entry the directory does not list being read as pack
+    // content (its empty size "matches" the missing declaration, and the
+    // manifest finds its file) instead of the zip being refused as
+    // inconsistent.
+    const files = { ...valid };
+    const manifest = manifestSchema.parse(
+      JSON.parse(strFromU8(files['manifest.json'] as Uint8Array)),
+    );
+    manifest.files.assets = [
+      ...(manifest.files.assets ?? []),
+      'assets/extra.png',
+    ];
+    files['manifest.json'] = strToU8(JSON.stringify(manifest));
+    const { parts, sizes } = validParts(files);
+    await refused(assemble(parts, sizes, [part('assets/extra.png')]), {
+      min: parts.length + 1,
+      max: parts.length + 1,
+    });
+  },
+  timeout,
+);
 
 test('accepts the valid fixture zipped with explicit directory entries and downloads it byte-identical', async () => {
   // Regression: an entry-count or unlisted-entry check that also trips on the

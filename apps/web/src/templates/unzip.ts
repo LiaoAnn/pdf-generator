@@ -16,12 +16,19 @@ import {
   Inflate,
   Unzip,
   type UnzipDecoder,
+  type UnzipFileHandler,
   unzipSync,
 } from 'fflate';
 import { scanDeflate } from './deflate-blocks.ts';
 
-/** Test seam: makes the upload's inflaters and copies; upload-path.workerd.test.ts wraps them to count the bytes inflated and copied. */
+/**
+ * Test seam: makes the upload's unzip, inflaters and copies.
+ * upload-work.test-support.ts wraps them to count the entries walked and the
+ * bytes inflated and copied (the API tests in src/api/template-upload-*.test.ts
+ * and the workerd tests use it).
+ */
 export const steps = {
+  unzipper: (onfile: UnzipFileHandler) => new Unzip(onfile),
   inflater: (ondata: FlateStreamHandler) => new Inflate(ondata),
   concat,
 };
@@ -212,7 +219,7 @@ export function unzipBounded(
   let inflated = 0;
   const seen = new Set<string>();
   let stop: PackIssue | undefined;
-  const unzip = new Unzip(file => {
+  const unzip = steps.unzipper(file => {
     if (stop) return;
     if (seen.size >= maxEntries) {
       stop = tooMany();

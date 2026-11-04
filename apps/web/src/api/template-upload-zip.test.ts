@@ -20,6 +20,7 @@ import { afterAll, beforeAll, beforeEach, expect, test } from 'vitest';
 import { getPlatformProxy } from 'wrangler';
 import { createLocalAccess, localServiceToken } from '../access/local.ts';
 import { templates } from '../db/schema.ts';
+import { countWorkAsync } from '../templates/upload-work.test-support.ts';
 import { createFetchHandler } from '../worker.ts';
 
 type Files = Record<string, Uint8Array>;
@@ -235,15 +236,24 @@ async function listed() {
   return templateListSchema.parse(await response.json()).templates;
 }
 
-/** The upload is refused as an invalid pack and nothing is stored. */
-async function refused(zip: Uint8Array) {
-  const start = performance.now();
-  const response = await request('/api/templates', zip);
-  const body = await response.json();
-  // The unzip is synchronous: Vitest's timeout cannot fire until it returns,
-  // so also bound the time itself.
-  expect(performance.now() - start).toBeLessThan(3_000);
-  expect(response.status).toBe(400);
+/**
+ * The upload is refused as an invalid pack and nothing is stored, and of
+ * its entries only the `honest` ones (deflated, true to their headers) were
+ * inflated: none of the lying entry's data. Counted rather than timed, so
+ * load can't fail it (T09-7); a hang still fails the test's timeout once
+ * the synchronous unzip returns.
+ */
+async function refused(zip: Uint8Array, honest: Files) {
+  const sizes = Object.values(honest).map(data => data.byteLength);
+  const { result: body, work } = await countWorkAsync(async () => {
+    const response = await request('/api/templates', zip);
+    expect(response.status).toBe(400);
+    return response.json();
+  });
+  expect(work.inflaters).toBeLessThanOrEqual(sizes.length);
+  expect(work.inflated).toBeLessThanOrEqual(
+    sizes.reduce((sum, size) => sum + size, 0),
+  );
   expect(body).toMatchObject({ error: { code: 'invalid_template_pack' } });
   const error = apiErrorSchema.parse(body).error;
   expect(error.details?.length).toBeGreaterThan(0);
@@ -270,6 +280,10 @@ async function acceptedAndDownloaded(zip: Uint8Array) {
   expect(downloaded.status).toBe(200);
   expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(zip);
 }
+
+// A hang backstop, not a speed bound: refused() counts the work instead.
+// The unzip is synchronous, so this fails the test only once it returns.
+const timeout = 60_000;
 
 // The bomb's stream is built once: 2 GiB of zeros compress to about 2 MB.
 const bombSize = 2048 * MiB;
@@ -341,40 +355,52 @@ test('the crafted zips are what the tests claim', async () => {
   ).toEqual(files);
 });
 
-test('refuses a listed asset whose declared size hides a multi-GiB inflation, promptly and storing nothing', async () => {
-  // Regression: limits trusting the declared size let one 10 MiB upload make
-  // the Worker inflate ~10 GiB and still pass as a 10-byte file.
-  const files = { ...valid };
-  listAsset(files, 'assets/junk.png');
-  const zip = assemble([...honestParts(files), bomb]);
-  expect(zip.byteLength).toBeLessThan(10 * MiB);
-  const error = await refused(zip);
-  expect(names(error)).toContain('junk.png');
-}, 6_000);
+test(
+  'refuses a listed asset whose declared size hides a multi-GiB inflation, promptly and storing nothing',
+  async () => {
+    // Regression: limits trusting the declared size let one 10 MiB upload make
+    // the Worker inflate ~10 GiB and still pass as a 10-byte file.
+    const files = { ...valid };
+    listAsset(files, 'assets/junk.png');
+    const zip = assemble([...honestParts(files), bomb]);
+    expect(zip.byteLength).toBeLessThan(10 * MiB);
+    const error = await refused(zip, files);
+    expect(names(error)).toContain('junk.png');
+  },
+  timeout,
+);
 
-test('refuses an unlisted extra file whose declared size hides a multi-GiB inflation, promptly and storing nothing', async () => {
-  // Regression: the declared-size check covering only manifest-listed assets,
-  // or only binary-named files.
-  const zip = assemble([
-    ...honestParts(valid),
-    { ...bomb, name: 'extras/junk.png' },
-  ]);
-  const error = await refused(zip);
-  expect(names(error)).toContain('junk.png');
-}, 6_000);
+test(
+  'refuses an unlisted extra file whose declared size hides a multi-GiB inflation, promptly and storing nothing',
+  async () => {
+    // Regression: the declared-size check covering only manifest-listed assets,
+    // or only binary-named files.
+    const zip = assemble([
+      ...honestParts(valid),
+      { ...bomb, name: 'extras/junk.png' },
+    ]);
+    const error = await refused(zip, valid);
+    expect(names(error)).toContain('junk.png');
+  },
+  timeout,
+);
 
-test('refuses an entry that inflates to 5 MiB although it declares 10 bytes', async () => {
-  // Regression: a small, under-the-cap lie being accepted: the entry's
-  // content must match what its header says, not just stay under 20 MiB.
-  const files = { ...valid };
-  listAsset(files, 'assets/junk.png');
-  const zip = assemble([
-    ...honestParts(files),
-    await understated('assets/junk.png', 5 * MiB),
-  ]);
-  const error = await refused(zip);
-  expect(names(error)).toContain('junk.png');
-});
+test(
+  'refuses an entry that inflates to 5 MiB although it declares 10 bytes',
+  async () => {
+    // Regression: a small, under-the-cap lie being accepted: the entry's
+    // content must match what its header says, not just stay under 20 MiB.
+    const files = { ...valid };
+    listAsset(files, 'assets/junk.png');
+    const zip = assemble([
+      ...honestParts(files),
+      await understated('assets/junk.png', 5 * MiB),
+    ]);
+    const error = await refused(zip, files);
+    expect(names(error)).toContain('junk.png');
+  },
+  timeout,
+);
 
 test('accepts the valid fixture zipped with data descriptors and downloads it byte-identical', async () => {
   // Regression: refusing every entry whose local header has sizes 0 (flag
