@@ -10,7 +10,7 @@ import { assetIssues } from './assets.ts';
 import { type PackFiles, readFiles } from './files.ts';
 import { parseTemplate, renderTemplate, TemplateError } from './fill.ts';
 import { templateHtml } from './html.ts';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { markIssues } from './marks.ts';
 import { policyIssues } from './policy.ts';
 import { decode, jsonPosition, parseJson } from './text.ts';
@@ -30,7 +30,7 @@ export type Pack = {
 };
 
 /** `pack` is present exactly when `ok`. */
-export type CheckResult = { ok: boolean; issues: PackIssue[]; pack?: Pack };
+export type CheckResult = { ok: boolean; issues: CheckIssue[]; pack?: Pack };
 
 type Json = { text: string; value: unknown };
 
@@ -68,7 +68,7 @@ function check(
   const read = readFiles(input, maxBytes);
   if (!('files' in read)) return { ok: false, issues: [read] };
   const { files } = read;
-  const issues = [...read.issues];
+  const issues: CheckIssue[] = [...read.issues];
   const fail = (): CheckResult => ({ ok: false, issues });
 
   const text = (file: string): string | undefined => {
@@ -98,7 +98,7 @@ function check(
     schema: z.ZodType<T>,
     data: Json,
     file: string,
-    code: string,
+    code: PackIssueCode,
   ): T | undefined => {
     let result: ReturnType<typeof schema.safeParse>;
     try {
@@ -212,7 +212,7 @@ function check(
           .filter(issue => issue.code === 'template-structure')
           .map(issue => `${issue.line}:${issue.column}`),
       );
-      const located = (found: PackIssue[]) =>
+      const located = (found: CheckIssue[]) =>
         found.filter(
           issue =>
             issue.code === 'template-structure' ||

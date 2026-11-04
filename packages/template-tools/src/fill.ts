@@ -3,7 +3,7 @@
 // run there; Handlebars.parse can, and this walks its AST. Real Handlebars is
 // the reference for the output (fill.test.ts compares the two).
 import Handlebars from 'handlebars';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 
 type AST = hbs.AST.Program;
 type Node = hbs.AST.Node;
@@ -20,8 +20,8 @@ type Call = {
 /** The template cannot be filled; every issue is located in the template. */
 export class TemplateError extends Error {
   override readonly name = 'TemplateError';
-  readonly issues: PackIssue[];
-  constructor(issues: PackIssue[]) {
+  readonly issues: CheckIssue[];
+  constructor(issues: CheckIssue[]) {
     super(
       issues
         .map(
@@ -97,7 +97,7 @@ const isSimpleName = (path: Path) =>
   !/^\.|^this\b/.test(path.original);
 
 /** Parses a template, or returns where its syntax is broken. */
-function parse(source: string, file: string): AST | PackIssue {
+function parse(source: string, file: string): AST | CheckIssue {
   try {
     return Handlebars.parse(source);
   } catch (error) {
@@ -119,8 +119,8 @@ function parse(source: string, file: string): AST | PackIssue {
 }
 
 /** Every construct outside the supported subset, with its location. */
-function unsupported(program: AST, file: string): PackIssue[] {
-  const issues: PackIssue[] = [];
+function unsupported(program: AST, file: string): CheckIssue[] {
+  const issues: CheckIssue[] = [];
   const report = (node: Node, message: string) =>
     issues.push({ code: 'template-unsupported', ...at(file, node), message });
 
@@ -268,7 +268,7 @@ function rocParts(value: string): [number, number, number] | undefined {
 }
 
 function render(ast: AST, root: unknown, file: string): string {
-  const fail = (node: Node, code: string, message: string): never => {
+  const fail = (node: Node, code: PackIssueCode, message: string): never => {
     throw new TemplateError([{ code, ...at(file, node), message }]);
   };
 
@@ -576,7 +576,7 @@ function render(ast: AST, root: unknown, file: string): string {
 export function parseTemplate(
   source: string,
   file: string,
-): { ast?: AST; issues: PackIssue[] } {
+): { ast?: AST; issues: CheckIssue[] } {
   const ast = parse(source, file);
   if (!('body' in ast)) return { issues: [ast] };
   return { ast, issues: unsupported(ast, file) };

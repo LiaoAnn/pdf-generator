@@ -8,4 +8,4 @@ export {
 } from './check.ts';
 export { fill, TemplateError } from './fill.ts';
 export { headEnd } from './html.ts';
-export type { PackIssue } from './issues.ts';
+export { type PackIssue, packIssueCodes } from './issues.ts';

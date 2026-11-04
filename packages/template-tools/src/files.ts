@@ -1,7 +1,7 @@
 // Turning the input of checkPack (zip bytes or a file map) into pack files.
 import { relativePathSchema } from '@pdf-generator/contract';
 import { unzipSync } from 'fflate';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue, PackIssueCode } from './issues.ts';
 
 /** A pack's files by path relative to its root: bytes, or text already decoded. */
 export type PackFiles = Record<string, Uint8Array | string>;
@@ -18,7 +18,7 @@ const isIgnored = (path: string) =>
   path === '.DS_Store' ||
   path.endsWith('/.DS_Store');
 
-const whole = (code: string, message: string): PackIssue => ({
+const whole = (code: PackIssueCode, message: string): CheckIssue => ({
   code,
   file: '.',
   message,
@@ -37,7 +37,7 @@ const tooLarge = (size: number, maxBytes: number) =>
 export function readFiles(
   input: Uint8Array | PackFiles,
   maxBytes = defaultMaxBytes,
-): { files: Record<string, Uint8Array>; issues: PackIssue[] } | PackIssue {
+): { files: Record<string, Uint8Array>; issues: CheckIssue[] } | CheckIssue {
   let raw: Record<string, Uint8Array>;
   if (input instanceof Uint8Array) {
     let size = 0;
@@ -76,7 +76,7 @@ export function readFiles(
 
   // No prototype: a pack path such as `constructor` is just a path.
   const files: Record<string, Uint8Array> = Object.create(null);
-  const issues: PackIssue[] = [];
+  const issues: CheckIssue[] = [];
   for (const [path, bytes] of Object.entries(raw)) {
     if (relativePathSchema.safeParse(path).success) files[path] = bytes;
     else {

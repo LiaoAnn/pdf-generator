@@ -6,7 +6,7 @@ import {
   parse as parseLoose,
   parseTree,
 } from 'jsonc-parser';
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue } from './issues.ts';
 
 // ignoreBOM is the WHATWG default (the BOM is still stripped); the Workers
 // types mark it required.
@@ -53,7 +53,7 @@ export function position(
 export function parseJson(
   text: string,
   file: string,
-): { value: unknown } | PackIssue {
+): { value: unknown } | CheckIssue {
   try {
     return { value: JSON.parse(text) };
   } catch (error) {

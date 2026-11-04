@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { checkPack } from '@pdf-generator/template-tools';
+import { checkPack, packIssueCodes } from '@pdf-generator/template-tools';
 import { describe, expect, it } from 'vitest';
 import { packWith, snippets } from './spec-fixtures.ts';
 
@@ -60,6 +60,26 @@ function firstColumnCodes(markdown: string): string[] {
       ? [...column.matchAll(/`([^`]+)`/g)].map(match => match[1] ?? '')
       : [];
   });
+}
+
+/** The codes in the first column of SPEC.md §9's table. */
+function specCodes(): string[] {
+  const spec = readFileSync(new URL('../SPEC.md', import.meta.url), 'utf8');
+  const section =
+    /^## 9\. Checking a pack\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(
+      spec,
+    )?.[1];
+  expect(section, 'SPEC.md must contain §9 Checking a pack').toBeDefined();
+  const codes = firstColumnCodes(section ?? '');
+  expect(codes.length, 'SPEC.md §9 must list checker codes').toBeGreaterThan(0);
+  return codes;
+}
+
+/** The codes in the first column of skill/references/check-codes.md. */
+function repairCodes(): string[] {
+  const codesUrl = new URL('check-codes.md', referencesUrl);
+  expect(existsSync(codesUrl), 'missing references/check-codes.md').toBe(true);
+  return firstColumnCodes(readFileSync(codesUrl, 'utf8'));
 }
 
 describe('template-pack skill stays usable by pack authors', () => {
@@ -148,26 +168,29 @@ describe('template-pack skill stays usable by pack authors', () => {
   it('catches missing, invented or duplicate repair codes when SPEC.md checking codes change', () => {
     readEntry();
     referenceNames();
-    const codesUrl = new URL('check-codes.md', referencesUrl);
-    expect(existsSync(codesUrl), 'missing references/check-codes.md').toBe(
-      true,
-    );
-    const spec = readFileSync(new URL('../SPEC.md', import.meta.url), 'utf8');
-    const section =
-      /^## 9\. Checking a pack\r?\n([\s\S]*?)(?=^## |$(?![\s\S]))/m.exec(
-        spec,
-      )?.[1];
-    expect(section, 'SPEC.md must contain §9 Checking a pack').toBeDefined();
-    const expected = firstColumnCodes(section ?? '');
-    expect(
-      expected.length,
-      'SPEC.md §9 must list checker codes',
-    ).toBeGreaterThan(0);
-    const documented = firstColumnCodes(readFileSync(codesUrl, 'utf8'));
+    const expected = specCodes();
+    const documented = repairCodes();
     expect(documented.length, 'repair codes must not be duplicated').toBe(
       new Set(documented).size,
     );
     expect([...documented].sort()).toEqual([...expected].sort());
+  });
+
+  it('catches a checkPack code that SPEC.md §9 or check-codes.md leaves unexplained', () => {
+    expect(
+      packIssueCodes.length,
+      'template-tools must list the codes checkPack reports',
+    ).toBeGreaterThan(0);
+    const inSpec = new Set(specCodes());
+    const inRepairs = new Set(repairCodes());
+    expect(
+      packIssueCodes.filter(code => !inSpec.has(code)),
+      'checkPack codes missing from SPEC.md §9',
+    ).toEqual([]);
+    expect(
+      packIssueCodes.filter(code => !inRepairs.has(code)),
+      'checkPack codes missing from skill/references/check-codes.md',
+    ).toEqual([]);
   });
 
   it('catches reference files the agent cannot discover from SKILL.md', () => {
