@@ -329,9 +329,79 @@ export function collect() {
       }
       markedHosts.clear();
     }
-    // Chrome paints these on whole px of the page; build moves the box onto
-    // them. Replaced elements (T08-2): an <svg> inside another one is drawn
-    // as part of the outer one. Backgrounds and borders (T08-3): one entry
+    // T08-7: inside paint containment Chrome rounds what an element paints
+    // relative to the frame of the nearest paint container that is the
+    // element itself or an ancestor (up to its .pagedjs_page), not the
+    // page's corner. A paint container is an element whose computed
+    // contain holds paint, strict or content, or whose
+    // content-visibility is auto or hidden, and whose display is none of
+    // inline, contents, none, table-row, a row group, table-column or a
+    // column group — the same `contained && !clipsNothing` test as the
+    // overflow-clip walk below. Frames chain: with O the container's
+    // border-box origin and P the enclosing frame's layout origin (the
+    // page's for a top-level container), the frame's whole-px offset is
+    // F = F_enclosing + round(O - P), each axis separately; what an
+    // element paints is laid out in its frame and only then rounded,
+    // which is the page's rounding applied to the layout moved by
+    // d = page + F - O. One document-order pass per page, so a parent's
+    // frame is known before its children's; rebuilt ::before/::after
+    // spans (inserted above) get frames like any element. Every element
+    // whose frame shifts paints gets that shift, so every painted entry
+    // below can paint in its frame.
+    /** @type {Map<Element, { x: number; y: number }>} */
+    const shifts = new Map();
+    for (const page of pages) {
+      const pageRect = page.getBoundingClientRect();
+      const pageFrame = {
+        shiftX: 0,
+        shiftY: 0,
+        ox: pageRect.x,
+        oy: pageRect.y,
+      };
+      /** @type {Map<Element, { shiftX: number; shiftY: number; ox: number; oy: number }>} */
+      const frames = new Map([[page, pageFrame]]);
+      for (const el of Array.from(page.querySelectorAll('*'))) {
+        const parent = el.parentElement;
+        const parentFrame =
+          parent === null ? pageFrame : (frames.get(parent) ?? pageFrame);
+        const style = getComputedStyle(el);
+        const contained =
+          style.contain
+            .split(/\s+/)
+            .some(word => ['paint', 'strict', 'content'].includes(word)) ||
+          ['auto', 'hidden'].includes(style.contentVisibility);
+        const clipsNothing = [
+          'inline',
+          'contents',
+          'none',
+          'table-row',
+          'table-row-group',
+          'table-header-group',
+          'table-footer-group',
+          'table-column',
+          'table-column-group',
+        ].includes(style.display);
+        let frame = parentFrame;
+        if (contained && !clipsNothing) {
+          const box = el.getBoundingClientRect();
+          frame = {
+            shiftX: parentFrame.shiftX + Math.round(box.x - parentFrame.ox),
+            shiftY: parentFrame.shiftY + Math.round(box.y - parentFrame.oy),
+            ox: box.x,
+            oy: box.y,
+          };
+        }
+        frames.set(el, frame);
+        const shiftX = pageFrame.ox + frame.shiftX - frame.ox;
+        const shiftY = pageFrame.oy + frame.shiftY - frame.oy;
+        if (shiftX !== 0 || shiftY !== 0)
+          shifts.set(el, { x: shiftX, y: shiftY });
+      }
+    }
+    // Chrome paints these on whole px of the page — of the element's
+    // paint-containment frame (T08-7, the `shift` above) where it has one;
+    // build moves the box onto them. Replaced elements (T08-2): an <svg>
+    // inside another one is drawn as part of the outer one. Backgrounds and borders (T08-3): one entry
     // per client rect, so each line fragment of an inline element counts; an
     // element that paints nothing (display: none or contents) contributes
     // none. Outlines and outer box-shadows (T08-4) grow the box instead, and
@@ -365,6 +435,10 @@ export function collect() {
               }
             }
             if (transparent) return boxes;
+            // T08-7: what `inner` paints rounds in its paint-containment
+            // frame; where it lies (the clip below, `visible` in build)
+            // stays the unmoved layout.
+            const shift = shifts.get(inner);
             // T08-5: a clip-path — the element's own or any ancestor's —
             // cuts what it paints at the clip region's exact, unrounded
             // edges. Only an inset() basic shape on an element with
@@ -382,9 +456,16 @@ export function collect() {
             // Anything else (circle(), ellipse(), polygon(), path(),
             // url(), calc() inside inset(), several client rects) is
             // unknown: it puts no constraint on what the element paints.
+            // T08-7: where the regions cut the ink, paintRegion
+            // accumulates the same way with each contributing element's
+            // region moved by that element's paint-containment frame
+            // shift (the `shifts` above; 0 when absent).
             /** @type {number[]} */
             let region = [-Infinity, -Infinity, Infinity, Infinity];
             let clipped = false;
+            /** @type {number[]} */
+            let paintRegion = [-Infinity, -Infinity, Infinity, Infinity];
+            let clipPathShifted = false;
             for (
               let /** @type {Element | null} */ at = inner;
               at !== null;
@@ -472,6 +553,30 @@ export function collect() {
                 Math.min(region[3] ?? Infinity, refY + refH - bottom),
               ];
               clipped = true;
+              // T08-7: the same accumulation, each contributing element's
+              // edges moved by its paint-containment frame shift, so where
+              // the region cuts the ink. A region of an element with no
+              // shift paints on the page, so its edges stay unmoved here.
+              const atShift = shifts.get(at);
+              if (atShift !== undefined) clipPathShifted = true;
+              paintRegion = [
+                Math.max(
+                  paintRegion[0] ?? -Infinity,
+                  refX + left + (atShift?.x ?? 0),
+                ),
+                Math.max(
+                  paintRegion[1] ?? -Infinity,
+                  refY + top + (atShift?.y ?? 0),
+                ),
+                Math.min(
+                  paintRegion[2] ?? Infinity,
+                  refX + refW - right + (atShift?.x ?? 0),
+                ),
+                Math.min(
+                  paintRegion[3] ?? Infinity,
+                  refY + refH - bottom + (atShift?.y ?? 0),
+                ),
+              ];
             }
             /** @type {Rect | undefined} */
             let clipPath;
@@ -483,6 +588,21 @@ export function collect() {
                 y: cy0,
                 width: cx1 - cx0,
                 height: cy1 - cy0,
+              };
+            }
+            // Present only when some element that contributed a region has
+            // a non-zero shift (otherwise it equals `clipPath` and is left
+            // out); the "empty region paints nothing" rule above stays on
+            // the layout region.
+            /** @type {Rect | undefined} */
+            let paintClipPath;
+            if (clipped && clipPathShifted) {
+              const [px0 = 0, py0 = 0, px1 = 0, py1 = 0] = paintRegion;
+              paintClipPath = {
+                x: px0,
+                y: py0,
+                width: px1 - px0,
+                height: py1 - py0,
               };
             }
             // An <img> or outer <svg> (one not inside another <svg>) paints
@@ -507,7 +627,9 @@ export function collect() {
                   width: box.width,
                   height: box.height,
                 },
+                ...(shift === undefined ? {} : { shift }),
                 ...(clipPath === undefined ? {} : { clipPath }),
+                ...(paintClipPath === undefined ? {} : { paintClipPath }),
               });
             }
             // A laid-out HTML element with a visible background or border,
@@ -751,7 +873,9 @@ export function collect() {
                     },
                     width: outlines.width,
                     offset: outlines.offset,
+                    ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
                 for (const shadow of shadows) {
@@ -784,7 +908,9 @@ export function collect() {
                     blur: shadow.blur,
                     spread: shadow.spread,
                     ...(sliced.length > 0 ? { sliced } : {}),
+                    ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
                 // Where this client rect's background paints, [x0, y0, x1,
@@ -956,7 +1082,9 @@ export function collect() {
                       width: right0 - x0,
                       height: bottom0 - y0,
                     },
+                    ...(shift === undefined ? {} : { shift }),
                     ...(clipPath === undefined ? {} : { clipPath }),
+                    ...(paintClipPath === undefined ? {} : { paintClipPath }),
                   });
                 }
               }
@@ -1011,6 +1139,16 @@ export function collect() {
               let y0 = -Infinity;
               let x1 = Infinity;
               let y1 = Infinity;
+              // T08-7: the same accumulation, each contributing ancestor's
+              // edges moved by its paint-containment frame's shift (the
+              // `shifts` above; 0 when absent), so where the clips paint
+              // before rounding. A clip of an ancestor with no shift paints
+              // on the page, so its edges stay unmoved here.
+              let px0 = -Infinity;
+              let py0 = -Infinity;
+              let px1 = Infinity;
+              let py1 = Infinity;
+              let clipShifted = false;
               // T08-6: the computed position of the element whose clip the
               // walk is computing — inner, then each positioned ancestor it
               // hangs from — so the walk follows the containing-block
@@ -1163,13 +1301,32 @@ export function collect() {
                     edgeY0 += Number.parseFloat(ancestorStyle.paddingTop);
                     edgeY1 -= Number.parseFloat(ancestorStyle.paddingBottom);
                   }
+                  const atShift = shifts.get(at);
                   if (clippedX) {
                     x0 = Math.max(x0, edgeX0 - marginLength);
                     x1 = Math.min(x1, edgeX1 + marginLength);
+                    if (atShift !== undefined) clipShifted = true;
+                    px0 = Math.max(
+                      px0,
+                      edgeX0 - marginLength + (atShift?.x ?? 0),
+                    );
+                    px1 = Math.min(
+                      px1,
+                      edgeX1 + marginLength + (atShift?.x ?? 0),
+                    );
                   }
                   if (clippedY) {
                     y0 = Math.max(y0, edgeY0 - marginLength);
                     y1 = Math.min(y1, edgeY1 + marginLength);
+                    if (atShift !== undefined) clipShifted = true;
+                    py0 = Math.max(
+                      py0,
+                      edgeY0 - marginLength + (atShift?.y ?? 0),
+                    );
+                    py1 = Math.min(
+                      py1,
+                      edgeY1 + marginLength + (atShift?.y ?? 0),
+                    );
                   }
                 }
                 if (at.classList.contains('pagedjs_page')) break;
@@ -1183,6 +1340,16 @@ export function collect() {
                   width: x1 - x0,
                   height: y1 - y0,
                 };
+                // Present only when some ancestor that contributed a clip
+                // edge has a non-zero shift (otherwise it equals `clip`).
+                const paintClip = clipShifted
+                  ? {
+                      x: px0,
+                      y: py0,
+                      width: px1 - px0,
+                      height: py1 - py0,
+                    }
+                  : undefined;
                 for (const entry of boxes) {
                   if (
                     inner !== element ||
@@ -1190,6 +1357,7 @@ export function collect() {
                     entry.kind === 'shadow'
                   ) {
                     entry.clip = clip;
+                    if (paintClip !== undefined) entry.paintClip = paintClip;
                   }
                 }
               }

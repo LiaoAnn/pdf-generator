@@ -33,7 +33,8 @@ export interface MeasuredElement {
   rect: Rect;
   /**
    * What it is or holds that Chrome paints on whole CSS px of the printed
-   * page, in document order: replaced elements (T08-2), backgrounds and
+   * page — of its paint-containment frame (T08-7) where it has one — in
+   * document order: replaced elements (T08-2), backgrounds and
    * borders (T08-3), and T08-4's decorations: outlines and outer
    * box-shadows, and the backgrounds and borders of ::before/::after
    * pseudo-elements of it or of an element in it.
@@ -55,7 +56,9 @@ export interface MeasuredElement {
 }
 
 /**
- * Something painted on whole px inside (or being) a measured element.
+ * Something painted on whole px inside (or being) a measured element — on
+ * whole px of its paint-containment frame (T08-7) where the element has
+ * one, else of the page.
  * `img`, `svg` and `box` of the element itself paint inside its border box;
  * those of an element inside it may lie outside it (T08-6: a negative
  * margin, an absolutely positioned child), as may a ::before/::after's
@@ -80,6 +83,16 @@ export interface PaintedBox {
    * one entry per line box).
    */
   rect: Rect;
+  /**
+   * The element's paint-containment frame's shift in CSS px, viewport
+   * coordinates (T08-7): inside paint containment Chrome rounds what the
+   * element paints relative to the frame of the nearest paint container
+   * that is the element itself or an ancestor, not the page, so every
+   * kind's rect paints as if moved by this shift; the `clip` and
+   * `clipPath` regions stay where they lie. Absent when both components
+   * are 0 (outside paint containment), where the page rounds as before.
+   */
+  shift?: { x: number; y: number };
   /** Outline only: the computed outline-width in CSS px. */
   width?: number;
   /** Outline only: the computed outline-offset in CSS px. */
@@ -122,6 +135,14 @@ export interface PaintedBox {
    */
   clip?: Rect;
   /**
+   * `clip` with each ancestor's clip rect moved by that ancestor's
+   * paint-containment frame shift (T08-7), i.e. where the clips paint
+   * before rounding; present only when some ancestor that contributed a
+   * clip edge has a non-zero shift (otherwise it equals `clip` and is left
+   * out).
+   */
+  paintClip?: Rect;
+  /**
    * Any kind: the exact (unrounded) clip-path region, in viewport
    * coordinates, that the entry paints inside: the intersection of every
    * `inset()` clip-path on the element itself and its ancestors. Present
@@ -129,6 +150,13 @@ export interface PaintedBox {
    * shape (circle(), polygon(), url(), ...) leaves the ink unconstrained.
    */
   clipPath?: Rect;
+  /**
+   * `clipPath` with each contributing element's `inset()` region moved by
+   * that element's paint-containment frame shift (T08-7): where the region
+   * cuts the ink. Present only when some element that contributed a region
+   * has a non-zero shift (otherwise it equals `clipPath` and is left out).
+   */
+  paintClipPath?: Rect;
 }
 
 /** A `.pagedjs_page` border box. */

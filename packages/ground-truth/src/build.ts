@@ -220,43 +220,67 @@ const flush = 0.01;
 /**
  * The box as Chrome prints it: it paints each painted box on whole px of
  * its page — a replaced element (T08-2), a visible background or border
- * (T08-3), a rebuilt ::before/::after box (T08-4) — so a side the box
- * shares with one moves to where that one paints, and the box grows to
- * cover them all. Where an entry lies is its layout cut at the overflow
+ * (T08-3), a rebuilt ::before/::after box (T08-4) — or, inside paint
+ * containment, of the element's paint-containment frame (T08-7: the ink is
+ * the layout moved by the frame's shift, each edge then rounded on its
+ * own), so a side the box shares with one moves to where that one paints,
+ * and the box grows to cover them all. Where an entry lies is its layout cut at the overflow
  * clips around it (unrounded) and at a clip-path region (T08-5, unrounded);
  * where it paints is the whole-px paint cut at the clips' edges rounded to
- * whole px of the page and at the region's exact, unrounded edges. T08-6:
- * an entry may lie outside the box (a descendant's background, border,
+ * whole px of the page — of the clipping element's paint-containment frame
+ * (T08-7) where it has one — and at the region's exact, unrounded edges,
+ * moved by the paint-containment frame shift of the element that has it
+ * (T08-7).
+ * T08-6: an entry may lie outside the box (a descendant's background, border,
  * <img> or <svg> sticking out of it): every side it shares moves as for an
  * inside entry, and any side it lies beyond only grows, cut to the same
  * clips and region; an entry the cuts empty out counts for nothing.
  * Decorations painted outside the border box (T08-4: outlines and outer
  * box-shadows) skip the shared-side rule and apply afterwards, as pure
  * growth: their visible ink only ever moves a side outwards, never inwards;
- * the clip-path region cuts each strip too, without rounding.
+ * the clip-path region cuts each strip too, without rounding — moved by
+ * the paint-containment frame shift of the element that has it (T08-7).
  */
 function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
   const box = edges(rect, page);
   const entries = paintedBoxes
     .filter(({ kind }) => kind !== 'outline' && kind !== 'shadow')
-    .map(({ kind, rect, clip, clipPath }) => {
+    .map(({ kind, rect, clip, paintClip, clipPath, paintClipPath, shift }) => {
       const layout = edges(rect, page);
       let visible = layout;
-      let ink = paint(kind, layout);
+      // T08-7: the ink is the layout moved by the element's
+      // paint-containment frame's shift, each edge then rounded on its own;
+      // where the entry lies stays the unmoved layout.
+      let ink = paint(
+        kind,
+        shift === undefined
+          ? layout
+          : ([
+              layout[0] + shift.x,
+              layout[1] + shift.y,
+              layout[2] + shift.x,
+              layout[3] + shift.y,
+            ] as Bbox),
+      );
       if (clip !== undefined) {
         // The clips cut where the entry lies at their exact edges; its ink
         // is cut where THEY paint: the edges rounded to whole px of the
-        // page.
+        // page — of the clipping element's paint-containment frame (T08-7)
+        // where it has one.
         const clips = edges(clip, page);
         visible = intersect(visible, clips);
-        ink = intersect(ink, clips.map(Math.round) as Bbox);
+        ink = intersect(
+          ink,
+          edges(paintClip ?? clip, page).map(Math.round) as Bbox,
+        );
       }
       if (clipPath !== undefined) {
-        // A clip-path region (T08-5) cuts both at its exact, unrounded
-        // edges.
-        const region = edges(clipPath, page);
-        visible = intersect(visible, region);
-        ink = intersect(ink, region);
+        // A clip-path region (T08-5) cuts where the entry lies at its
+        // exact, unrounded edges; its ink is cut at the region moved by
+        // the paint-containment frame shift of the element that has it
+        // (T08-7).
+        visible = intersect(visible, edges(clipPath, page));
+        ink = intersect(ink, edges(paintClipPath ?? clipPath, page));
       }
       if (visible[2] <= visible[0] || visible[3] <= visible[1]) {
         return undefined;
@@ -276,7 +300,7 @@ function painted(rect: Rect, paintedBoxes: PaintedBox[], page: Rect): Rect {
           ? outlineStrips(entry, page)
           : shadowStrips(entry, page);
       if (entry.clipPath === undefined) return strips;
-      const region = edges(entry.clipPath, page);
+      const region = edges(entry.paintClipPath ?? entry.clipPath, page);
       return strips
         .map(strip => intersect(strip, region))
         .filter(strip => strip[2] > strip[0] && strip[3] > strip[1]);
@@ -346,17 +370,28 @@ function ringStrips(outer: Bbox, inner: Bbox, clip: Bbox): Bbox[] {
 
 /**
  * The strips of one outline ring that actually paint, in page px: the ring
- * lies between the rect edges (each rounded page-relative on its own, as a
- * `box`) grown by the computed outline-offset (inner edge) and grown by
- * offset plus outline-width (outer edge), and it shows only inside the
- * overflow clips around the element (clip edges rounded page-relative too)
- * and inside a clip-path region (cut at its exact, unrounded edges in
+ * lies between the rect edges (the rect moved by the element's
+ * paint-containment frame's shift (T08-7), then each edge rounded on its
+ * own, as a `box`) grown by the computed outline-offset (inner edge) and
+ * grown by offset plus outline-width (outer edge), and it shows only inside the
+ * overflow clips around the element (clip edges rounded page-relative too
+ * — of the clipping element's paint-containment frame (T08-7) where it has
+ * one) and inside a clip-path region (cut at its exact, unrounded edges in
  * `painted`, T08-5).
  */
 function outlineStrips(outline: PaintedBox, page: Rect): Bbox[] {
-  const [x0, y0, x1, y1] = edges(outline.rect, page).map(Math.round) as Bbox;
+  const [x0, y0, x1, y1] = edges(
+    {
+      ...outline.rect,
+      x: outline.rect.x + (outline.shift?.x ?? 0),
+      y: outline.rect.y + (outline.shift?.y ?? 0),
+    },
+    page,
+  ).map(Math.round) as Bbox;
   // Without a clip (an element on no page) only the page cuts it.
-  const clip = edges(outline.clip ?? page, page).map(Math.round) as Bbox;
+  const clip = edges(outline.paintClip ?? outline.clip ?? page, page).map(
+    Math.round,
+  ) as Bbox;
   const offset = outline.offset ?? 0;
   const width = outline.width ?? 0;
   const inner: Bbox = [x0 - offset, y0 - offset, x1 + offset, y1 + offset];
@@ -371,21 +406,32 @@ function outlineStrips(outline: PaintedBox, page: Rect): Bbox[] {
 
 /**
  * The strips of one outer box-shadow that actually paint, in page px: the
- * shadow's shape is the rect edges (each rounded page-relative on its own,
- * as a `box`) moved by the shadow's offset and grown on every side by its
- * spread (negative spread shrinks) plus 1.5 × its blur radius (the printed
- * reach of the Gaussian CSS defines: 3σ with σ = blur/2) — offset, spread
+ * shadow's shape is the rect edges (the rect moved by the element's
+ * paint-containment frame's shift (T08-7), then each edge rounded on its
+ * own, as a `box`) moved by the shadow's offset and grown on every side by
+ * its spread (negative spread shrinks) plus 1.5 × its blur radius (the
+ * printed reach of the Gaussian CSS defines: 3σ with σ = blur/2) — offset, spread
  * and blur are not rounded. The shadow paints only outside the rect, so the
  * hole is the rect itself, and on a side the rect lost to a
  * box-decoration-break: slice cut the shape's edge is the rect's own, so
  * nothing paints past it. The overflow clips around the element cut what
- * shows (clip edges rounded page-relative) and a clip-path region cuts it
- * at its exact, unrounded edges (in `painted`, T08-5).
+ * shows (clip edges rounded page-relative — of the clipping element's
+ * paint-containment frame (T08-7) where it has one) and a clip-path region
+ * cuts it at its exact, unrounded edges (in `painted`, T08-5).
  */
 function shadowStrips(shadow: PaintedBox, page: Rect): Bbox[] {
-  const [x0, y0, x1, y1] = edges(shadow.rect, page).map(Math.round) as Bbox;
+  const [x0, y0, x1, y1] = edges(
+    {
+      ...shadow.rect,
+      x: shadow.rect.x + (shadow.shift?.x ?? 0),
+      y: shadow.rect.y + (shadow.shift?.y ?? 0),
+    },
+    page,
+  ).map(Math.round) as Bbox;
   // Without a clip (an element on no page) only the page cuts it.
-  const clip = edges(shadow.clip ?? page, page).map(Math.round) as Bbox;
+  const clip = edges(shadow.paintClip ?? shadow.clip ?? page, page).map(
+    Math.round,
+  ) as Bbox;
   const grow = (shadow.spread ?? 0) + 1.5 * (shadow.blur ?? 0);
   const [dx = 0, dy = 0] = [shadow.offsetX, shadow.offsetY];
   const sliced = shadow.sliced ?? [];
@@ -399,8 +445,10 @@ function shadowStrips(shadow: PaintedBox, page: Rect): Bbox[] {
 }
 
 /**
- * Where Chrome paints something laid out at `layout` (page px): an <img>, a
- * background (`box`) or a ::before/::after box (`pseudo`) with each edge
+ * Where Chrome paints something laid out at `layout` (page px, already
+ * moved by the element's paint-containment frame's shift (T08-7) when it
+ * has one): an <img>, a background (`box`) or a ::before/::after box
+ * (`pseudo`) with each edge
  * rounded; an <svg> from its rounded origin at its own size, clipped to its
  * rounded box.
  */
