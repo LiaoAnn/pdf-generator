@@ -1,7 +1,7 @@
 // Without `<!doctype html>` Chrome prints a template in quirks mode (tables
 // fall back to the default 16px text, pages split differently), unlike the
 // browser preview its author designed in, so the upload requires it.
-import type { PackIssue } from './issues.ts';
+import type { CheckIssue } from './issues.ts';
 import { position } from './text.ts';
 
 // What may come before the doctype, one piece at a time:
@@ -22,7 +22,7 @@ const doctype = /<!doctype[\t\n\f\r ]+html[\t\n\f\r ]*>/iy;
  * ASCII whitespace, HTML comments or Handlebars comments. One issue, at the
  * first character that is neither (an unclosed comment's start).
  */
-export function doctypeIssues(text: string, file: string): PackIssue[] {
+export function doctypeIssues(text: string, file: string): CheckIssue[] {
   let offset = 0;
   skippable.lastIndex = 0;
   while (skippable.test(text)) offset = skippable.lastIndex;

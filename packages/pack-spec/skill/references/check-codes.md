@@ -16,6 +16,7 @@
 | `text-encoding` | A text file that isn't UTF-8 | Save as UTF-8 |
 | `rules-invalid` | Unknown `type`, missing `min`/`max`/`lang`, `min > max`, a path in `of`/`part`/`whole` that names no numeric field | Compare with §2's table; paths go from the root with `[]` after arrays |
 | `sample-invalid` | `sample.json` doesn't match the rules (length, range, check digit, `null` without `blankProbability`, missing or extra key) | Regenerate it with the engine (SKILL.md, step 4) after every rules change |
+| `template-doctype` | No `<!doctype html>` at the very start: missing, a legacy (HTML 4) doctype, or something before it, even a no-break space or a `{{#if}}` | Make `<!doctype html>` the template's first line; only blank lines and comments may come before it (§3) |
 | `template-syntax` | Unclosed `{{#if}}`/`{{#each}}`, a stray `}}` | Balance the blocks |
 | `template-unsupported` | `{{{raw}}}`, `{{> partial}}`, a helper other than `eq`, `lookup`, `number`, `rocDate` (`formatDate`, `add`, `inc`), a `rocDate` `format=` not in §3's list | Use the subset (§3); derive values in the rules, write fixed numbering as text |
 | `template-unknown-field` | `{{field}}` that the rules don't define (typo, wrong scope inside `{{#each}}`: use `{{../x}}` or `@root.x`) | Match the rules' keys |

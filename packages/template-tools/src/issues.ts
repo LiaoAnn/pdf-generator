@@ -53,6 +53,7 @@ export const packIssueCodes = [
   'path-invalid',
   'rules-invalid',
   'sample-invalid',
+  'template-doctype',
   'template-render',
   'template-structure',
   'template-syntax',
