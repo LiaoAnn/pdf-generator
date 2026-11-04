@@ -278,6 +278,31 @@ describe('SVG files: CSS repeating gradients', () => {
   });
 
   it.each([
+    [
+      'css-escape for an escape in <style>',
+      `<style>div { background: url(da\\74 a:x); }</style>`,
+      'css-escape',
+      '\\74',
+    ],
+    [
+      'asset-dynamic for var() in image-set() in a style attribute',
+      `<foreignObject width="40" height="10"><div xmlns="http://www.w3.org/1999/xhtml" style="background:image-set(var(--x) 1x)"></div></foreignObject>`,
+      'asset-dynamic',
+      'var(',
+    ],
+  ])(
+    'refuses %s (they keep the URL reading sound)',
+    (_, inner, issueCode, at) => {
+      refused(pack({ [svgFile]: svg(inner) }), [at], { issueCode });
+    },
+  );
+
+  it('accepts editor metadata in prefixed attributes (not CSS to Chrome)', () => {
+    const file = `<svg ${ns} xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" inkscape:export-filename="C:\\Users\\designer\\logo.png" inkscape:label="repeating-linear-gradient(x)" viewBox="0 0 40 10"><rect width="40" height="10" fill="#000"/></svg>`;
+    accepted(pack({ [svgFile]: file }));
+  });
+
+  it.each([
     ['in an XML comment', `<!-- <style>div{background:${stripes}}</style> -->`],
     ['in <text>', `<text y="8">${stripes}</text>`],
     [
@@ -443,6 +468,10 @@ describe('SVG files: linear time', () => {
     ['DOCTYPE brackets', `<!DOCTYPE svg ${fill('"[')}`],
     ['style text chunks', svg(`<style>${fill('a<![CDATA[b]]>')}</style>`)],
     ['attributes', svg(`<g ${fill('a="b" ')}/>`)],
+    [
+      'a srcset comma run followed by more URL',
+      svg(`<image srcset="x${fill(',')}x,"/>`),
+    ],
   ])('reads 64 KiB of %s about as fast as plain markup', (_, file) => {
     const files = pack({ [svgFile]: file });
     const plain = pack({ [svgFile]: baseline });

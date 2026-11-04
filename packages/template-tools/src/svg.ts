@@ -145,6 +145,8 @@ function decodeEntities(
 
 /** One attribute of a start tag, once the tag has been read. */
 type Attribute = {
+  /** Whether the name has a namespace prefix (`xlink:href`). */
+  prefixed: boolean;
   /** The name as written, without a prefix. */
   local: string;
   /** The value with character references decoded (tab/LF/CR count). */
@@ -352,7 +354,7 @@ function readText(report: Report, text: string, level: number): void {
       issue(
         'pack-too-complex',
         at,
-        `data:image/svg+xml images nested more than ${maxSvgNesting} deep: the check reads at most ${maxSvgNesting} levels; put the inner image into the pack as a file`,
+        `data:image/svg+xml images nested more than ${maxSvgNesting} deep: the check reads at most ${maxSvgNesting} levels; draw the inner image's shapes in the image around it (an SVG image loads no pack file)`,
       );
       return;
     }
@@ -421,11 +423,10 @@ function readText(report: Report, text: string, level: number): void {
       const close = text.indexOf(quote, j + 1);
       const vend = close < 0 || close > stop ? stop : close;
       if (name === 'href') {
-        checkUrl(
-          text.slice(j + 1, vend),
-          'stylesheet',
-          offset => j + 1 + offset,
-        );
+        // Chrome decodes character references in pseudo-attribute values
+        // (&#100;ata: is data:), as in an attribute.
+        const href = decodeEntities(text.slice(j + 1, vend), j + 1);
+        checkUrl(href.decoded, 'stylesheet', offset => href.rawOf[offset] ?? n);
       }
       j = vend + 1;
     }
@@ -516,6 +517,7 @@ function readText(report: Report, text: string, level: number): void {
       }
       if (name !== '') {
         attrs.push({
+          prefixed: name.includes(':'),
           local: localName(name),
           value,
           rawOf,
@@ -575,7 +577,9 @@ function readText(report: Report, text: string, level: number): void {
         }
         continue;
       }
-      checkCss(attr.value, attr.rawOf);
+      // A prefixed attribute (inkscape:export-filename="C:\…") is never
+      // CSS to Chrome: style and presentation attributes have no namespace.
+      if (!attr.prefixed) checkCss(attr.value, attr.rawOf);
     }
     if (!closed) {
       stack.push({ style: local === 'style', css: [], map: [] });

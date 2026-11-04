@@ -32,8 +32,13 @@ export function srcsetUrls(value: string): Reference[] {
     const start = i;
     while (i < value.length && !/[\t\n\f\r ]/.test(value[i] ?? '')) i++;
     let url = value.slice(start, i);
-    if (url.endsWith(',')) url = url.replace(/,+$/, '');
-    else while (i < value.length && value[i] !== ',') i++;
+    if (url.endsWith(',')) {
+      // A backward scan, not /,+$/: that regex retries the comma run from
+      // each comma in it (quadratic on `x,,,…,x,`).
+      let end = url.length;
+      while (end > 0 && url.charCodeAt(end - 1) === 0x2c) end--;
+      url = url.slice(0, end);
+    } else while (i < value.length && value[i] !== ',') i++;
     if (url !== '') urls.push({ url, offset: start });
   }
   return urls;

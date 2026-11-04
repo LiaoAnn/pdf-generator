@@ -12,7 +12,7 @@
 | `file-too-large` | Web upload only: one file over 16 MiB, or one text file over 64 KiB (§8) | Smaller images; a `{{#each}}` instead of copied rows |
 | `pack-text-too-large` | Web upload only: the text files over 256 KiB together (§8) | A `{{#each}}` over rows, not copied rows |
 | `pack-check-failed` | Web upload only: `checkPack` itself threw on this pack (a platform fault, not a rule you broke); the message carries the error | Report the zip to the platform maintainers; meanwhile change whatever unusual construct the message points at |
-| `pack-too-complex` | Nesting too deep to check (rules or template; `data:image/svg+xml` images more than 8 deep) | Flatten nested `object`/`array` fields and nested blocks |
+| `pack-too-complex` | Nesting too deep to check (rules or template; `data:image/svg+xml` images more than 8 deep) | Flatten nested `object`/`array` fields and nested blocks; draw a nested SVG image's shapes in the image around it |
 | `path-invalid` | A file path with `..`, `./`, a leading `/`, a backslash | Plain relative `/`-separated paths |
 | `manifest-missing` | No `manifest.json` at the root (zipped the folder, not its contents) | Put `manifest.json` at the pack root |
 | `manifest-invalid` | A missing, misspelled or unknown key; an `id` not kebab-case | Copy the minimal example's manifest and edit values only (§1) |
@@ -33,7 +33,7 @@
 | `asset-external` | A URL leaving the pack (`https://…`, a web font) | Put the file in the pack and reference it relatively, or use a platform font |
 | `asset-path` | A root-relative (`/img.png`) or escaping (`../../x`) URL, an `@import` of a file outside the pack | Relative to the referring file, inside the pack |
 | `asset-missing` | A referenced file that isn't in the pack | Add it and list it in `files.assets` |
-| `asset-data` | A `data:` URL used as a stylesheet, also inside an SVG image (`<?xml-stylesheet?>`, `@import`, `<link>`) | Make it a real `.css` file listed in `files.styles` |
+| `asset-data` | A `data:` URL used as a stylesheet, also inside an SVG image (`<?xml-stylesheet?>`, `@import`, `<link>`) | Make it a real `.css` file listed in `files.styles`; inside an SVG, put its rules in the SVG's `<style>` (an SVG image loads no pack file) |
 | `asset-dynamic` | A `src`/`href`/`srcset` or CSS URL built from data (`src="img/{{kind}}.png"`) | Write each path out and choose between them with `{{#if}}` |
 | `asset-stylesheet-type` | A `<link rel="stylesheet">` or `@import` pointing to an image or font file (`.png`, `.jpg`, `.woff2`, `.ttf`, …) | Keep stylesheets in `.css` files and point to those |
 | `css-escape` | A backslash escape in CSS (`content: "\25A1"`, `\5FAE`) | Write the character itself; files are UTF-8 |

@@ -206,6 +206,7 @@ describe('data:image/svg+xml inside SVG files', () => {
     ['data:text/xml', `data:text/xml;base64,${base64(repeat)}`],
     ['no MIME type', `data:;base64,${base64(repeat)}`],
     ['image/png', `data:image/png;base64,${base64(repeat)}`],
+    ['a longer subtype', `data:image/svg+xml-extra;base64,${base64(repeat)}`],
   ])('accepts %s', (_, url) => {
     accepted(image(url));
   });
@@ -270,6 +271,11 @@ describe('data: stylesheets inside SVG files', () => {
     ],
   ])('refuses %s (Chrome applies it), at the URL', (_, file) => {
     refusedAt(file, black, 'asset-data');
+  });
+
+  it('refuses an xml-stylesheet href a character reference starts (Chrome decodes it)', () => {
+    const file = `<?xml-stylesheet type="text/css" href="&#100;${black.slice(1)}"?>\n${pad}`;
+    refusedAt(file, '&#100;', 'asset-data');
   });
 
   it('accepts an xml-stylesheet of a pack file (an SVG image loads nothing)', () => {
