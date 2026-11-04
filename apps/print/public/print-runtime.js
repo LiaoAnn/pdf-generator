@@ -1447,16 +1447,81 @@
     );
   }
 
+  // Runs `read` with every content-visibility: auto element laid out, as
+  // Chrome prints it (T08-9): away from the viewport Chrome skips the
+  // contents of an auto element (innerText leaves out its text, layout gives
+  // it its skipped size, contain-intrinsic-size or 0), while printing lays
+  // all of it out. Chrome lays out content that is part of the selection,
+  // synchronously, so this selects the whole body (nested auto elements and
+  // ones under user-select: none included), as ground truth's readAsPrinted
+  // does, and puts the selection it found back exactly: none stays none, a
+  // selection keeps its anchor and focus, so a backward one stays backward.
+  // `read` may answer with a promise: the selection persists across its
+  // awaits, which clippedContent's IntersectionObserver needs, and goes back
+  // only when the promise settles. A select/restore round trip doesn't
+  // change what prints (probed on local Chromium: PDFs byte-identical).
+  /**
+   * @template T
+   * @param {() => T} read
+   * @returns {T}
+   */
+  function readAsPrinted(read) {
+    const selection = document.getSelection();
+    /** @type {{ anchorNode: Node, anchorOffset: number, focusNode: Node, focusOffset: number } | null} */
+    const saved =
+      selection !== null &&
+      selection.rangeCount > 0 &&
+      selection.anchorNode !== null &&
+      selection.focusNode !== null
+        ? {
+            anchorNode: selection.anchorNode,
+            anchorOffset: selection.anchorOffset,
+            focusNode: selection.focusNode,
+            focusOffset: selection.focusOffset,
+          }
+        : null;
+    if (selection !== null && document.body !== null) {
+      selection.selectAllChildren(document.body);
+    }
+    const restore = () => {
+      if (selection === null) return;
+      selection.removeAllRanges();
+      if (saved !== null) {
+        selection.setBaseAndExtent(
+          saved.anchorNode,
+          saved.anchorOffset,
+          saved.focusNode,
+          saved.focusOffset,
+        );
+      }
+    };
+    let result;
+    try {
+      result = read();
+    } catch (error) {
+      restore();
+      throw error;
+    }
+    // An asynchronous read keeps the selection across its awaits, so the
+    // selection goes back only when its promise settles.
+    if (result instanceof Promise) {
+      return /** @type {T} */ (result.finally(restore));
+    }
+    restore();
+    return result;
+  }
+
   // What the PDF shows, measured in print media (lib.ts emulates it at the
   // page size), once before and once after printing: the data-gt boxes,
   // fonts, animations, the checks of the page boxes, the table rows and the
   // data-gt text, and the scale guard's ink. Paged.js leaves stylesheets that
   // apply in one medium only live (`media="screen"`, data-pagedjs-ignore,
   // `@media all and (…)`), so these and the ground truth, which lib.ts reads
-  // right after, must not be read on screen (T07-20).
+  // right after, must not be read on screen (T07-20). All of it reads with
+  // content-visibility: auto laid out, as it prints (T08-9).
   /** @param {{ pageWidth: number }} options */
-  async function printed({ pageWidth }) {
-    return {
+  function printed({ pageWidth }) {
+    return readAsPrinted(async () => ({
       animations: animations(),
       viewportDependent: viewportDependent(),
       unloadedFaces: unloadedFaces(),
@@ -1473,7 +1538,7 @@
       // rect, refused with text_zero_width (T07-30); zeroHeightText: text
       // with no rect height, refused with text_zero_height (T07-31).
       ...expectedText(),
-    };
+    }));
   }
 
   /** @type {(state: { pageCount: number, pageSize?: { width: number, height: number }, unloadedFaces: string[], movedBoxes?: string[], viewportDependent?: string[], animations?: string[], boxes?: string[], importLoop?: string[] }) => void} */
@@ -1491,14 +1556,15 @@
       loadPrintResources,
       printed,
       /** @param {number} [pageWidth] in print media: check the page boxes */
-      boxes: pageWidth => ({
-        boxes: layoutBoxes(),
-        viewportDependent: viewportDependent(),
-        animations: animations(),
-        ...(pageWidth === undefined
-          ? {}
-          : { movedBoxes: movedBoxes({ print: true, pageWidth }) }),
-      }),
+      boxes: pageWidth =>
+        readAsPrinted(() => ({
+          boxes: layoutBoxes(),
+          viewportDependent: viewportDependent(),
+          animations: animations(),
+          ...(pageWidth === undefined
+            ? {}
+            : { movedBoxes: movedBoxes({ print: true, pageWidth }) }),
+        })),
     },
     PagedConfig: {
       auto: true,
@@ -1513,6 +1579,11 @@
       /** @param {{ total: number }} flow */
       after: flow => {
         fillPageNumbers(flow.total);
+        // Read as Paged.js paginated, with content-visibility: auto content
+        // still skipped — not as printed: content that grows past its page
+        // only in print mustn't count as outside here, so that printed()'s
+        // outsidePages() still reports it and the print is refused as
+        // print_overflow (T08-9).
         outsideOnScreen = new Set(outsidePages().keys());
         resolveReady({
           pageCount: flow.total,
@@ -1523,8 +1594,10 @@
           viewportDependent: [
             ...new Set([...sourceViewportDependent, ...viewportDependent()]),
           ].slice(0, 50),
-          // On screen, at the viewport Paged.js paginated at.
-          boxes: layoutBoxes(),
+          // On screen, at the viewport Paged.js paginated at, laid out as
+          // Chrome prints (T08-9): lib.ts compares these boxes across
+          // viewports.
+          boxes: readAsPrinted(() => layoutBoxes()),
         });
       },
     },
