@@ -35,7 +35,7 @@ const packIssues: Record<string, string> = {
     'zip 裡有不合規定的檔案路徑（例如以 / 開頭、含有 .. 或反斜線）。請只放樣板包資料夾裡的相對路徑。',
   'pack-too-large': '樣板包解壓縮後超過 20 MB。請縮小圖片或字型檔再上傳。',
   'pack-too-complex':
-    '樣板包的巢狀結構太深，無法檢查。請減少 HTML、JSON 或 Handlebars 區塊的層數。',
+    '樣板包的巢狀結構太深，無法檢查。請減少 HTML、JSON 或 Handlebars 區塊的層數；data:image/svg+xml 圖片最多只能包 8 層。',
   'pack-too-many-files': '樣板包裡的檔案超過 200 個。請刪掉用不到的檔案。',
   'file-too-large':
     '這個文字檔超過 64 KB（樣板、CSS、JSON、SVG 等文字檔各自的上限）。請拆小或精簡內容。',
@@ -51,7 +51,8 @@ const packIssues: Record<string, string> = {
     'manifest.json 列出了這個檔案，但樣板包裡沒有。請補上檔案或修正路徑。',
   'file-unlisted':
     '樣板包裡有這個檔案，但 manifest.json 沒有列出。請把它加進 manifest，或從樣板包刪掉。',
-  'text-encoding': '這個檔案不是 UTF-8 文字。請用 UTF-8 編碼另存後再上傳。',
+  'text-encoding':
+    '這個檔案不是 UTF-8 文字。請用 UTF-8 編碼另存後再上傳。SVG 檔與 data:image/svg+xml 圖片也必須是 UTF-8，不能宣告其他編碼（encoding、charset）。',
   'json-syntax':
     '這個 JSON 檔有語法錯誤（例如多了逗號、少了引號或括號）。請在指出的位置修正。',
   'rules-invalid':
@@ -73,7 +74,7 @@ const packIssues: Record<string, string> = {
   'html-active':
     '樣板裡有會執行程式或自動跳轉的內容（例如 <script>、onclick、meta refresh）。樣板包不能帶程式，請移除。',
   'html-unsupported':
-    '樣板用到列印文件不需要的 HTML 元素或屬性。請改用一般的版面元素。',
+    '樣板用到列印文件不需要的 HTML 元素或屬性。請改用一般的版面元素。SVG 檔或 data:image/svg+xml 圖片的 DOCTYPE 若有 [ … ] 內部宣告，Chrome 會套用平台讀不到的實體與屬性，請刪掉 [ … ] 那段。',
   'gt-unmarked':
     '這段會印出來的內容沒有標上 data-gt，標準答案會漏掉它。請把它放進有 data-gt 的元素裡。',
   'gt-type':
@@ -100,7 +101,7 @@ const packIssues: Record<string, string> = {
   'asset-missing':
     '樣板或 CSS 引用的檔案不在樣板包裡。請補上檔案，或修正路徑的大小寫與拼字。',
   'asset-data':
-    '樣板引用了 data: 網址的內容。請把檔案放進樣板包，用相對路徑引用。',
+    '樣式表不能是 data: 網址（SVG 圖片裡的 xml-stylesheet、@import 與 <link> 也一樣）。請把檔案放進樣板包，用相對路徑引用；SVG 圖片裡的樣式請寫在它的 <style> 裡。',
   'asset-dynamic':
     '檔案路徑是用 Handlebars 動態組出來的，平台無法確認檔案存在。請改用固定的路徑。',
   'asset-stylesheet-type':
@@ -110,7 +111,7 @@ const packIssues: Record<string, string> = {
   'css-page-box':
     'CSS 動到了 Paged.js 的頁面元素（.pagedjs_*），或改了 html／body 的邊界、內距、框線、定位或變形。這會讓 PDF 印出的位置和標準答案對不上。請用 @page 設定頁邊界，html／body 的這些屬性維持 0 或 none。',
   'css-repeating-gradient':
-    'CSS 的 repeating-linear-gradient 和 repeating-radial-gradient（或 SVG 漸層的 spreadMethod="repeat"／"reflect"）印成 PDF 後，自我檢查用的 pdf.js 會讀錯：條紋讀成整塊黑色或整塊空白，同心圓環變成雜亂的花紋，標準答案因此對不上。請改用 SVG 的 <rect> 或 <circle> 畫條紋和圓環，或用以 pt 為單位的固定大小 linear-gradient 平鋪，例如 background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%。',
+    'CSS 的 repeating-linear-gradient 和 repeating-radial-gradient（或 SVG 漸層的 spreadMethod="repeat"／"reflect"）印成 PDF 後，自我檢查用的 pdf.js 會讀錯：條紋讀成整塊黑色或整塊空白，同心圓環變成雜亂的花紋，標準答案因此對不上。請改用 SVG 的 <rect> 或 <circle> 畫條紋和圓環，或用以 pt 為單位的固定大小 linear-gradient 平鋪，例如 background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%。樣板包裡的 SVG 檔與 data:image/svg+xml 圖片也會照樣印出，所以裡面也不能有這些寫法；問題在 data: 圖片裡時，位置指向那個網址。',
   'css-import-cycle':
     'CSS 檔案用 @import 繞成一圈（例如 a.css 引用 b.css，b.css 又引用 a.css，或檔案引用自己）。Paged.js 會一直重複載入，印到逾時也印不出來。每個位置是圈上的一個 @import，原始訊息依序列出整圈的檔案；請拿掉其中一個 @import 打斷循環。',
   'css-import-expansion':

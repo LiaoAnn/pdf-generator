@@ -14,6 +14,7 @@ import { templateHtml } from './html.ts';
 import type { CheckIssue, PackIssueCode } from './issues.ts';
 import { markIssues } from './marks.ts';
 import { policyIssues } from './policy.ts';
+import { svgIssues } from './svg.ts';
 import { decode, jsonPosition, parseJson } from './text.ts';
 
 export type { PackFiles } from './files.ts';
@@ -187,6 +188,15 @@ function check(
         message: `${path} is in the pack but not listed in manifest.json`,
       });
     }
+  }
+
+  // T06-13: every .svg file of the pack, referenced or not, prints as an
+  // image whose gradients the self-check's renderer can misread; Chrome
+  // reads it as XML, so the check does too (svg.ts).
+  for (const path of Object.keys(files)) {
+    if (!/\.svg$/i.test(path)) continue;
+    const bytes = files[path];
+    if (bytes !== undefined) issues.push(...svgIssues(path, bytes));
   }
 
   const templateText = text(template);

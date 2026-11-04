@@ -303,6 +303,9 @@ describe('template author error explanations', () => {
     expect.soft(text).toContain('reflect');
     // Why: the self-check's renderer misreads the stripes.
     expect.soft(text).toContain('pdf.js');
+    // T06-13: SVG files and data: SVG images are checked too.
+    expect.soft(text).toContain('SVG 檔');
+    expect.soft(text).toContain('data:image/svg+xml');
     expect.soft(text).toMatch(/黑/);
     expect.soft(text).toMatch(/空白/);
     expect.soft(text).toContain('標準答案');
