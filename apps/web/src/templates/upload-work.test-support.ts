@@ -27,11 +27,36 @@ const typedArray = Object.getPrototypeOf(Uint8Array.prototype) as {
 };
 
 /**
+ * `copy`, recording in `read` how far into it anything reads, and refusing
+ * reads past `limit` so a scan that would read all of it stops at once.
+ */
+function watched(copy: Uint8Array, limit: number, read: { bytes: number }) {
+  return new Proxy(copy, {
+    get(target, key) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) {
+        read.bytes = Math.max(read.bytes, Number(key) + 1);
+        if (read.bytes > limit) {
+          throw new Error(`read byte ${key}, past the first ${limit}`);
+        }
+      }
+      const value: unknown = Reflect.get(target, key);
+      return typeof value === 'function' ? value.bind(target) : value;
+    },
+  });
+}
+
+/**
  * Runs `run` with every seam wrapped to count, and restores them after.
  * Copies through `set` can't be told apart from fflate's own, about five
- * times the stream, so they aren't counted.
+ * times the stream, so they aren't counted. With `readLimit`, every copy
+ * `steps.concat` makes is watched: `read` is how far into one anything
+ * read, and reading past `readLimit` throws.
  */
-export function countWork<T>(run: () => T): { result: T; work: Work } {
+export function countWork<T>(
+  run: () => T,
+  { readLimit }: { readLimit?: number } = {},
+): { result: T; work: Work; read: number } {
+  const read = { bytes: 0 };
   const work: Work = {
     tables: 0,
     inflaters: 0,
@@ -63,7 +88,8 @@ export function countWork<T>(run: () => T): { result: T; work: Work } {
   };
   steps.concat = (chunks, size) => {
     work.concatenated += size;
-    return concat(chunks, size);
+    const copy = concat(chunks, size);
+    return readLimit === undefined ? copy : watched(copy, readLimit, read);
   };
   typedArray.slice = function (start, end) {
     const copy = slice.call(this, start, end);
@@ -71,7 +97,7 @@ export function countWork<T>(run: () => T): { result: T; work: Work } {
     return copy;
   };
   try {
-    return { result: run(), work };
+    return { result: run(), work, read: read.bytes };
   } finally {
     tables.create = create;
     steps.inflater = inflater;

@@ -4,6 +4,7 @@ import { constants, crc32, deflateRawSync, inflateRawSync } from 'node:zlib';
 import { strToU8, zipSync } from 'fflate';
 import { expect, test } from 'vitest';
 import { unzipBounded } from './unzip.ts';
+import { countWork } from './upload-work.test-support.ts';
 
 /** One zip entry as stored in the zip: deflated when non-empty. */
 type Part = { name: string; stream: Uint8Array; method: 0 | 8; crc: number };
@@ -171,18 +172,19 @@ function emptyBlock(bits: Bits, kind: BlockKind, final: boolean) {
     bits.put(0, wide ? 15 : 1); // sole EOB code
   }
 }
+/** Bits in one of `emptyBlock`'s blocks of `kind`. */
+const blockBits = (kind: BlockKind) =>
+  kind === 'dynamic-1'
+    ? 94
+    : kind === 'dynamic-15'
+      ? 111
+      : kind === 'fixed'
+        ? 10
+        : 40;
 function bomb(kind: BlockKind): Uint8Array {
   const bits = new Bits();
-  const blockBits =
-    kind === 'dynamic-1'
-      ? 94
-      : kind === 'dynamic-15'
-        ? 111
-        : kind === 'fixed'
-          ? 10
-          : 40;
   // Leave room for the normal pack + ZIP headers below the HTTP 10 MiB cap.
-  const count = Math.floor(((10 * 1024 * 1024 - 16_384) * 8) / blockBits);
+  const count = Math.floor(((10 * 1024 * 1024 - 16_384) * 8) / blockBits(kind));
   for (let i = 0; i < count; i++) emptyBlock(bits, kind, i === count - 1);
   return bits.bytes();
 }
@@ -221,27 +223,43 @@ function accepted(zip: Uint8Array, data: Uint8Array) {
   expect(digest(actual)).toBe(digest(data));
 }
 
+// These refusals were timed (500 ms), which could fail under load (T09-6),
+// so their work is counted instead: fflate inflating the bomb and building
+// tables for each empty block (2-4.4 s), what the 500 ms caught, makes an
+// inflater, and a scan that goes on past the block budget reads too far.
+
 test.each<BlockKind>(['dynamic-1', 'dynamic-15', 'fixed', 'stored'])(
-  'refuses the %s empty-block CPU bomb in workerd within 500 ms',
+  'refuses the %s empty-block CPU bomb after reading nine of its blocks, inflating nothing',
   kind => {
     const stream = bomb(kind);
-    // Exclude ZIP construction from the measured refusal time.
-    const zip = zipped(stream);
-    const start = performance.now();
-    const result = unzipBounded(zip, 20 * 1024 * 1024);
-    const elapsed = performance.now() - start;
+    // An entry that declares no output may have eight blocks: the scan
+    // refuses it as the ninth starts. It may read nine blocks at most, and
+    // the three bytes after them that it peeks at to read a code.
+    const readLimit = Math.ceil((9 * blockBits(kind)) / 8) + 3;
+    const { result, work, read } = countWork(
+      () => unzipBounded(zipped(stream), 20 * 1024 * 1024),
+      { readLimit },
+    );
+    expect(read).toBeLessThanOrEqual(readLimit);
     expect(result).toMatchObject({
       issue: { code: 'zip-too-many-blocks', file: 'payload.bin' },
     });
-    // Only nine empty blocks need parsing to refuse; 500 ms leaves ample VM
-    // scheduling headroom while catching the measured 2-4.4 s table churn.
-    expect(elapsed).toBeLessThan(500);
+    // Three tables for each of the eight dynamic blocks, plus the two
+    // fixed ones; the stream is copied once, to scan it, and never inflated.
+    expect(work.tables).toBeLessThanOrEqual(3 * 8 + 2);
+    expect(work).toMatchObject({
+      inflaters: 0,
+      pushed: 0,
+      inflated: 0,
+      concatenated: stream.length,
+      sliced: 0,
+    });
   },
   30_000,
 );
 
 test.each(['content', 'empty'] as const)(
-  'ignores 9.9 MiB of padding after a final %s deflate block within 500 ms',
+  'ignores 9.9 MiB of padding after a final %s deflate block, inflating only the block',
   kind => {
     const data =
       kind === 'content'
@@ -259,15 +277,23 @@ test.each(['content', 'empty'] as const)(
     // compressed size includes the trailing padding, all below the upload cap.
     const zip = zipped(stream, data);
     expect(zip.byteLength).toBeLessThan(10 * 1024 * 1024);
-    const start = performance.now();
-    const result = unzipBounded(zip, 20 * 1024 * 1024);
-    const elapsed = performance.now() - start;
+    const { result, work } = countWork(() =>
+      unzipBounded(zip, 20 * 1024 * 1024),
+    );
     expect(result).not.toHaveProperty('issue');
     if (!('files' in result)) throw new Error(JSON.stringify(result));
     expect(result.files['payload.bin']).toEqual(data);
-    // Feeding the trailing bytes to fflate recopies the unconsumed remainder
-    // on every 8 KiB push (~1.4 s); ignoring them leaves ample VM headroom.
-    expect(elapsed).toBeLessThan(500);
+    // Pushing the padding into fflate would copy what it hasn't consumed
+    // again on every 8 KiB push (~1.4 s): only the final block goes in. The
+    // stream is copied once, to scan it, and the contents once.
+    expect(work.tables).toBeLessThanOrEqual(3 + 2);
+    expect(work).toMatchObject({
+      inflaters: 1,
+      pushed: finalBlock.length,
+      inflated: data.length,
+      concatenated: stream.length + data.length,
+      sliced: 0,
+    });
   },
   30_000,
 );
