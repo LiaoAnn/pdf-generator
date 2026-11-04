@@ -66,13 +66,40 @@ function splitList(text: string): string[] {
 }
 
 /**
+ * `/\([^)]*\)|\[[^\]]*\]/g` replaced with `'()'`: each `(` to its first `)`
+ * and each `[` to its first `]` becomes `()`, the rest is kept. A loop, not
+ * the regex: that regex retries an opening without a closer from every
+ * later opening of its kind (quadratic on a selector of `(`); the
+ * lastIndexOf bounds tell this loop in one look that no closer is left.
+ */
+function collapsePairs(selector: string): string {
+  const lastParen = selector.lastIndexOf(')');
+  const lastBracket = selector.lastIndexOf(']');
+  let out = '';
+  let i = 0;
+  while (i < selector.length) {
+    const c = selector[i];
+    if (c === '(' && i < lastParen) {
+      out += '()';
+      i = selector.indexOf(')', i + 1) + 1;
+    } else if (c === '[' && i < lastBracket) {
+      out += '()';
+      i = selector.indexOf(']', i + 1) + 1;
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
  * Whether a selector's subject (its last compound) is the root element, the
  * body or every element: `html`, `body.x`, `html > body`, `:root`, `*`. Not
  * a pseudo-element, which is a box of its own.
  */
 function selectsRoot(selector: string): boolean {
-  const compound = selector
-    .replace(/\([^)]*\)|\[[^\]]*\]/g, '()')
+  const compound = collapsePairs(selector)
     .trim()
     .split(/\s*[>+~]\s*|\s+/)
     .at(-1);

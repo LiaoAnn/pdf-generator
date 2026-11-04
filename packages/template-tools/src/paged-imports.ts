@@ -24,9 +24,63 @@ export type PagedImport = {
 /**
  * The rewrite RunningHeaders.beforeTreeParse applies to the whole text
  * (comments and strings included) before parsing, because CSSTree reads
- * `element(x)` as the non-standard element-reference syntax.
+ * `element(x)` as the non-standard element-reference syntax. Its regex was
+ * /element[\s]*\(([^|^#)]*)\)/g; the scanner below makes the same matches.
  */
-const elementRewrite = /element[\s]*\(([^|^#)]*)\)/g;
+const elementNameLength = 'element'.length;
+
+/** JavaScript's `\s`: Unicode spaces and line terminators, exactly as `[\s]`. */
+const jsSpace = /\s/;
+
+/** Characters that stop an element(…) argument: `|`, `^`, `#` or `)`. */
+const argumentStops = '|^#)';
+
+/** One match of the element rewrite: the `e`, its `(` and the `)`. */
+type ElementMatch = { start: number; paren: number; close: number };
+
+/**
+ * Every match of the element rewrite in `css`, in matchAll order, in
+ * linear time. The regex retried each failed start one character later, so
+ * every `element(` whose argument runs to a `|`, `^` or `#` (or the end)
+ * instead of a `)` was rescanned from every `element` in it, once per
+ * opening per stop character — quadratic on such a run. `stopAt`
+ * remembers the stop character of the last argument read: a later
+ * `element(` inside that argument would run to the same character, so it is
+ * reused, not rescanned.
+ */
+function elementMatches(css: string): ElementMatch[] {
+  const matches: ElementMatch[] = [];
+  let stopAt = -1;
+  let i = 0;
+  while (i < css.length) {
+    const start = css.indexOf('element', i);
+    if (start < 0) break;
+    // Each try's whitespace run is its own: no `element` lies inside one.
+    let paren = start + elementNameLength;
+    while (paren < css.length && jsSpace.test(css[paren] ?? '')) paren++;
+    if (css[paren] !== '(') {
+      i = start + 1;
+      continue;
+    }
+    const argumentStart = paren + 1;
+    let close = argumentStart;
+    if (argumentStart <= stopAt) {
+      // Everything before stopAt is an argument character.
+      close = stopAt;
+    } else {
+      while (close < css.length && !argumentStops.includes(css[close] ?? ''))
+        close++;
+      stopAt = close;
+    }
+    if (css[close] === ')') {
+      matches.push({ start, paren, close });
+      i = close + 1;
+    } else {
+      i = start + 1;
+    }
+  }
+  return matches;
+}
 
 /** "element-ident" without its parenthesis. */
 const elementIdentLength = 'element-ident'.length;
@@ -44,16 +98,20 @@ export function pagedImports(css: string): PagedImport[] {
   // element-ident(…), keeping the argument; record each span so offsets
   // from the parsed text can point back into `css`.
   const rewrites: { start: number; white: number; argLength: number }[] = [];
-  for (const match of css.matchAll(elementRewrite)) {
-    const whole = match[0] as string;
-    const argument = match[1] as string;
+  // The rewritten text, as `css.replace(elementRewrite, 'element-ident($1)')`.
+  let text = '';
+  let at = 0;
+  for (const match of elementMatches(css)) {
+    const argument = css.slice(match.paren + 1, match.close);
     rewrites.push({
-      start: match.index,
-      white: whole.length - 'element'.length - argument.length - 2,
+      start: match.start,
+      white: match.paren - match.start - elementNameLength,
       argLength: argument.length,
     });
+    text += `${css.slice(at, match.start)}element-ident(${argument})`;
+    at = match.close + 1;
   }
-  const text = css.replace(elementRewrite, 'element-ident($1)');
+  text += css.slice(at);
 
   let ast: csstree.CssNode;
   try {

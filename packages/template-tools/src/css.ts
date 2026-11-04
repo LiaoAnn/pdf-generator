@@ -170,6 +170,22 @@ function scan(css: string): {
 
 const facePattern = /@font-face\s*\{[^}]*\}/gi;
 
+/**
+ * The text up to and including its last `}`. A facePattern match always
+ * ends at a `}`, so no start past that last one can match and every
+ * earlier match lies whole inside the head: on the head the regex sees
+ * the same matches, at the same offsets, in one pass. On the whole text
+ * it retries the scan for `}` from every later `@font-face`, quadratic
+ * on a run of unclosed `@font-face{`.
+ */
+const faceHead = (css: string) => css.slice(0, css.lastIndexOf('}') + 1);
+
+/** `css` with its @font-face rules dropped: `.replace(facePattern, '')`. */
+const withoutFaces = (css: string) => {
+  const head = faceHead(css);
+  return head.replace(facePattern, '') + css.slice(head.length);
+};
+
 /** Family name as compared: unquoted, whitespace collapsed, lower case. */
 const normalize = (name: string) =>
   name.replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -189,28 +205,30 @@ const isSlanted = (value: string) => /\b(?:italic|oblique)\b/i.test(value);
 export function fontFaces(
   css: string,
 ): ({ family: string; name: string; offset: number } & FaceKind)[] {
-  return [...withoutComments(css).matchAll(facePattern)].flatMap(match => {
-    const descriptor = (name: string) =>
-      new RegExp(`${name}\\s*:\\s*([^;}]+)`, 'i').exec(match[0])?.[1];
-    const family = descriptor('font-family');
-    // normal, bold, a number or a range of two numbers (a variable face).
-    const weights = (descriptor('font-weight') ?? 'normal')
-      .trim()
-      .split(/\s+/)
-      .map(token => (/^bold$/i.test(token) ? 700 : Number(token) || 400));
-    return family === undefined
-      ? []
-      : [
-          {
-            family: normalize(family),
-            name: family.replace(/["']/g, '').trim(),
-            offset: match.index,
-            regular: Math.min(...weights) < 600,
-            bold: Math.max(...weights) >= 600,
-            slanted: isSlanted(descriptor('font-style') ?? ''),
-          },
-        ];
-  });
+  return [...faceHead(withoutComments(css)).matchAll(facePattern)].flatMap(
+    match => {
+      const descriptor = (name: string) =>
+        new RegExp(`${name}\\s*:\\s*([^;}]+)`, 'i').exec(match[0])?.[1];
+      const family = descriptor('font-family');
+      // normal, bold, a number or a range of two numbers (a variable face).
+      const weights = (descriptor('font-weight') ?? 'normal')
+        .trim()
+        .split(/\s+/)
+        .map(token => (/^bold$/i.test(token) ? 700 : Number(token) || 400));
+      return family === undefined
+        ? []
+        : [
+            {
+              family: normalize(family),
+              name: family.replace(/["']/g, '').trim(),
+              offset: match.index,
+              regular: Math.min(...weights) < 600,
+              bold: Math.max(...weights) >= 600,
+              slanted: isSlanted(descriptor('font-style') ?? ''),
+            },
+          ];
+    },
+  );
 }
 
 /** A trailing `!important` on a declaration value (any case, spaced `!`). */
@@ -221,7 +239,7 @@ const importantSuffix = /!\s*important\s*$/i;
  * (or oblique): font-weight, font-style and the font shorthand.
  */
 export function fontRequests(css: string): { bold: boolean; slanted: boolean } {
-  const text = withoutComments(css).replace(facePattern, '');
+  const text = withoutFaces(withoutComments(css));
   let bold = false;
   let slanted = false;
   for (const match of text.matchAll(
@@ -247,7 +265,7 @@ export function usedFamilies(css: string): {
   families: Set<string>;
   shorthandFirsts: string[];
 } {
-  const text = withoutComments(css).replace(facePattern, '');
+  const text = withoutFaces(withoutComments(css));
   const families = new Set<string>();
   const shorthandFirsts: string[] = [];
   // Custom properties count too: `--body: Report` used as var(--body).
