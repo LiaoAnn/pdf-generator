@@ -11,9 +11,11 @@
 // same way, so this reads it recursively, nesting bounded) and applies a
 // data: stylesheet (<?xml-stylesheet?>, @import, XHTML <link> — refused as
 // asset-data), while it loads no other URL: every other URL in the file
-// prints nothing (the T06-16 probe: 21 cases of nested <image>/<feImage>/
-// <use>/XHTML <img>, all blank), so the attribute that would load it is
-// refused as asset-svg-nested. Issues found inside a nested image are
+// prints nothing (the T06-16 probes: 21 cases of nested <image>/<feImage>/
+// <use>/XHTML <img>, plus stylesheets and CSS url()/@font-face urls, all
+// blank and never fetched), so every non-data:, non-#id reference is
+// refused as asset-svg-nested (an <a> href and a <script>'s attributes
+// load nothing to refuse). Issues found inside a nested image are
 // reported once, at the data: URL as written in this file.
 //
 // One iterative pass over the text: no recursion over element depth, and
@@ -320,9 +322,10 @@ function readText(report: Report, text: string, level: number): void {
    * the URL parser sees it: tab, LF and CR dropped anywhere, C0 controls
    * and spaces trimmed at the ends. `stylesheet` is an @import, <link> or
    * <?xml-stylesheet?> URL. An SVG image loads no other URL: `nestedRef`
-   * — true only where the element's attribute would load an image —
-   * refuses every non-data:, non-#id URL (it prints nothing), a nested
-   * data: image is read recursively, a stylesheet refused. `rawAt` maps an
+   * — true everywhere a load could be attempted (every call but an <a>
+   * href/src and a <script>'s, which never load) — refuses every
+   * non-data:, non-#id URL (it prints nothing), a nested data: image is
+   * read recursively, a data: stylesheet refused. `rawAt` maps an
    * offset in `url` to one in `text`.
    */
   const checkUrl = (
@@ -344,6 +347,8 @@ function readText(report: Report, text: string, level: number): void {
       parsed.slice(0, 5).toLowerCase() !== 'data:' &&
       !parsed.startsWith('#')
     ) {
+      // An <image> href, a CSS url()/@import, an xml-stylesheet PI or a
+      // <link> href alike: the probe (T06-16) shows no fetch for any.
       issue('asset-svg-nested', at, svgNestedRefMessage(parsed));
       return;
     }
@@ -400,15 +405,16 @@ function readText(report: Report, text: string, level: number): void {
         reference.url,
         reference.kind === 'stylesheet' ? 'stylesheet' : 'image',
         offset => at(reference.offset + offset),
+        true,
       );
     }
   };
 
   /**
    * The pseudo-attributes of an xml-stylesheet processing instruction
-   * ([j, stop), before the ?>): an SVG image applies its stylesheet, so a
-   * data: href is refused. Located in the raw text: a PI has no character
-   * references.
+   * ([j, stop), before the ?>): inside an SVG image its stylesheet never
+   * loads, so the href is refused (a data: one as asset-data, which Chrome
+   * applies). Located in the raw text: a PI has no character references.
    */
   const stylesheetPi = (j: number, stop: number) => {
     while (j < stop) {
@@ -443,7 +449,12 @@ function readText(report: Report, text: string, level: number): void {
         // Chrome decodes character references in pseudo-attribute values
         // (&#100;ata: is data:), as in an attribute.
         const href = decodeEntities(text.slice(j + 1, vend), j + 1);
-        checkUrl(href.decoded, 'stylesheet', offset => href.rawOf[offset] ?? n);
+        checkUrl(
+          href.decoded,
+          'stylesheet',
+          offset => href.rawOf[offset] ?? n,
+          true,
+        );
       }
       j = vend + 1;
     }
@@ -583,11 +594,11 @@ function readText(report: Report, text: string, level: number): void {
     for (const attr of attrs) {
       const rawAt = (offset: number) => attr.rawOf[offset] ?? n;
       if (attr.local === 'href' || attr.local === 'src') {
-        // Not <a> (its href is a hyperlink, never a load), <script> (it
-        // never runs) or <link> (a stylesheet): the attribute loads an
-        // image, which inside an SVG image prints nothing.
-        const nestedRef =
-          local !== 'a' && local !== 'script' && local !== 'link';
+        // Not <a> (its href is a hyperlink, never a load) or <script> (it
+        // never runs): in every other case the attribute would load, a
+        // <link>'s stylesheet included, and inside an SVG image that load
+        // never happens (T06-16 probe).
+        const nestedRef = local !== 'a' && local !== 'script';
         checkUrl(
           attr.value,
           local === 'link' ? 'stylesheet' : 'image',

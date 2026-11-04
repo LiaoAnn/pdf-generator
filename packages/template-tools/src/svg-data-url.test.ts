@@ -278,8 +278,16 @@ describe('data: stylesheets inside SVG files', () => {
     refusedAt(file, '&#100;', 'asset-data');
   });
 
-  it('accepts an xml-stylesheet of a pack file (an SVG image loads nothing)', () => {
-    accepted(`<?xml-stylesheet type="text/css" href="style.css"?>\n${pad}`);
+  it('refuses an xml-stylesheet of a pack file as asset-svg-nested (an SVG image loads it not, T06-16)', () => {
+    const file = `<?xml-stylesheet type="text/css" href="style.css"?>\n${pad}`;
+    expect(checkPack(pack(file)).issues).toEqual([
+      {
+        code: 'asset-svg-nested',
+        file: svgFile,
+        ...position(file, file.indexOf('style.css')),
+        message: expect.stringMatching(/\S/),
+      },
+    ]);
   });
 });
 
