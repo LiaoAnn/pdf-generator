@@ -312,7 +312,7 @@ async function deletePrefix(
 
 /**
  * `DELETE /batch/<batch>`: everything the batch stored, its completion
- * records, its upload indexes and its uploaded files. Idempotent: an empty
+ * records, its uploaded files and its upload indexes. Idempotent: an empty
  * batch deletes nothing.
  */
 export async function deleteBatchPack(
@@ -322,8 +322,10 @@ export async function deleteBatchPack(
   // The completion records first: a print that starts meanwhile then
   // answers pack_not_uploaded rather than finding some files gone.
   await deletePrefix(store, `batch-complete/${batch}/`);
-  await deletePrefix(store, `batch-index/${batch}/`);
+  // The upload indexes last: the sweep finds an upload only by its index,
+  // so files whose delete failed would never be swept without it.
   await deletePrefix(store, `batch/${batch}/`);
+  await deletePrefix(store, `batch-index/${batch}/`);
 }
 
 /**
@@ -369,8 +371,10 @@ export async function sweepBatchPacks(
       // The completion record first: a print that starts meanwhile then
       // answers pack_not_uploaded rather than finding some files gone.
       await store.delete(batchCompleteKey(batch, digest));
-      await store.delete(key);
+      // The index last: files whose delete failed stay findable by the
+      // next sweep only by it.
       await deletePrefix(store, `batch/${batch}/${digest}/`);
+      await store.delete(key);
     }
   } catch (error) {
     console.warn('The batch-pack sweep failed:', error);

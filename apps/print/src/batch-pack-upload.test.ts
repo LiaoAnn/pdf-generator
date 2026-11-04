@@ -5,6 +5,7 @@
 import { Buffer } from 'node:buffer';
 import { expect, test } from 'vitest';
 import {
+  deleteBatchPack,
   PackNotUploadedError,
   publishBatchFiles,
   sweepBatchPacks,
@@ -190,4 +191,50 @@ test('the sweep leaves nothing of an expired upload, and its prints refuse', asy
   await expect(print(bucket, digest)).rejects.toBeInstanceOf(
     PackNotUploadedError,
   );
+});
+
+/** `bucket`, except that a delete including the pack file `path` fails. */
+function failingDelete(bucket: Bucket, path: string): Bucket {
+  return {
+    ...bucket,
+    delete: async keys => {
+      if ([keys].flat().some(key => key.endsWith(`/${path}`))) {
+        throw new Error(`deleting ${path} failed`);
+      }
+      return bucket.delete(keys);
+    },
+  };
+}
+
+// Regression (T07-5 review): ending a batch deleted its upload index before
+// its files, so files whose delete failed were never found by the sweep.
+test('files a failed batch end could not delete are deleted by a later sweep', async () => {
+  const bucket = memoryBucket();
+  const digest = await upload(bucket);
+  await expect(
+    deleteBatchPack(failingDelete(bucket, 'styles/report.css'), batch),
+  ).rejects.toThrow('deleting styles/report.css failed');
+  // The batch has ended: its prints refuse, though files are left.
+  await expect(print(bucket, digest)).rejects.toBeInstanceOf(
+    PackNotUploadedError,
+  );
+  bucket.clock.now += 26 * hour;
+  await sweepBatchPacks(bucket, bucket.clock.now);
+  expect(bucket.keys()).toEqual([]);
+});
+
+test('files a failed sweep could not delete are deleted by the next sweep', async () => {
+  const bucket = memoryBucket();
+  const digest = await upload(bucket);
+  bucket.clock.now += 26 * hour;
+  // Never throws: it runs in the background after an upload.
+  await sweepBatchPacks(
+    failingDelete(bucket, 'styles/report.css'),
+    bucket.clock.now,
+  );
+  await expect(print(bucket, digest)).rejects.toBeInstanceOf(
+    PackNotUploadedError,
+  );
+  await sweepBatchPacks(bucket, bucket.clock.now);
+  expect(bucket.keys()).toEqual([]);
 });
