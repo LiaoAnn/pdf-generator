@@ -1,13 +1,21 @@
-// Stylesheet readers on the upload path whose regexes retried an unclosed
-// run from every opening, quadratic in the run (T06-15): `@font-face{`
+// Readers on the upload path whose regexes retried an unclosed run from
+// every opening, quadratic in the run (T06-15): in stylesheets `@font-face{`
 // without `}`, a selector's `(` or `[` without its close, `element(` without
-// `)` (or cut short by `|`, `^` or `#`). The first blocks pin what each
-// reader finds around unclosed openings, so a linear rewrite changes no
-// check result; the last reads 64 KiB of openings about as fast as plain
-// CSS. Backtracking inside one regex call is invisible to a work count
-// (css-work.test-support.ts), so these compare times taken in the same run.
+// `)` (or cut short by `|`, `^` or `#`); in the template a data-gt-id's `{{`
+// without `}}`. Each reader's results around unclosed openings are pinned,
+// so a linear rewrite changes no check result, and it reads 64 KiB of
+// openings about as fast as plain input. Backtracking inside one regex call
+// is invisible to a work count (css-work.test-support.ts), so these compare
+// times taken in the same run.
+import { manifestSchema, rulesSchema } from '@pdf-generator/contract';
+import { recordSchema } from '@pdf-generator/fake-data';
 import { describe, expect, it } from 'vitest';
+import { withHead } from '../fixtures/document.ts';
 import { fontFaces, fontRequests, usedFamilies } from './css.ts';
+import { parseTemplate } from './fill.ts';
+import { templateHtml } from './html.ts';
+import { checkPack, type PackFiles } from './index.ts';
+import { markIssues } from './marks.ts';
 import { pageBoxProblems } from './page-box.ts';
 import { pagedImports } from './paged-imports.ts';
 
@@ -175,5 +183,76 @@ describe('unclosed runs: linear time', () => {
     // A linear reader stays within a few times the plain sheet; one that
     // retries the run from each opening is thousands of times slower here.
     expect(craftedMs).toBeLessThan(Math.max(baseMs, 1) * 20);
+  });
+});
+
+describe('data-gt-id literals around {{ … }}', () => {
+  const pack = (template: string): PackFiles => {
+    const rules = rulesSchema.parse({
+      schemaVersion: 1,
+      fields: { x: { type: 'name' }, y: { type: 'name' } },
+    });
+    const manifest = manifestSchema.parse({
+      schemaVersion: 1,
+      id: 'gt-id',
+      name: '區塊編號',
+      page: { size: 'A4', orientation: 'portrait' },
+      files: {
+        template: 'templates/report.hbs',
+        styles: [],
+        rules: 'data/rules.json',
+        sample: 'data/sample.json',
+        assets: [],
+      },
+    });
+    return {
+      'manifest.json': JSON.stringify(manifest),
+      'templates/report.hbs': withHead(template),
+      'data/rules.json': JSON.stringify(rules),
+      'data/sample.json': JSON.stringify(
+        recordSchema(rules).parse({ x: '王小明', y: '李大華' }),
+      ),
+    };
+  };
+
+  it.each<[string, string, boolean]>([
+    ['an expression between letters', 'a{{x}}b', true],
+    ['each expression on its own, not one span', '{{x}}é{{y}}', false],
+    ['60 letters after an expression', `{{x}}${'a'.repeat(60)}`, true],
+    ['61 letters after an expression', `{{x}}${'a'.repeat(61)}`, false],
+    ['an escaped, unclosed {{', 'a\\{{b', false],
+  ])('reads %s', (_, id, valid) => {
+    const { issues } = checkPack(
+      pack(`<p data-gt="paragraph" data-gt-id="${id}">{{x}}{{y}}</p>`),
+    );
+    expect(issues.some(issue => issue.code === 'gt-id')).toBe(!valid);
+  });
+
+  it('reads a 64 KiB data-gt-id of escaped {{ about as fast as one that closes', () => {
+    const escapes = '\\{{'.repeat(Math.floor((64 * 1024) / 3));
+    // checkPack's own steps, timing only the marks check: Handlebars' parse
+    // of 21,000 escapes takes ~60 ms, as long as the quadratic literal.
+    const marks = (id: string) => {
+      const source = withHead(
+        `<p data-gt="paragraph" data-gt-id="${id}">{{x}}</p>`,
+      );
+      const { ast } = parseTemplate(source, 'report.hbs');
+      if (ast === undefined) throw new Error('the template must parse');
+      const html = templateHtml(source, ast);
+      return () => markIssues(source, html, 'report.hbs');
+    };
+    const crafted = marks(escapes);
+    // The same escapes closed at the end: one span, read once.
+    const closed = marks(`${escapes}}}`);
+    const best = [Infinity, Infinity];
+    for (let run = 0; run < 5; run++) {
+      [crafted, closed].forEach((read, i) => {
+        const start = performance.now();
+        read();
+        best[i] = Math.min(best[i] ?? Infinity, performance.now() - start);
+      });
+    }
+    const [craftedMs = 0, closedMs = 0] = best;
+    expect(craftedMs).toBeLessThan(Math.max(closedMs, 1) * 20);
   });
 });

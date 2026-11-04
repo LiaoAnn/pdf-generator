@@ -51,6 +51,24 @@ const detailOf: Record<string, string> = {
 /** T08 suffixes a repeated id with -2, -3, …; gt.json ids are 1-64 long. */
 const maxIdLength = 60;
 
+/** Every Handlebars expression in a data-gt-id. */
+const expressions = /\{\{[\s\S]*?\}\}/g;
+
+/**
+ * A data-gt-id with every `{{…}}` expression removed, as
+ * `value.replace(expressions, '')` gives it. The regex reads only through
+ * the value's last `}}` and the tail is appended unchanged: a match needs
+ * a `}}` after its `{{`, so none can start past the last `}}` in the
+ * value, and one starting before it ends at the first `}}` after it,
+ * inside the head. The lazy regex alone retries the scan for `}}` from
+ * each later `{{` (quadratic on a run of escaped `\{{`).
+ */
+const idLiteral = (value: string) => {
+  const close = value.lastIndexOf('}}');
+  const head = close < 0 ? 0 : close + 2;
+  return value.slice(0, head).replace(expressions, '') + value.slice(head);
+};
+
 /** Whitespace in source text, including the no-break space as an entity. */
 const blank = /^(?:\s|&nbsp;|&#160;|&#x0*a0;)*/i;
 
@@ -352,7 +370,7 @@ export function markIssues(
 
       const id = attributeOf(element, 'data-gt-id');
       if (id !== undefined) {
-        const literal = id.value.replace(/\{\{[\s\S]*?\}\}/g, '');
+        const literal = idLiteral(id.value);
         if (id.value === '') {
           report('gt-id', at('data-gt-id'), 'data-gt-id is empty');
         } else if (
