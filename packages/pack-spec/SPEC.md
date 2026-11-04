@@ -353,6 +353,77 @@ html, body {
 }
 ```
 
+- **No repeating linear gradients** (`css-repeating-gradient`). Chromium prints `repeating-linear-gradient()` and SVG gradients with `spreadMethod="repeat"` or `"reflect"` as a function-based PDF shading; pdf.js, the self-check's renderer, samples it once per stripe, so the stripes read as solid black or blank depending on where the element sits on the page, and the `ink` check (§9) compares the ground truth with a drawing that isn't on the page (a correct block is refused, or a wrong one passes). `checkPack` refuses, everywhere the print reads CSS — every stylesheet in `files.styles` and those they `@import` or the template `<link>`s, every `<style>` in the template (also in `{{#if}}`/`{{else}}` branches and `<template>`), `style` attributes on HTML and SVG elements, and SVG presentation attributes (`fill="…"`); also inside `@media`, `@supports` and `@layer`, in custom properties (`--stripes: …`) and inside other functions and properties (`image-set()`, `mask-image`, `border-image`) — both of:
+  - any `repeating-linear-gradient(` function, in any case, with any vendor prefix (`-webkit-repeating-linear-gradient(`), or spelled with CSS escapes (`repeating-linear-gradi\65nt(`, which is also `css-escape`). The name in a comment or a string, or followed by a space before the `(`, is not a function and passes;
+  - `spreadMethod="repeat"` or `"reflect"` on an SVG `<linearGradient>` or `<radialGradient>`, in any case, quoted or not, with spaces around it, or written with character references (`&#114;epeat`). Chrome has no CSS property for it.
+
+  Data can't produce either form: `{{…}}` inside a `style` attribute, an SVG attribute or a `<style>` element is already `template-structure` (§3), so no field value becomes CSS.
+
+  Don't rely on the check's limits: it over-refuses two unusual spellings — the name as a hash token (`#repeating-linear-gradient(`) and an SVG attribute value that looks like the function (`id="repeating-linear-gradient(x)"`), which you rename — and it doesn't read SVG files in `files.assets` or `data:image/svg+xml` images, where the same gradient misprints the same way, so the rule holds there too.
+
+  Draw stripes with SVG `<rect>` elements, or with a plain `linear-gradient` repeated as a fixed-size tile: `background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%`. Size tiles in pt: a tile in px (the upload message's example says `4px`) prints its stripes about a third dark instead of half, in both renderers, so the PDF differs from the screen, though the self-check still agrees.
+
+  Plain `linear-gradient`, `radial-gradient` and SVG gradients with `spreadMethod="pad"` (the default) print the same in pdf.js and in a second renderer (PDFium) and are safe. Two forms pass the check but are not to be used: `repeating-radial-gradient`, which pdf.js misreads the same way (it draws the rings as a scrambled pattern, measuring 0.31 dark against PDFium's 0.50), and `conic-gradient` / `repeating-conic-gradient`, which print as a pattern fill the self-check can't measure yet, so a text-free block drawn only with one fails `ink` (and `repeating-conic-gradient` printed as one black half instead of sectors).
+
+```css pack-error css-repeating-gradient
+.hatch {
+  background: repeating-linear-gradient(90deg, #000 0 2px, transparent 2px 4px);
+}
+```
+
+```html pack-error css-repeating-gradient
+<svg data-gt="image" viewBox="0 0 40 10" style="width: 120pt; height: 30pt">
+  <defs>
+    <linearGradient id="hatch" x2="0.1" spreadMethod="repeat">
+      <stop offset="0.5" stop-color="#000"/>
+      <stop offset="0.5" stop-color="#fff"/>
+    </linearGradient>
+  </defs>
+  <rect width="40" height="10" fill="url(#hatch)"/>
+</svg>
+```
+
+```html pack-error css-repeating-gradient
+<svg data-gt="image" viewBox="0 0 40 10" style="width: 120pt; height: 30pt">
+  <defs>
+    <radialGradient id="rings" r="0.1" spreadMethod="reflect">
+      <stop offset="0" stop-color="#000"/>
+      <stop offset="1" stop-color="#fff"/>
+    </radialGradient>
+  </defs>
+  <rect width="40" height="10" fill="url(#rings)"/>
+</svg>
+```
+
+```html pack-ok
+<svg data-gt="image" viewBox="0 0 40 10" preserveAspectRatio="none" style="width: 120pt; height: 30pt; display: block">
+  <rect x="0" width="2" height="10" fill="#000"/>
+  <rect x="4" width="2" height="10" fill="#000"/>
+  <rect x="8" width="2" height="10" fill="#000"/>
+  <rect x="12" width="2" height="10" fill="#000"/>
+  <rect x="16" width="2" height="10" fill="#000"/>
+  <rect x="20" width="2" height="10" fill="#000"/>
+  <rect x="24" width="2" height="10" fill="#000"/>
+  <rect x="28" width="2" height="10" fill="#000"/>
+  <rect x="32" width="2" height="10" fill="#000"/>
+  <rect x="36" width="2" height="10" fill="#000"/>
+</svg>
+```
+
+```css pack-ok
+.hatch {
+  background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4pt 100%;
+}
+
+.shade {
+  background: radial-gradient(#000, #fff);
+}
+
+.fade {
+  background: linear-gradient(90deg, #000, #fff);
+}
+```
+
 ## 6. Fonts
 
 Use the platform fonts by family name; they are always available and embedded in every PDF:
@@ -440,6 +511,7 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `css-escape` | Files the template or CSS loads |
 | `font-unused` | Fonts (§6) |
 | `css-page-box` | CSS that moves the printed page: Paged.js's elements, or the html/body box (§5) |
+| `css-repeating-gradient` | A gradient the self-check's renderer misreads: `repeating-linear-gradient()`, or SVG `spreadMethod` `repeat`/`reflect` (§5) |
 | `gt-unmarked`, `gt-nested`, `gt-type`, `gt-attribute`, `gt-id`, `gt-branch`, `gt-table`, `gt-checkbox`, `gt-formula`, `gt-image-text` | Marking (§4) |
 
 Passing the check is not the end: print a few records (the web app's preview, then a small batch) and read the self-check report. Something it flags is a defect of the pack.
