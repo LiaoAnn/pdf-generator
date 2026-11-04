@@ -1277,7 +1277,7 @@
 - **來源**：PR #116（T07-34）
 
 ### T10-5 規格書：禁止重複線性漸層
-- **目標**：Chromium 把 `repeating-linear-gradient` 與 SVG `<linearGradient spreadMethod="repeat|reflect">` 印成以週期函式畫的 function-based shading（ShadingType 1）；自我檢查用的 pdf.js 每個週期只取樣一次，條紋讀成全黑或全白，視元素在頁面上的位置而定（T14-11）。在 `packages/pack-spec` SPEC §5 加一條規則、§9 的代碼表與 `skill/references/check-codes.md` 加上 `css-repeating-gradient`，並寫出替代寫法：SVG `<rect>` 畫條紋、或固定大小的一般 `linear-gradient` 平鋪（`linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%`）；`repeating-radial-gradient`、`conic-gradient`、`repeating-conic-gradient` 與一般漸層兩個渲染器一致，不禁止
+- **目標**：Chromium 把 `repeating-linear-gradient` 與 SVG `<linearGradient>`／`<radialGradient>` 的 `spreadMethod="repeat|reflect"`（radial 由 T06-12 實測補上） 印成以週期函式畫的 function-based shading（ShadingType 1）；自我檢查用的 pdf.js 每個週期只取樣一次，條紋讀成全黑或全白，視元素在頁面上的位置而定（T14-11）。在 `packages/pack-spec` SPEC §5 加一條規則、§9 的代碼表與 `skill/references/check-codes.md` 加上 `css-repeating-gradient`，並寫出替代寫法：SVG `<rect>` 畫條紋、或固定大小的一般 `linear-gradient` 平鋪（`linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%`）；`repeating-radial-gradient`、`conic-gradient`、`repeating-conic-gradient` 與一般漸層兩個渲染器一致，不禁止
 - **Blocked by**：T06-12
 - **Blocks**：—
 - **撞車風險**：`packages/pack-spec`
