@@ -112,6 +112,14 @@ describe('pagedImports', () => {
       loads: [['b.css', '"b.css"']],
     },
     {
+      name: 'strings inside element() spans, after other rewrites',
+      css: 'p{a:element(x)}@import {p{content:element \n("a.css") element("b.css")}}',
+      loads: [
+        ['a.css', '"a.css"'],
+        ['b.css', '"b.css"'],
+      ],
+    },
+    {
       name: 'an import after element() inside a comment',
       css: '/* element(x) */@import "b.css";',
       loads: [['b.css', '"b.css"']],
