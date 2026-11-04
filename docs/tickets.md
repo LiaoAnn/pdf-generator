@@ -1275,3 +1275,36 @@
 - **驗收測試**：該測試不再依賴耗時比例；滿載 CPU 下連跑 40 次都過；故意改慢的實作仍會失敗
 - **不做**：改壓縮行為
 - **來源**：PR #116（T07-34）
+
+### T10-5 規格書：禁止重複線性漸層
+- **目標**：Chromium 把 `repeating-linear-gradient` 與 SVG `<linearGradient spreadMethod="repeat|reflect">` 印成以週期函式畫的 function-based shading（ShadingType 1）；自我檢查用的 pdf.js 每個週期只取樣一次，條紋讀成全黑或全白，視元素在頁面上的位置而定（T14-11）。在 `packages/pack-spec` SPEC §5 加一條規則、§9 的代碼表與 `skill/references/check-codes.md` 加上 `css-repeating-gradient`，並寫出替代寫法：SVG `<rect>` 畫條紋、或固定大小的一般 `linear-gradient` 平鋪（`linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%`）；`repeating-radial-gradient`、`conic-gradient`、`repeating-conic-gradient` 與一般漸層兩個渲染器一致，不禁止
+- **Blocked by**：T06-12
+- **Blocks**：—
+- **撞車風險**：`packages/pack-spec`
+- **驗收測試**：文件與 T06-12 的實際行為一致；skill 的範例片段仍通過 `skill.test.ts`；`pnpm compare-renderers` 對文件列出的替代寫法回報 agree
+- **不做**：改平台程式
+- **來源**：PR #117（T14-11）
+
+### T06-12 樣板工具：上傳時拒絕重複線性漸層
+- **目標**：checkPack 新增 `css-repeating-gradient`：拒絕 `files.styles` 的樣式表、範本裡的 `<style>` 與 `style` 屬性中任何 `repeating-linear-gradient(`（含 `-webkit-` 前綴、大小寫、CSS 跳脫寫法，`@media`／`@supports`／`@layer` 內也算），以及 SVG `<linearGradient>` 的 `spreadMethod="repeat"` 或 `"reflect"`（屬性與 CSS 皆是）。網站上傳說明（`apps/web/src/templates/explain.ts`）加中文說明，例如：「CSS 的 repeating-linear-gradient（或 SVG 漸層的 spreadMethod="repeat"／"reflect"）印成 PDF 後，自我檢查用的 pdf.js 會把條紋讀成整塊黑色或整塊空白，標準答案因此對不上。請改用 SVG 的 <rect> 畫條紋，或用固定大小的 linear-gradient 平鋪，例如 background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%。」
+- **Blocked by**：T14-11
+- **Blocks**：T10-5
+- **撞車風險**：`packages/template-tools` 的樣板包檢查、`apps/web` 的上傳說明
+- **驗收測試**：上面各種寫法（樣式表、`<style>`、`style` 屬性、前綴、跳脫、SVG 屬性與 CSS）都被擋且中文說明出現在上傳結果；`repeating-radial-gradient`、`conic-gradient`、一般 `linear-gradient` 與平鋪寫法照常通過；6 個樣板仍通過 checkPack；資料欄位填進 `style` 的值若能產生這種寫法，一併說明如何處理（擋下或列為已知限制）
+- **不做**：改自我檢查或 print Worker
+- **另外**：自我檢查的兩個測試 fixture 目前靠相位碰巧通過（`textless-geometry.html` 的 `#repeating-bars`、`textless-box.html` 的 `#barcode::before`），一併改用 SVG rect
+- **來源**：PR #117（T14-11）
+
+### T14-13 自我檢查：自己讀 function-based shading（T14-11 的方案 A，只在 pdf2tpl 產出需要重複漸層時才做）
+- **目標**：自我檢查遇到 pdf.js 的 FUNCTION_BASED mesh（ShadingType 1）時，不用 pdf.js 每單位一點的格點，而是從原始 PDF 讀出該 shading 的 `/Function`、`/Domain`、`/Matrix`，在墨跡取樣的每一點自己算顏色
+- **設計**：
+  1. 原始 shading 查找：重用 T14-10 `operations.ts` 的物件讀取（xref、解壓、resources），列出頁面（含 tiling pattern 與 soft mask 群組）用到的 ShadingType 1 字典；用 Domain×Matrix 算出的範圍對上 pdf.js mesh IR 的 `bounds`，再在 pdf.js 的格點上求值、與 IR 的頂點顏色比對，確認是同一個；對不上或有兩個以上候選就「無法量測」
+  2. Type 4（PostScript calculator）求值器：堆疊機，支援 PDF 32000 §7.10.5 的運算子（算術、關係、布林、`if`／`ifelse`、`copy`／`dup`／`exch`／`index`／`pop`／`roll`）；先編譯成指令陣列，每次求值有步數上限與堆疊深度上限（100）；以 Range 夾住輸出；Type 2／3 一併支援，Type 0 與其他「無法量測」
+  3. 墨跡取樣：`ink.ts` 對這種 paint 在每個四分之一點取樣點經反矩陣換回 shading 空間求值，soft mask 同理；求值步數計入 `maxInkWork`
+- **Blocked by**：T14-11
+- **Blocks**：—
+- **撞車風險**：`packages/self-check`
+- **估計**：正式程式 500–800 行（查找 150–250、求值器 250–350、取樣與預算 100–200），測試另計；求值器在 Worker 的正式路徑上，預期需要數輪 Security 審查
+- **驗收測試**：T14-11 的 15 種寫法裡，自我檢查的結果與 `pnpm compare-renderers` 的 PDFium 一致；T14-9 的 9 個重現案例仍被擋下；6 個樣板各 10 份仍通過，時間與 main 同一量級
+- **不做**：改樣板規格
+- **來源**：PR #117（T14-11）
