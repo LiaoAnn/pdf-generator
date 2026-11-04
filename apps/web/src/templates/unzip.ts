@@ -12,12 +12,18 @@
 import type { PackIssue } from '@pdf-generator/template-tools';
 import {
   type FlateError,
+  type FlateStreamHandler,
   Inflate,
   Unzip,
   type UnzipDecoder,
   unzipSync,
 } from 'fflate';
 import { scanDeflate } from './deflate-blocks.ts';
+
+/** Test seam: makes blockCheckedInflate()'s inflaters; upload-path.workerd.test.ts wraps them to count inflated bytes. */
+export const steps = {
+  inflater: (ondata: FlateStreamHandler) => new Inflate(ondata),
+};
 
 /** Input per step: one step inflates to at most ~1000 times this. */
 const slice = 8 * 1024;
@@ -133,7 +139,7 @@ function blockCheckedInflate(declared: ReadonlyMap<string, number>) {
       // Bytes after the final block are left out: fflate would copy them
       // again on every push, quadratic in their length.
       const deflated = stream.subarray(0, scan.length);
-      const inflate = new Inflate((data, last) =>
+      const inflate = steps.inflater((data, last) =>
         this.ondata(null, data, last),
       );
       try {
