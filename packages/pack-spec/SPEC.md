@@ -105,7 +105,7 @@ The engine draws only characters the platform fonts cover. Text you write yourse
 
 ## 3. The template
 
-One complete HTML document: `<!doctype html>`, `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>` outside every `{{#…}}` block (`template-structure` otherwise), then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
+One complete HTML document: `<!doctype html>` first, with only blank lines and comments before it (`template-doctype` otherwise: without it Chrome prints in quirks mode, where tables lose their font size and pages split differently), `<html lang="zh-Hant-TW">`, a `<head>` with `<meta charset="utf-8">` and an explicit `</head>` outside every `{{#…}}` block (`template-structure` otherwise), then `<body>`. The platform links the pack's stylesheets, in `files.styles` order, with `<link rel="stylesheet">` right before `</head>`, so don't link them yourself; their `url()`s resolve against each stylesheet's own path, as `checkPack` checks them.
 
 ### Handlebars
 
@@ -506,6 +506,7 @@ Exit 0: the pack passes; 1: it has issues (one per line, `file:line:column: code
 | `zip-invalid`, `pack-too-large`, `pack-too-complex`, `path-invalid` | The zip itself |
 | `manifest-missing`, `manifest-invalid`, `json-syntax`, `file-missing`, `file-unlisted`, `text-encoding` | Files and manifest (§1) |
 | `rules-invalid`, `sample-invalid` | Data (§2) |
+| `template-doctype` | The template doesn't start with `<!doctype html>` (§3) |
 | `template-syntax`, `template-unsupported`, `template-unknown-field`, `template-render`, `template-structure` | Handlebars (§3) |
 | `html-active`, `html-unsupported` | The allowlist (§3) |
 | `asset-external`, `asset-path`, `asset-missing`, `asset-data`, `asset-dynamic`, `asset-stylesheet-type`, `css-escape` | Files the template or CSS loads |

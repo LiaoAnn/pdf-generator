@@ -62,7 +62,9 @@ function rejected(
           line:
             issue.line === undefined
               ? undefined
-              : issue.line + (withHead(template) === template ? 0 : 1),
+              : issue.line +
+                withHead(template).split('\n').length -
+                template.split('\n').length,
           file: templateFile,
         }),
       ),

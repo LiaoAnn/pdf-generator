@@ -140,7 +140,7 @@ it.each(['i', 'em', 'cite', 'var', 'dfn', 'address'])(
   tag => {
     const files = readPack(join(fixtures, '27-semantic-italic/pack'));
     files['templates/report.hbs'] = new TextEncoder().encode(
-      `<head></head>\n<${tag} data-gt="paragraph">Report</${tag}>\n`,
+      `<!doctype html><head></head>\n<${tag} data-gt="paragraph">Report</${tag}>\n`,
     );
     for (const input of [files, zipSync(files)]) {
       expectResult(checkPack(input), []);

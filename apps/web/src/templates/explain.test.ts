@@ -152,6 +152,7 @@ describe('template author error explanations', () => {
     'template-structure',
     'template-unknown-field',
     'template-unsupported',
+    'template-doctype',
     'html-active',
     'html-unsupported',
     'gt-unmarked',
@@ -282,6 +283,35 @@ describe('template author error explanations', () => {
     expect.soft(text).toMatch(/頁面大小|紙張大小|紙張尺寸|頁面尺寸/);
     expect.soft(text).toContain('PDF');
     expect.soft(text).toContain('標準答案');
+  });
+
+  test('upload doctype refusals say what to write first and why the PDF differs without it', () => {
+    const raw = 'the template must start with <!doctype html>';
+    const result = invalid([
+      {
+        code: 'template-doctype',
+        file: 'templates/report.hbs',
+        line: 1,
+        column: 1,
+        message: raw,
+      },
+    ]);
+    expect(result.issues).toHaveLength(1);
+    const issue = result.issues[0];
+    expect(issue?.code).toBe('template-doctype');
+    expect(issue?.raw).toBe(raw);
+    expect(issue?.location).toContain('templates/report.hbs');
+    const text = issue?.explanation;
+    expect(text).toMatch(cjk);
+    expect(text).not.toBe(fallback());
+    // What to write, and where: first, after only blank lines or comments.
+    expect.soft(text).toContain('<!doctype html>');
+    expect.soft(text).toMatch(/第一行|最前面|開頭/);
+    expect.soft(text).toMatch(/註解/);
+    // Why: quirks mode lays the page out differently from the preview.
+    expect.soft(text).toMatch(/相容模式|quirks/i);
+    expect.soft(text).toMatch(/表格/);
+    expect.soft(text).toMatch(/分頁|版面/);
   });
 
   test('upload repeating-gradient refusals explain the pdf.js misread and both alternatives', () => {

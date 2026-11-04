@@ -137,8 +137,16 @@ describe('printed-document element and attribute allowlist', () => {
       'rel',
     ],
     ['link rel missing', '<link href="logo.svg">', '<link'],
-    ['input image type', '<input data-gt="field" type="image">', 'type'],
-    ['input submit type', '<input data-gt="field" type="submit">', 'type'],
+    [
+      'input image type',
+      '<input data-gt="field" type="image">',
+      'type="image"',
+    ],
+    [
+      'input submit type',
+      '<input data-gt="field" type="submit">',
+      'type="submit"',
+    ],
   ])(
     'rejects %s at the offending attribute or element',
     (_name, template, token) => {
