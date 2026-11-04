@@ -18,6 +18,7 @@ import {
 import { scaledPages } from './pdf-scale.ts';
 import { prepareHtml } from './prepare.ts';
 import type { PrintRequest } from './request.ts';
+import { sharedContextIds } from './session.ts';
 import { stablePdf } from './stable-pdf.ts';
 
 export {
@@ -34,7 +35,7 @@ export {
 } from './request.ts';
 export {
   closeIdleSessions,
-  connectSession,
+  closeSession,
   type OpenBrowserOptions,
   type OpenedBrowser,
   openBrowser,
@@ -251,14 +252,15 @@ export interface RenderOptions<T> {
   inspect?: (page: PrintPage) => Promise<T>;
   timeoutMs?: number;
   /**
-   * An opaque key naming a browser context the prints it reaches share, kept
-   * on this browser between requests: each runs on its own tab of it, with
-   * the HTTP cache on, and closes only its tab. Without it each print runs
-   * in a fresh context of its own. The key must name
-   * everything a cached response could leak across (the caller builds it):
-   * the browser session, the asset origin, and the batch and pack digest.
+   * The browser session and the key naming a browser context the prints it
+   * reaches share, kept on this browser between requests: each runs on its
+   * own tab of it, with the HTTP cache on, and closes only its tab. Without
+   * it each print runs in a fresh context of its own. The key must name
+   * everything a cached response could leak across beyond the session (the
+   * caller builds it): the asset origin, and the batch and pack digest. A
+   * session's entries die with the session.
    */
-  sharedContext?: string;
+  sharedContext?: { session: string; key: string };
 }
 
 export interface RenderResult<T> {
@@ -403,38 +405,35 @@ function printContext(
 }
 
 /**
- * The browser contexts prints sent the same `sharedContext` key share, kept
- * on their browser between requests: the key to the promise of the
- * context's id. The context itself is found back through
- * `browser.browserContexts()` each time: it survives this connection's
- * disconnect (puppeteer lists contexts that already existed when it
- * connected), while a context object kept here would not survive a
- * reconnect to the same browser session.
- */
-const sharedContexts = new Map<string, Promise<string>>();
-
-/**
- * The context prints with `sharedContext` key `key` share on `browser`,
- * created with `printContext` on first use (one creation for concurrent
- * prints, through the memoized promise). If it is gone (the browser session
- * it lived on was replaced), a new one replaces its entry.
+ * The context the prints of the kept-alive `session` with `sharedContext`
+ * key `key` share on `browser`, created with `printContext` on first use
+ * (one creation for concurrent prints, through the memoized promise the
+ * session's map of `sharedContextIds` holds). The context itself is found
+ * back through `browser.browserContexts()` each time: it survives this
+ * connection's disconnect (puppeteer lists contexts that already existed
+ * when it connected), while a context object kept here would not survive a
+ * reconnect to the same browser session. If the context is gone (the
+ * browser session it lived on was replaced), a new one replaces its entry;
+ * the session's whole map goes when the session ends.
  */
 async function sharedPrintContext(
   browser: Browser,
   origin: string,
+  session: string,
   key: string,
 ): Promise<BrowserContext> {
-  const known = sharedContexts.get(key);
+  const ids = sharedContextIds(session);
+  const known = ids.get(key);
   if (known) {
     const id = await known.catch((error: unknown) => {
-      if (sharedContexts.get(key) === known) sharedContexts.delete(key);
+      if (ids.get(key) === known) ids.delete(key);
       throw error;
     });
     const context = browser.browserContexts().find(c => c.id === id);
     if (context) return context;
     // The session the context was on is gone; forget the entry so the key
     // doesn't pile it up, and create a new context below.
-    if (sharedContexts.get(key) === known) sharedContexts.delete(key);
+    if (ids.get(key) === known) ids.delete(key);
   }
   const created = printContext(browser, origin).then(context => {
     if (context.id === undefined) {
@@ -442,14 +441,14 @@ async function sharedPrintContext(
     }
     return context.id;
   });
-  sharedContexts.set(key, created);
+  ids.set(key, created);
   const id = await created.catch((error: unknown) => {
-    if (sharedContexts.get(key) === created) sharedContexts.delete(key);
+    if (ids.get(key) === created) ids.delete(key);
     throw error;
   });
   const context = browser.browserContexts().find(c => c.id === id);
   if (!context) {
-    if (sharedContexts.get(key) === created) sharedContexts.delete(key);
+    if (ids.get(key) === created) ids.delete(key);
     throw new Error('A just-created print context is not listed');
   }
   return context;
@@ -458,24 +457,30 @@ async function sharedPrintContext(
 /**
  * Prints one document on a new tab of `browser`. Without `sharedContext`
  * the print runs in a context of its own with the cache off, and both are
- * closed when it ends; with one, it runs on a new tab of the context that
- * key shares (its cache on), and only the tab is closed. Either way the
- * print's files are deleted from the store. A tab that requested anything
- * but its files fails with `request_blocked`, whatever else happened.
+ * closed when it ends; with one, it runs on a new tab of the context its
+ * session and key share (its cache on), and only the tab is closed. Either
+ * way the print's files are deleted from the store. A tab that requested
+ * anything but its files fails with `request_blocked`, whatever else
+ * happened.
  */
 export async function renderPdf<T = undefined>(
   browser: Browser,
   request: PrintRequest,
   options: RenderOptions<T>,
 ): Promise<RenderResult<T>> {
-  const sharedKey = options.sharedContext;
-  const context = sharedKey
-    ? await sharedPrintContext(browser, options.assetOrigin, sharedKey)
+  const shared = options.sharedContext;
+  const context = shared
+    ? await sharedPrintContext(
+        browser,
+        options.assetOrigin,
+        shared.session,
+        shared.key,
+      )
     : await printContext(browser, options.assetOrigin);
   const page = await context.newPage().catch(async (error: unknown) => {
     // A shared context a page can't be made in may be half-broken: forget
     // and close it, so the key's next print gets a new one.
-    if (sharedKey) sharedContexts.delete(sharedKey);
+    if (shared) sharedContextIds(shared.session).delete(shared.key);
     await context.close().catch(() => undefined);
     throw error;
   });
@@ -552,7 +557,7 @@ export async function renderPdf<T = undefined>(
     await page.close().catch(() => undefined);
     await files?.remove();
     // A shared context stays: the prints of its batch keep it cached.
-    if (!sharedKey) await context.close().catch(() => undefined);
+    if (!shared) await context.close().catch(() => undefined);
   }
 }
 

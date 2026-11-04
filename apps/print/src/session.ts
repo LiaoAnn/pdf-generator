@@ -57,6 +57,34 @@ function launch(
 const inUse = new Map<string, number>();
 const idleSince = new Map<string, number>();
 
+// The browser contexts prints on one kept-alive session share, by their
+// shared-context key: the promise of the context's id (the context itself
+// is found back through `browser.browserContexts()`, which survives a
+// reconnect to the same session while a context object would not). A
+// session's map is dropped when the session ends, so its entries never
+// outlive it.
+const sharedContexts = new Map<string, Map<string, Promise<string>>>();
+
+/**
+ * The browser contexts prints on this session share, by shared-context
+ * key: the promise of the context's id. Emptied when the session ends.
+ */
+export function sharedContextIds(
+  sessionId: string,
+): Map<string, Promise<string>> {
+  let ids = sharedContexts.get(sessionId);
+  if (ids === undefined) {
+    ids = new Map();
+    sharedContexts.set(sessionId, ids);
+  }
+  return ids;
+}
+
+/** Forgets the shared contexts of the ended session `id`. */
+function dropSharedContexts(id: string) {
+  sharedContexts.delete(id);
+}
+
 function claim(id: string) {
   inUse.set(id, (inUse.get(id) ?? 0) + 1);
   idleSince.delete(id);
@@ -72,7 +100,7 @@ function unclaim(id: string) {
  * Reconnects to a kept-alive session, retrying while a preceding disconnect
  * settles; undefined when the session can't be reached.
  */
-export async function connectSession(
+async function connectSession(
   binding: Binding,
   session: string,
 ): Promise<Browser | undefined> {
@@ -85,6 +113,21 @@ export async function connectSession(
       await sleep(delay);
     }
   }
+}
+
+/**
+ * Closes the kept-alive session `id`: answers false when it can't be
+ * reached. Either way its shared contexts are forgotten.
+ */
+export async function closeSession(
+  binding: Binding,
+  id: string,
+): Promise<boolean> {
+  const browser = await connectSession(binding, id);
+  dropSharedContexts(id);
+  if (!browser) return false;
+  await browser.close();
+  return true;
 }
 
 /**
@@ -115,6 +158,7 @@ export async function openBrowser(
       },
       discard: async () => {
         unclaim(sessionId);
+        dropSharedContexts(sessionId);
         await browser.close();
       },
     };
@@ -142,6 +186,12 @@ export async function closeIdleSessions(binding: Binding): Promise<void> {
   const now = Date.now();
   const listed = new Set(sessions.map(session => session.sessionId));
   for (const id of idleSince.keys()) if (!listed.has(id)) idleSince.delete(id);
+  // A session no longer listed and not in use ended elsewhere (its
+  // keep-alive ran out, another isolate closed it): forget what this
+  // isolate still holds for it.
+  for (const id of sharedContexts.keys()) {
+    if (!listed.has(id) && !inUse.has(id)) dropSharedContexts(id);
+  }
   const expired: string[] = [];
   for (const { sessionId, connectionId, connectionStartTime } of sessions) {
     if (inUse.has(sessionId)) continue;
@@ -170,6 +220,7 @@ export async function closeIdleSessions(binding: Binding): Promise<void> {
           return;
         }
         idleSince.delete(id);
+        dropSharedContexts(id);
         await browser.close();
       } catch (error) {
         console.warn(`closing idle browser session ${id} failed`, error);
