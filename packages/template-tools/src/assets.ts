@@ -11,6 +11,7 @@ import {
   scanCss,
   usedFamilies,
 } from './css.ts';
+import { repeatingLinearGradients } from './gradients.ts';
 import {
   attributeOf,
   decodedOffsets,
@@ -375,6 +376,16 @@ export function assetIssues(
         source,
         at(offset),
         'a backslash escape in CSS: write the character itself (packs are UTF-8)',
+      );
+    }
+    // T14-11: Chromium prints repeating-linear-gradient() as a shading the
+    // self-check's renderer misreads, whichever CSS context it prints in.
+    for (const offset of repeatingLinearGradients(css)) {
+      issue(
+        'css-repeating-gradient',
+        source,
+        at(offset),
+        'repeating-linear-gradient() prints as a shading the self-check reads once per stripe (solid black or blank): draw the stripes as SVG <rect> elements, or repeat a fixed-size linear-gradient, e.g. background: linear-gradient(90deg, #000 50%, transparent 50%) 0 0 / 4px 100%',
       );
     }
     if (rules) {
