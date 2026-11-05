@@ -51,8 +51,8 @@ describe('pagedImports offset mapping: linear in the stylesheet', () => {
       css: fill('a{--x:element \t(x);}', half) + fill('@import "x.css";', half),
     },
     {
-      // A string under nested @imports is mapped once for each of them
-      // (paged-imports.test.ts pins the lookups that go back a span).
+      // A string under nested @imports loads once for each of them, and is
+      // mapped once (T06-19).
       name: 'element() rules, then imports nested in import blocks',
       css: fill(rule, half) + fill('@import { @import "x.css"; }', half),
       loadsEach: 2,
@@ -66,12 +66,12 @@ describe('pagedImports offset mapping: linear in the stylesheet', () => {
     const loaded = pagedImports(css);
     const visited = pagedImportWork.visited - before;
 
-    const offsets = quoted(css).flatMap(offset =>
-      Array<number>(loadsEach).fill(offset),
-    );
+    const offsets = quoted(css);
     expect(offsets.length).toBeGreaterThan(1000);
-    expect(loaded).toEqual(offsets.map(offset => ({ url: 'x.css', offset })));
-    // Every @import's offset is mapped through the rewrites.
+    expect(loaded).toEqual(
+      offsets.map(offset => ({ url: 'x.css', offset, loads: loadsEach })),
+    );
+    // Every string's offset is mapped through the rewrites.
     expect(visited).toBeGreaterThanOrEqual(offsets.length);
     expect(visited / css.length).toBeLessThanOrEqual(linear);
   });

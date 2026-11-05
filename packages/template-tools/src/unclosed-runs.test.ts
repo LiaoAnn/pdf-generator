@@ -114,7 +114,11 @@ describe('element() rewrites around unclosed ones', () => {
     ],
   ])('loads what Paged.js loads for %s', (_, css, loads) => {
     expect(pagedImports(css)).toEqual(
-      loads.map(([url, written]) => ({ url, offset: after(css, written) })),
+      loads.map(([url, written]) => ({
+        url,
+        offset: after(css, written),
+        loads: 1,
+      })),
     );
   });
 });

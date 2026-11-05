@@ -1,12 +1,14 @@
 // For tests only: pagedImports as T06-17 left it (94cfb0c), which walks the
 // whole subtree of every @import, so a string under n nested @imports is read
 // n times and n nested @import blocks cost O(n²) (T06-19). Kept verbatim but
-// for the work counter and the type, as the oracle the bounded walk in
-// paged-imports.ts is compared against (paged-import-limit.test.ts,
-// import-limit-check.test.ts).
+// for the work counter and the type, as the oracle the one-pass walk in
+// paged-imports.ts is compared against (paged-import-counts.test.ts,
+// import-counts-check.test.ts).
 
 import csstree from 'css-tree';
-import type { PagedImport } from './paged-imports.ts';
+
+/** One load: the URL and the offset just past its quote (or `#`). */
+type PagedImport = { url: string; offset: number };
 
 /**
  * The rewrite RunningHeaders.beforeTreeParse applies to the whole text

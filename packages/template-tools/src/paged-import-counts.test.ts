@@ -1,25 +1,28 @@
 // A string under n nested @imports loads n times in Paged.js 0.4.3, so
 // `@import "x.css" {` nested n deep loads n(n+1)/2 times, and reading them
 // one by one made a 20.7 KiB sheet cost 661,825 loads and over a second of
-// the upload check's CPU (T06-19). The check only needs each string's loads
-// up to just past the 64-load limit: pagedImports takes a limit and drops
-// the rest, and its walk is linear in the sheet whatever the nesting.
+// the upload check's CPU (T06-19). pagedImports reports each string once,
+// with the number of times Paged.js loads it, in work linear in the sheet
+// whatever the nesting.
 import { describe, expect, it } from 'vitest';
-import {
-  type PagedImport,
-  pagedImports,
-  pagedImportWork,
-} from './paged-imports.ts';
+import { pagedImports, pagedImportWork } from './paged-imports.ts';
 import { fullPagedImports } from './paged-imports-full.test-support.ts';
 
-/** `loads` with every load of a string past its `limit`-th dropped. */
-function keepFirst(loads: PagedImport[], limit: number): PagedImport[] {
-  const seen = new Map<number, number>();
-  return loads.filter(({ offset }) => {
-    const count = (seen.get(offset) ?? 0) + 1;
-    seen.set(offset, count);
-    return count <= limit;
-  });
+/**
+ * The T06-17 walk's loads as pagedImports reports them: each string once,
+ * where Paged.js first loads it, with how many times it loads it.
+ */
+function grouped(loads: { url: string; offset: number }[]) {
+  const strings = new Map<
+    number,
+    { url: string; offset: number; loads: number }
+  >();
+  for (const { url, offset } of loads) {
+    const string = strings.get(offset);
+    if (string === undefined) strings.set(offset, { url, offset, loads: 1 });
+    else string.loads++;
+  }
+  return [...strings.values()];
 }
 
 /** A small seeded generator (mulberry32), so every run reads the same sheets. */
@@ -91,7 +94,7 @@ const importOpeners = openers.filter(
 
 /**
  * A sheet from `seed` inside 3 to 10 more blocks, most of them @imports, so
- * strings sit under more @imports than the limits below.
+ * strings sit under many @imports.
  */
 function deepSheet(seed: number): string {
   const next = random(seed + 1_000_000);
@@ -108,7 +111,7 @@ function deepSheet(seed: number): string {
 const chain = (depth: number, opener: string, inner = '') =>
   opener.repeat(depth) + inner + '}'.repeat(depth);
 
-describe('pagedImports with a limit', () => {
+describe('pagedImports on generated sheets', () => {
   const sheets = [
     ...Array.from({ length: 400 }, (_, seed) => sheet(seed)),
     ...Array.from({ length: 400 }, (_, seed) => deepSheet(seed)),
@@ -120,86 +123,79 @@ describe('pagedImports with a limit', () => {
     chain(5, '@import "x.css" {', chain(5, '@media print {', '"in.css"')),
   ];
 
-  it('reads what Paged.js loads, in its order, without a limit', () => {
-    let nested = 0;
+  it('reads each string Paged.js loads once, in its order, with its load count', () => {
+    let twice = 0;
+    let four = 0;
+    let seven = 0;
     for (const css of sheets) {
-      const loads = fullPagedImports(css);
-      if (keepFirst(loads, 1).length < loads.length) nested++;
+      const loads = grouped(fullPagedImports(css));
+      const most = Math.max(0, ...loads.map(load => load.loads));
+      if (most > 1) twice++;
+      if (most > 3) four++;
+      if (most > 6) seven++;
       expect(pagedImports(css), css).toEqual(loads);
     }
     // The generated sheets do nest strings under several @imports.
-    expect(nested).toBeGreaterThan(100);
+    expect(twice).toBeGreaterThan(100);
+    expect(four).toBeGreaterThan(50);
+    expect(seven).toBeGreaterThan(20);
   });
-
-  it.each([1, 2, 3, 5])(
-    "drops each string's loads past the %i-th and keeps the rest in order",
-    limit => {
-      let dropped = 0;
-      for (const css of sheets) {
-        const loads = fullPagedImports(css);
-        const kept = keepFirst(loads, limit);
-        if (kept.length < loads.length) dropped++;
-        expect(pagedImports(css, limit), css).toEqual(kept);
-      }
-      expect(dropped).toBeGreaterThan(20);
-    },
-  );
 });
 
-/** The limit the upload check needs: just past 64 loads (T06-7). */
-const limit = 66;
-/** Most the bounded walk may count per character of the sheet. */
+/** Most the walk may count per character of the sheet. */
 const linear = 6;
 
-/** 1 + 2 + … + n, each term capped at `limit`. */
-const cappedSum = (n: number) => {
-  let sum = 0;
-  for (let k = 1; k <= n; k++) sum += Math.min(k, limit);
-  return sum;
-};
+/** 1 + 2 + … + n. */
+const triangle = (n: number) => (n * (n + 1)) / 2;
 
 describe('pagedImports on nested @import blocks: linear work', () => {
   it.each<{
     name: string;
     css: (n: number) => string;
+    strings: (n: number) => number;
     loads: (n: number) => number;
   }>([
     {
       // The k-th @import's own string sits under k @imports.
       name: '@import "x.css" { nested',
       css: n => chain(n, '@import "x.css" {'),
-      loads: cappedSum,
+      strings: n => n,
+      loads: triangle,
     },
     {
       name: '@import { nested around one string',
       css: n => chain(n, '@import {', 'p{content:"x.css"}'),
-      loads: n => Math.min(n, limit),
+      strings: () => 1,
+      loads: n => n,
     },
     {
       // A screen query under every @import: Paged.js loads none of them,
       // and the old check walked each @import's subtree to find out.
       name: '@import "x.css" { nested around a screen query',
       css: n => chain(n, '@import "x.css" {', '@media screen{}'),
+      strings: () => 0,
       loads: () => 0,
     },
     {
       // Only the outermost @import is skipped.
       name: '@import "x.css" { nested inside a screen @import',
       css: n => `@import "s.css" screen {${chain(n, '@import "x.css" {')}}`,
-      loads: cappedSum,
+      strings: n => n,
+      loads: triangle,
     },
-  ])('reads $name in linear work', ({ css, loads }) => {
+  ])('reads $name in linear work', ({ css, strings, loads }) => {
     // Past about 1,000 levels css-tree's recursive walker can run out of
-    // stack (import-limit-check.test.ts).
+    // stack (import-counts-check.test.ts).
     for (const n of [100, 250, 500]) {
       const text = css(n);
       const before = pagedImportWork.walked;
-      const loaded = pagedImports(text, limit);
+      const loaded = pagedImports(text);
       const walked = pagedImportWork.walked - before;
 
-      expect(loaded.length).toBe(loads(n));
+      expect(loaded.length).toBe(strings(n));
+      expect(loaded.reduce((sum, load) => sum + load.loads, 0)).toBe(loads(n));
       expect(loaded.every(load => load.url === 'x.css')).toBe(true);
-      // The counter sees the walk: at least one per @import and per load.
+      // The counter sees the walk: at least one per @import and per string.
       expect(walked).toBeGreaterThanOrEqual(n + loaded.length);
       expect(walked / text.length, `n = ${n}`).toBeLessThanOrEqual(linear);
     }
