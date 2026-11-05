@@ -129,12 +129,24 @@ const slantedElements = new Set(['i', 'em', 'cite', 'var', 'dfn', 'address']);
 const maxCycleIssues = 50;
 
 /**
- * The `@import`s that lie on a cycle, each with the cycle it closes: the
- * importing file, the files the import leads through, and that file again.
+ * For tests only (not exported from the package entry): `references` grows
+ * by one per reference() call and `cycleSteps` by one per file appended to
+ * a cycle path being built (plus one per built cycle), so a test can tell
+ * a check that reads each load once from one that read every load (T06-19).
+ */
+export const importWork = { references: 0, cycleSteps: 0 };
+
+/**
+ * The `@import` edges that close a cycle: `listed` is the first `limit` of
+ * them, in edge order, each with its cycle (the importing file, the files
+ * the import leads through, and that file again); `total` is how many edges
+ * close one. Only the listed get a path built — thousands of identical
+ * loads on one cycle would build thousands of the same path (T06-19).
  */
 function importCycles<T extends { source: Source; path: string }>(
   imports: T[],
-): (T & { cycle: string[] })[] {
+  limit: number,
+): { listed: (T & { cycle: string[] })[]; total: number } {
   const targets = new Map<string, Set<string>>();
   for (const { source, path } of imports) {
     targets.set(source.file, (targets.get(source.file) ?? new Set()).add(path));
@@ -155,17 +167,24 @@ function importCycles<T extends { source: Source; path: string }>(
     }
     return via;
   };
-  return imports.flatMap(edge => {
+  const listed: (T & { cycle: string[] })[] = [];
+  let total = 0;
+  for (const edge of imports) {
     const from = edge.source.file;
     const via = tree(edge.path);
-    if (!via.has(from)) return [];
+    if (!via.has(from)) continue;
+    total++;
+    if (listed.length >= limit) continue;
     const cycle = [from];
     for (let at = from; at !== edge.path; ) {
+      importWork.cycleSteps++;
       at = via.get(at) ?? edge.path;
       cycle.unshift(at);
     }
-    return [{ ...edge, cycle: [from, ...cycle] }];
-  });
+    importWork.cycleSteps++;
+    listed.push({ ...edge, cycle: [from, ...cycle] });
+  }
+  return { listed, total };
 }
 
 /** Asset, font and active-content issues of a pack's template and styles. */
@@ -194,7 +213,10 @@ export function assetIssues(
    * document order. Chrome loads a stylesheet again for each of these, so
    * they are counted per reference, without the `sheets` dedupe.
    */
-  const roots = styles.map(style => style.file);
+  const roots: { file: string; times: number }[] = styles.map(style => ({
+    file: style.file,
+    times: 1,
+  }));
   /**
    * Roots the template references inside an {{#each}}: filling the
    * template loads them once per item, so the reference counted once here
@@ -202,7 +224,8 @@ export function assetIssues(
    */
   const repeating = new Set<string>();
   /** `@import`s between stylesheets, where Paged.js follows them. */
-  const imports: { source: Source; at: number; path: string }[] = [];
+  const imports: { source: Source; at: number; path: string; times: number }[] =
+    [];
 
   const issue = (
     code: PackIssueCode,
@@ -224,9 +247,20 @@ export function assetIssues(
    */
   const reference = (
     source: Source,
-    { url: written, offset, kind, paged }: Reference & { paged?: boolean },
+    {
+      url: written,
+      offset,
+      kind,
+      paged,
+      times = 1,
+    }: Reference & {
+      paged?: boolean;
+      /** Identical loads this one reference stands for (T06-19). */
+      times?: number;
+    },
     context: 'attribute' | 'css' = 'css',
   ) => {
+    importWork.references++;
     // CSS (and HTML) turn a NUL into U+FFFD before the URL parser, which
     // would strip a NUL: that file is the one the browser loads. A Paged.js
     // load has no such replacement (css-tree keeps the NUL): it arrives as
@@ -298,7 +332,7 @@ export function assetIssues(
     const imported = kind === 'stylesheet' && source !== template;
     if (imported && /^(?:[?#]|$)/.test(target)) {
       // No path ("", "#x", "?v=2") is the importing stylesheet itself.
-      imports.push({ source, at, path: source.file });
+      imports.push({ source, at, path: source.file, times });
       return;
     }
     const problem = resolve(source.file, target);
@@ -328,13 +362,13 @@ export function assetIssues(
       // @import from inside a stylesheet without remembering what it loaded.
       if (kind === 'stylesheet') {
         if (source === template) {
-          roots.push(problem.path);
+          roots.push({ file: problem.path, times });
           // 0 is the document's start, outside every block; the reference
           // repeats when a block between it and there is an {{#each}}.
           if (template.html.printedCount(0, [at]).max === Infinity) {
             repeating.add(problem.path);
           }
-        } else imports.push({ source, at, path: problem.path });
+        } else imports.push({ source, at, path: problem.path, times });
       }
       if (
         (kind !== 'stylesheet' && !/\.css$/i.test(problem.path)) ||
@@ -397,16 +431,18 @@ export function assetIssues(
       // `import` in the text (an escape that spells it is a css-escape issue
       // already). The scanner's own @import flag would not do: a bad string
       // the element() rewrite mends hides an @import from the scanner.
+      // Each string reaches reference() once, with the number of loads the
+      // scanner didn't already count (T06-19).
       const paged = /import/i.test(css) ? pagedImports(css) : [];
-      for (const { url, offset } of paged) {
+      for (const { url, offset, loads } of paged) {
         const load = stylesheetLoad(url, true);
         const key = `${offset}|${load}`;
-        const both = scanned.get(key);
-        if (both !== undefined) {
-          if (both === 1) scanned.delete(key);
-          else scanned.set(key, both - 1);
-          continue;
-        }
+        const both = scanned.get(key) ?? 0;
+        const shared = Math.min(both, loads);
+        if (both > shared) scanned.set(key, both - shared);
+        else scanned.delete(key);
+        const times = loads - shared;
+        if (times === 0) continue;
         // As written but for tab, LF and CR, which the URL parser drops:
         // reference trims the ends (a NUL among them) and points at the
         // first character it keeps.
@@ -415,6 +451,7 @@ export function assetIssues(
           offset: at(offset),
           kind: 'stylesheet',
           paged: true,
+          times,
         });
       }
       for (const problem of pageBoxProblems(css)) {
@@ -591,8 +628,8 @@ export function assetIssues(
   }
   // Each message names a whole cycle, up to every file in the pack: report
   // the first ones, enough to fix, so a crafted pack can't make megabytes.
-  const cycles = importCycles(imports);
-  for (const { source, at, cycle } of cycles.slice(0, maxCycleIssues)) {
+  const cycles = importCycles(imports, maxCycleIssues + 1);
+  for (const { source, at, cycle } of cycles.listed.slice(0, maxCycleIssues)) {
     issue(
       'css-import-cycle',
       source,
@@ -600,13 +637,13 @@ export function assetIssues(
       `this @import closes a cycle: ${cycle.join(' → ')}; Paged.js would fetch these stylesheets over and over until printing times out`,
     );
   }
-  const more = cycles[maxCycleIssues];
+  const more = cycles.listed[maxCycleIssues];
   if (more !== undefined) {
     issue(
       'css-import-cycle',
       more.source,
       more.at,
-      `${cycles.length - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
+      `${cycles.total - maxCycleIssues} more @imports, starting with this one, close a cycle too: break the cycles above and check again`,
     );
   }
   // Each sheet loaded once, with no @import between sheets: nothing expands,
@@ -614,7 +651,8 @@ export function assetIssues(
   // below the limits, so only repeated loads can get past them.
   const repeated =
     imports.length > 0 ||
-    new Set(roots).size < roots.length ||
+    roots.some(root => root.times > 1) ||
+    new Set(roots.map(root => root.file)).size < roots.length ||
     repeating.size > 0;
   const expansion = repeated
     ? importExpansion(

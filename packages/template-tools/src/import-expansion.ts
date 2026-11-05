@@ -14,30 +14,32 @@
 export const maxStylesheetLoads = 64;
 export const maxStylesheetBytes = 1024 * 1024;
 
-type Imports = { source: { file: string }; path: string }[];
+type Imports = { source: { file: string }; path: string; times?: number }[];
 
 /**
  * The stylesheet loads and CSS bytes the pack's @imports expand to, from
  * the references in `roots` (manifest styles in manifest order, then the
  * template's <link> and <style> imports in document order); `bytesOf` is a
- * file's UTF-8 byte length. A root in `repeating` sits in an {{#each}} of
- * the template, so it loads once per item, without a limit the check can
- * count: it is counted as past the load limit. Undefined while the totals
- * stay within the limits; otherwise the totals and the root that expands
- * the most (a repeating root first, else by loads when the load count is
- * over, else by bytes; ties go to the earliest root).
+ * file's UTF-8 byte length. `times` is how many identical loads a root or an
+ * @import stands for — one reference, many loads, when Paged.js nests
+ * @imports around one string (T06-19). A root in `repeating` sits in an
+ * {{#each}} of the template, so it loads once per item, without a limit the
+ * check can count: it is counted as past the load limit. Undefined while the
+ * totals stay within the limits; otherwise the totals and the root that
+ * expands the most (a repeating root first, else by loads when the load
+ * count is over, else by bytes; ties go to the earliest root).
  */
 export function importExpansion(
-  roots: string[],
+  roots: { file: string; times: number }[],
   imports: Imports,
   bytesOf: (path: string) => number,
   repeating: ReadonlySet<string>,
 ): { loads: number; bytes: number; file: string } | undefined {
-  const out = new Map<string, string[]>();
-  for (const { source, path } of imports) {
+  const out = new Map<string, { path: string; times: number }[]>();
+  for (const { source, path, times = 1 } of imports) {
     const targets = out.get(source.file);
-    if (targets === undefined) out.set(source.file, [path]);
-    else targets.push(path);
+    if (targets === undefined) out.set(source.file, [{ path, times }]);
+    else targets.push({ path, times });
   }
   // loads(f) = 1 + Σ over f's @imports of loads(target). Walking every
   // expanded path would never finish (a 40-deep ladder is 2^40 loads), so
@@ -53,10 +55,10 @@ export function importExpansion(
     visiting.add(file);
     let loads = 1;
     let bytes = bytesOf(file);
-    for (const target of out.get(file) ?? []) {
-      const expanded = expand(target);
-      loads += expanded.loads;
-      bytes += expanded.bytes;
+    for (const { path, times } of out.get(file) ?? []) {
+      const expanded = expand(path);
+      loads += expanded.loads * times;
+      bytes += expanded.bytes * times;
     }
     visiting.delete(file);
     const capped = {
@@ -71,19 +73,18 @@ export function importExpansion(
   // Summed per root file: a sheet the template loads over and over is the
   // one to name, though each of its loads is small.
   const perRoot = new Map<string, { loads: number; bytes: number }>();
-  for (const root of roots) {
-    const expanded = expand(root);
+  for (const { file, times } of roots) {
+    const expanded = expand(file);
     // A root inside {{#each}} would load once per item when the template is
     // filled, far past any limit: count it as just past it.
-    const loadsOf = repeating.has(root)
-      ? maxStylesheetLoads + 1
-      : expanded.loads;
+    const loadsOf =
+      (repeating.has(file) ? maxStylesheetLoads + 1 : expanded.loads) * times;
     loads += loadsOf;
-    bytes += expanded.bytes;
-    const sum = perRoot.get(root) ?? { loads: 0, bytes: 0 };
-    perRoot.set(root, {
+    bytes += expanded.bytes * times;
+    const sum = perRoot.get(file) ?? { loads: 0, bytes: 0 };
+    perRoot.set(file, {
       loads: sum.loads + loadsOf,
-      bytes: sum.bytes + expanded.bytes,
+      bytes: sum.bytes + expanded.bytes * times,
     });
   }
   if (loads <= maxStylesheetLoads && bytes <= maxStylesheetBytes) {

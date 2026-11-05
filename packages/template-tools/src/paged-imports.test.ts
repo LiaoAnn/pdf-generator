@@ -2,12 +2,30 @@
 // rewrites element(…) (RunningHeaders.beforeTreeParse), parses with css-tree
 // 1.1.3, turns #ids in rules into strings (replaceIds), then loads every
 // string under an @import, vendor-prefixed or nested, quotes stripped
-// (Sheet.imports). The upload check reads the same loads (T06-9).
+// (Sheet.imports). The upload check reads the same loads (T06-9), each
+// string once with the number of times Paged.js loads it (T06-19).
 import { describe, expect, it } from 'vitest';
 import { pagedImports } from './paged-imports.ts';
 
 /** The offset just past the first `marker` (a quote or `#`) before `url`. */
 const after = (css: string, written: string) => css.indexOf(written) + 1;
+
+/**
+ * Loads in Paged.js's order, as pagedImports reports them: each string once,
+ * where Paged.js first loads it, with how many times it loads it.
+ */
+function grouped(loads: { url: string; offset: number }[]) {
+  const strings = new Map<
+    number,
+    { url: string; offset: number; loads: number }
+  >();
+  for (const { url, offset } of loads) {
+    const string = strings.get(offset);
+    if (string === undefined) strings.set(offset, { url, offset, loads: 1 });
+    else string.loads++;
+  }
+  return [...strings.values()];
+}
 
 describe('pagedImports', () => {
   it.each<{ name: string; css: string; loads: [string, string][] }>([
@@ -120,8 +138,7 @@ describe('pagedImports', () => {
       ],
     },
     {
-      // Each @import's walk reads a then b: the second a lies in an earlier
-      // span than the b before it, so the mapping looks back (T06-17).
+      // Each @import's walk reads a then b: a and b load twice each.
       name: 'strings in two element() spans under nested imports',
       css: '@import { @import {p{content:element("a.css") element("b.css")}} }',
       loads: [
@@ -138,7 +155,9 @@ describe('pagedImports', () => {
     },
   ])('loads $name', ({ css, loads }) => {
     expect(pagedImports(css)).toEqual(
-      loads.map(([url, written]) => ({ url, offset: after(css, written) })),
+      grouped(
+        loads.map(([url, written]) => ({ url, offset: after(css, written) })),
+      ),
     );
   });
 

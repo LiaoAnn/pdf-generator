@@ -2,7 +2,9 @@
 // the way its Sheet.parse reads them — the upload check (checkPack) refuses
 // @import cycles and ladders from what it sees, so it must see exactly what
 // the print sees, including the forms Chrome's own @import scanner skips
-// (T06-9). Each step below names the paged.polyfill.js function it mirrors.
+// (T06-9). Each string is reported once, with how many times Paged.js loads
+// it (T06-19). Each step below names the paged.polyfill.js function it
+// mirrors.
 
 import csstree from 'css-tree';
 
@@ -19,6 +21,12 @@ export type PagedImport = {
    * rewrote), so a finder can point at what Paged.js would fetch.
    */
   offset: number;
+  /**
+   * How many times Paged.js loads the string: once for every @import around
+   * it (itself included) that Sheet.imports' media check doesn't skip
+   * (T06-19).
+   */
+  loads: number;
 };
 
 /**
@@ -86,9 +94,12 @@ function elementMatches(css: string): ElementMatch[] {
  * For tests only (not exported from the package entry): `visited` grows by
  * one for every rewrite span the offset mapping reads, so a test can tell a
  * linear mapping from one that rescans every earlier span per @import
- * (T06-17). Counting is noise next to the parse.
+ * (T06-17), and `walked` grows by one for every node the Sheet.atrules
+ * walk enters and every string reported, so a test can tell the walk from
+ * one that read each string once per @import around it (T06-19). Counting
+ * is noise next to the parse.
  */
-export const pagedImportWork = { visited: 0 };
+export const pagedImportWork = { visited: 0, walked: 0 };
 
 /** "element-ident" without its parenthesis. */
 const elementIdentLength = 'element-ident'.length;
@@ -99,7 +110,9 @@ const elementIdentLength = 'element-ident'.length;
  * nothing, so this returns []. (Sheet.parse also runs replaceUrls, which
  * rewrites url(…) values against the sheet's base URL, before imports; the
  * upload check has no base URL and the loads it rejects are by source path,
- * so this reports the pre-resolution string.)
+ * so this reports the pre-resolution string.) Each string is reported
+ * once, in the order Paged.js first loads it, with how many times it loads
+ * it.
  */
 export function pagedImports(css: string): PagedImport[] {
   // RunningHeaders.beforeTreeParse rewrites every element(…) to
@@ -150,9 +163,8 @@ export function pagedImports(css: string): PagedImport[] {
   // verbatim), and one past the span shifts by the length difference
   // ("element-ident(" is 6 longer than "element" + the whitespace + "(").
   // Binary-search the spans (textStart is increasing) for the last span
-  // whose `text` start is at or before the offset — a forward cursor would
-  // not do, since a string under nested @imports is looked up once per
-  // enclosing @import, not in offset order.
+  // whose `text` start is at or before the offset; each String is looked
+  // up once, however many @imports it sits under (T06-19).
   const originalOffset = (offset: number): number => {
     let lo = -1;
     let hi = rewrites.length;
@@ -199,60 +211,113 @@ export function pagedImports(css: string): PagedImport[] {
     },
   });
 
-  const loaded: PagedImport[] = [];
   // Sheet.atrules: every @import in the sheet (nested ones, vendor-prefixed
-  // ones — keyword().basename drops the vendor prefix — included).
+  // ones — keyword().basename drops the vendor prefix — included) reports
+  // the strings of its whole subtree as loads. One walk, where the old walk
+  // read each @import's subtree for its media check and again for its
+  // strings, so a string under n nested @imports was read n times and the
+  // walk cost O(n²): a frame per @import remembers its media-check result
+  // and the frame enclosing it, each String its innermost open @import, and
+  // the depths below give each string's load count in one pass (T06-19).
+  type Frame = {
+    /** The enclosing @import's frame, or null at the top level. */
+    parent: Frame | null;
+    /** Sheet.imports' media check skips this @import. */
+    skip: boolean;
+    /** Non-skipped @imports around this one, itself included. */
+    depth: number;
+  };
+  const frames: Frame[] = [];
+  /** The open @imports, outermost first. */
+  const stack: Frame[] = [];
+  /** The open media queries. */
+  let mediaQueries = 0;
+  /** Every string under any @import, in walk order, with its innermost. */
+  const strings: { url: string; offset: number; frame: Frame }[] = [];
   csstree.walk(ast, {
-    visit: 'Atrule',
-    enter: (atrule: csstree.Atrule) => {
-      if (csstree.keyword(atrule.name).basename !== 'import') return;
-
-      // Sheet.imports' media check, verbatim: every identifier under the
-      // @import's media queries; screen or speech skips it — including
-      // `not screen`, because the identifier after `not` matches.
-      const queries: string[] = [];
-      csstree.walk(atrule, {
-        visit: 'MediaQuery',
-        enter: (mediaQuery: csstree.MediaQuery) => {
-          csstree.walk(mediaQuery, {
-            visit: 'Identifier',
-            enter: (identifier: csstree.Identifier) => {
-              queries.push(identifier.name);
-            },
-          });
-        },
-      });
-      if (
-        queries.some((query, index) => {
-          if (query === 'not') {
-            const next = queries[index + 1];
-            return !(next === 'screen' || next === 'speech');
+    enter: (node: csstree.CssNode) => {
+      pagedImportWork.walked++;
+      switch (node.type) {
+        case 'Atrule': {
+          if (csstree.keyword(node.name).basename !== 'import') break;
+          const frame: Frame = {
+            parent: stack.at(-1) ?? null,
+            skip: false,
+            depth: 0,
+          };
+          frames.push(frame);
+          stack.push(frame);
+          break;
+        }
+        case 'MediaQuery':
+          mediaQueries++;
+          break;
+        case 'Identifier': {
+          // Sheet.imports' media check, verbatim: a `not`, screen or speech
+          // identifier under the @import's media queries skips it (`not`
+          // skips even alone; `not screen` skips through the identifier
+          // after `not`). Such an identifier's media query sits inside the
+          // innermost open @import — a media query can't sit inside an
+          // @import — so mark that frame; when it closes, the skip passes
+          // to its parent, whose subtree held the media query too.
+          if (
+            mediaQueries > 0 &&
+            (node.name === 'not' ||
+              node.name === 'screen' ||
+              node.name === 'speech')
+          ) {
+            const innermost = stack.at(-1);
+            if (innermost !== undefined) innermost.skip = true;
           }
-          return query === 'screen' || query === 'speech';
-        })
-      )
-        return;
-
-      // Sheet.imports: every String under the @import — a quoted URL, the
-      // string inside url("…"), a selector replaceIds rewrote — is loaded
-      // with its quotes dropped. Its `list.remove(item)` removes the @import
-      // from its parent, not the String, and the walk still descends into
-      // it: a String under nested @imports loads once for each of them. A
-      // second String under one @import makes that removal throw, after the
-      // String was read, and Paged.js then loads nothing from the sheet;
-      // this keeps counting, so the upload check errs on more loads.
-      csstree.walk(atrule, {
-        visit: 'String',
-        enter: (urlNode: csstree.StringNode) => {
-          if (urlNode.loc === undefined) return;
-          loaded.push({
-            url: urlNode.value.replace(/["']/g, ''),
-            offset: originalOffset(urlNode.loc.start.offset) + 1,
-          });
-        },
-      });
+          break;
+        }
+        case 'String': {
+          // Sheet.imports: every String under the @import — a quoted URL,
+          // the string inside url("…"), a selector replaceIds rewrote — is
+          // loaded with its quotes dropped. Its `list.remove(item)` removes
+          // the @import from its parent, not the String, and the walk still
+          // descends into it: a String under nested @imports loads once for
+          // each of them (kept as one entry here, its count below). A
+          // second String under one @import makes that removal throw, after
+          // the String was read, and Paged.js then loads nothing from the
+          // sheet; this keeps counting, so the upload check errs on more
+          // loads.
+          if (stack.length > 0 && node.loc !== undefined) {
+            strings.push({
+              url: node.value.replace(/["']/g, ''),
+              offset: originalOffset(node.loc.start.offset) + 1,
+              frame: stack.at(-1) as Frame,
+            });
+          }
+          break;
+        }
+      }
+    },
+    leave: (node: csstree.CssNode) => {
+      if (node.type === 'MediaQuery') {
+        mediaQueries--;
+      } else if (
+        node.type === 'Atrule' &&
+        csstree.keyword(node.name).basename === 'import'
+      ) {
+        const frame = stack.pop() as Frame;
+        if (frame.skip && frame.parent !== null) frame.parent.skip = true;
+      }
     },
   });
 
+  // Frames were recorded in walk order, so a parent's depth is final before
+  // its child's. A string loads once per non-skipped @import around its
+  // innermost one — that frame's depth.
+  for (const frame of frames) {
+    frame.depth =
+      (frame.parent === null ? 0 : frame.parent.depth) + (frame.skip ? 0 : 1);
+  }
+  const loaded: PagedImport[] = [];
+  for (const { url, offset, frame } of strings) {
+    if (frame.depth === 0) continue;
+    pagedImportWork.walked++;
+    loaded.push({ url, offset, loads: frame.depth });
+  }
   return loaded;
 }
