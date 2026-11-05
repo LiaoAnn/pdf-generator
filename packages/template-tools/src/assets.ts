@@ -397,7 +397,20 @@ export function assetIssues(
       // `import` in the text (an escape that spells it is a css-escape issue
       // already). The scanner's own @import flag would not do: a bad string
       // the element() rewrite mends hides an @import from the scanner.
-      const paged = /import/i.test(css) ? pagedImports(css) : [];
+      // Each string is read only up to just past maxStylesheetLoads loads
+      // of it: 65 identical references already push the import expansion
+      // past its limit, and per file it counts no further than that
+      // (import-expansion.ts), so the loads past it change no accept or
+      // refuse — and reading them all made nested @import blocks quadratic
+      // (T06-19). The scanner's own count of the string comes off below,
+      // so its loads must survive past maxScanned more.
+      let maxScanned = 0;
+      for (const count of scanned.values()) {
+        maxScanned = Math.max(maxScanned, count);
+      }
+      const paged = /import/i.test(css)
+        ? pagedImports(css, maxStylesheetLoads + 1 + maxScanned)
+        : [];
       for (const { url, offset } of paged) {
         const load = stylesheetLoad(url, true);
         const key = `${offset}|${load}`;
