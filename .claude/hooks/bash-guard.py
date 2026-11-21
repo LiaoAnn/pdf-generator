@@ -37,8 +37,8 @@ RULES = (
     (
         lambda c: IN_CONTAINER.search(c) is not None and re.search(r"\bpkill\b", c) is not None,
         "pkill in the container also kills your delegated children's processes "
-        "(test authors' Chrome). Stop a dev server with "
-        "`tmux kill-session -t <wt>-<role>`, a job with `wt-stop <path> <name>`.",
+        "(test authors' Chrome). Run dev servers as jobs "
+        "(`wt-bg <path> <role> -- <cmd>`) and stop one with `wt-stop <path> <role>`.",
     ),
     (
         lambda c: IN_CONTAINER.search(c) is not None
