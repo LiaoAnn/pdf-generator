@@ -14,7 +14,7 @@ You run as a Local thread in the main checkout `/data/code/pdf-generator`. You c
 - Workers commit, push their own branch and open PRs.
 - You merge a PR yourself, without asking, when it passes "Merge bar" below, and settle the worker's thread once it has cleaned up.
 - At most **3** worker threads running at once: every worker's agents share one small machine with every other project's, and its sandbox shares a dev VM; `wt-up` exit 75 (`no room for a new dev environment`) means wait.
-- After a ticket merges and its thread is settled, `wt-down` its stack and remove its worktree and local branch ("Cleanup" below). Granted 2026-10-24.
+- Standing OK for the agent-home rule on other worktrees: you, the coordinator, may settle the threads of, and run `wt-down <path>` on, the worktrees of tickets whose PR is merged, in this project only, then remove the worktree and local branch ("Cleanup" below). Any other worktree stays untouchable unless the user names it. Granted 2026-10-24, scoped 2026-11-21.
 
 Everything else still needs the user's OK each time: external-service calls (see `AGENTS.md`), `wt-down` of any worktree whose ticket hasn't merged, changing a ticket's scope, splitting or merging tickets, contract tickets, edits to `AGENTS.md` or skills.
 
@@ -146,7 +146,7 @@ If a check fails, send the worker exactly what failed; don't fix it yourself.
 
 ## Cleanup
 
-Merged tickets don't keep a stack or a worktree; `/data` is shared by every worktree.
+Merged tickets don't keep a stack or a worktree; `/data` is shared by every worktree. This runs under the standing OK in "Authority the user granted" above, and only for merged tickets of this project.
 
 0. Confirm the merge first: `gh pr view <n> --json state --jq .state` must print `MERGED`. `gh pr merge` can fail with a GraphQL or 5xx error while printing little; deleting the remote branch of an unmerged PR closes it (T09-6, 2026-11-04: restored by pushing its head SHA back and `gh pr reopen`).
 1. After the merge, the worker's `DONE` cleanup, and settling its thread, check the worktree is clean: `git -C <path> status --porcelain` empty and `git -C <path> rev-parse HEAD` equal to the merged PR's `headRefOid` (`gh pr view <n> --json headRefOid`); `@{u}` is gone once the remote branch is deleted. If not, ask the worker what's left; don't delete it.
