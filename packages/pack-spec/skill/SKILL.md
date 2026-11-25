@@ -19,7 +19,7 @@ Everything this skill points at lives in the pdf-generator repo, written here as
 
 (Run that from this skill's folder, or substitute the folder's path. If your shell doesn't keep variables between commands, start each command with that line, or with `PDF_GENERATOR_REPO=<path>`.) The repo needs `pnpm install` once; the checker and the data engine are TypeScript that Node 24 runs directly.
 
-**Installing** (for the caller, e.g. `pdf2tpl`): symlink `$PDF_GENERATOR_REPO/packages/pack-spec/skill/` into the project's `.claude/skills/write-template-pack`, or copy it there and set `PDF_GENERATOR_REPO`.
+**Installing** (for the caller, e.g. `pdf2tpl`): symlink `$PDF_GENERATOR_REPO/packages/pack-spec/skill/` into the project's `.agents/skills/write-template-pack` (with `.claude/skills/` symlinked to `../.agents/skills` for Claude Code), or copy it there and set `PDF_GENERATOR_REPO`.
 
 ## Read first
 

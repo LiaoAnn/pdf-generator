@@ -43,7 +43,7 @@ When you implemented a slice yourself (Kimi fallback) and Codex is also unavaila
 
 You are the test author. Run `/tdd` for the cycle and follow its test judgment, plus these rules (each one came from a past failure):
 
-- Write tests outside-in: the first test sits at the level of Acceptance (route, CLI, end-to-end) where the test environment can reach it; add narrower tests only where they pin a behavior the outer test can't. Use the necessity rules in `~/.claude/skills/tdd/test-judgment.md`: each test names the regression it catches; no tests that restate declarations.
+- Write tests outside-in: the first test sits at the level of Acceptance (route, CLI, end-to-end) where the test environment can reach it; add narrower tests only where they pin a behavior the outer test can't. Use the necessity rules in `~/.agents/skills/tdd/test-judgment.md`: each test names the regression it catches; no tests that restate declarations.
 - Test only the public interface the plan names; don't write tests that dictate an internal structure the implementer must guess.
 - Run them through `T3CODE_WORKTREE_PATH=<path> wt-exec <test command>` (`wt-exec --heavy …` for browser tests or a whole package's suite) and confirm every one fails for the expected reason (missing behavior, not a syntax, import or setup error). If a test pins behavior that already exists (so it can't run RED), show it can fail with a temporary break of the production code in a copy outside the worktree, then report both runs.
 - When a slice changes a module's wire calls (a new request to the print Worker, say), also search for tests that fake that service (`grep -rn "print.internal\|PRINT:" --include=*.test.ts`), not only the module's own tests: T07-5 missed three queue tests that way.
@@ -82,7 +82,7 @@ Tests that define done: <test files>. RED now: `<command>` → <relevant output,
 Make these tests pass with the smallest change inside the Boundary. Don't edit, delete, skip or weaken any test or fixture. If you think a test is wrong, stop and report why with evidence; don't work around it.
 Run every project command in the stack: `T3CODE_WORKTREE_PATH=/data/worktrees/pdf-generator/<wt> wt-exec <cmd…>`. A whole package's suite or a browser test takes the heavy lock: `wt-exec --heavy …`, or for anything over about 2 minutes `wt-bg /data/worktrees/pdf-generator/<wt> <name> --heavy --timeout 40m -- <cmd…>` and `wt-wait /data/worktrees/pdf-generator/<wt> <name> --max 110` until it exits 0. Steps with `cd`, pipes, `rm` or quotes go in a script file under /tmp/<wt>/ run with `wt-bg … --script <file>`, never inside a `bash -c "…"` string.
 Determinism (AGENTS.md "Quality bar"): no unseeded randomness, wall-clock time or uncontrolled iteration order in the generation path.
-Don't: commit or run any git command that writes (read-only `git -C /data/worktrees/pdf-generator/<wt> diff` / `status` is fine); install, upgrade or relink packages unless the Approach says so; touch the shared contract, docs/tickets.md, AGENTS.md or .claude/; call any real external service (Cloudflare account, `--remote`, deploys); `pkill`/`kill` by name in the container; leave a dev server or other background job running.
+Don't: commit or run any git command that writes (read-only `git -C /data/worktrees/pdf-generator/<wt> diff` / `status` is fine); install, upgrade or relink packages unless the Approach says so; touch the shared contract, docs/tickets.md, AGENTS.md, .agents/ or .claude/; call any real external service (Cloudflare account, `--remote`, deploys); `pkill`/`kill` by name in the container; leave a dev server or other background job running.
 Before you report, run the touched packages' tests and typecheck and `T3CODE_WORKTREE_PATH=… wt-exec pnpm exec biome check --write <files you changed>`. <Only if this slice touches packages/contract, pnpm-lock.yaml, a shared config or many packages, add: then the full `pnpm verify`: `wt-bg /data/worktrees/pdf-generator/<wt> verify --heavy --timeout 40m -- pnpm verify` and `wt-wait … verify --max 110` until it exits 0.> (The full verify otherwise runs once per ticket, as a runner job after the final rebase.)
 Report, starting with one line `checks: <each command> exit=<code>` (plus `verify: exit=<code> <log path> <log mtime>` when this slice ran the full verify; a report without the line is treated as checks not run, as when Kimi skipped verify in T07-34 and T08-6): then the files you changed and why each, the test command and the tail of its output, typecheck and lint results, and anything you couldn't do or suspect is wrong.
 ```
@@ -120,13 +120,13 @@ For a PR draft, the job is "write /tmp/<wt>/pr-body.md from these slice reports 
 
 A Security brief can be refused by a provider's cybersecurity filter (OpenAI's refused one). Frame it around the project goal (print parity: a pack must print the same way every time and fetch nothing; reproducibility), not around attacking; that framing went through. Name earlier findings by what they do, not as attacks: a round-2 brief citing the round-1 "decoy … bypass" was refused, and "which pack CSS still places page boxes differently between the screen measurement and the print" went through (T07-18). Likewise "Questions for this lens: which pack CSS … can still make the ground truth's boxes differ" was refused, and "for print parity and reproducibility, using the Security lens definition as your checklist" went through (T07-20). A refusal is a provider failure: retry once reworded, then fall back. Word an implementer brief for hostile-pack cases the same way, as print-parity cases a pack must not get past (T07-29's brief with attack wording was refused).
 
-One child per lens, run in parallel. Take the lens definitions from `~/.claude/skills/review-change/lenses.md` and the rating rules from `~/.claude/skills/review-change/SKILL.md` ("Rate Blocker or Hardening"). Tell the Opus fallback to read `AGENTS.md` first; Codex does so on its own.
+One child per lens, run in parallel. Take the lens definitions from `~/.agents/skills/review-change/lenses.md` and the rating rules from `~/.agents/skills/review-change/SKILL.md` ("Rate Blocker or Hardening"). Tell the Opus fallback to read `AGENTS.md` first; Codex does so on its own.
 
 ```text
 Review a change in /data/worktrees/pdf-generator/<wt> through the <lens> lens only.
 Read AGENTS.md first, then the lens definition and rating rules:
-- ~/.claude/skills/review-change/lenses.md, section "<lens>"
-- ~/.claude/skills/review-change/SKILL.md, section "6. Rate Blocker or Hardening"
+- ~/.agents/skills/review-change/lenses.md, section "<lens>"
+- ~/.agents/skills/review-change/SKILL.md, section "6. Rate Blocker or Hardening"
 Scope: `git -C /data/worktrees/pdf-generator/<wt> diff <base>..HEAD` (plus the working tree if uncommitted).
 Ticket: <paste the ticket section from docs/tickets.md>
 Plan: <the accepted plan, or the slice's Outcome/Acceptance/Boundary>

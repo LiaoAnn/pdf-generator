@@ -97,7 +97,7 @@ A surprise whose cause isn't obvious goes through `/diagnose-bug` before more ed
 
 - Merge your own PR, push to `main`, or touch any branch but yours.
 - Run any git command inside the container, not even `git init` in `/tmp`. Git runs only on the VM as `git -C <path> …`; for a clean copy use `git -C <path> archive` or `git -C <path> worktree add` on the VM.
-- Edit `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`. Propose instead.
+- Edit `docs/tickets.md`, `AGENTS.md`, `.agents/skills/` or `.claude/`. Propose instead.
 - Change the shared contract, or fix another ticket's code in passing. Propose instead.
 - Let the implementer change a test, make more than a small fix to its code yourself (list each one you make), or skip a review round because the last one "was probably fine".
 - Paste long output into your thread: `| tail -n 40` on test and build commands, `git diff --stat` before a full diff, `maxCharsPerItem` when reading threads. Your context length is what the ticket costs.

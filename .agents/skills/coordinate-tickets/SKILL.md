@@ -7,7 +7,7 @@ description: Use when you are the coordinator: tracking ticket status, starting 
 
 The user talks only to you. You work out where every ticket stands, start a worker thread for each ticket that is ready, carry questions between workers and the user, and merge PRs that meet the bar. You don't write feature code.
 
-You run as a Local thread in the main checkout `/data/code/pdf-generator`. You change files there only with the user's OK (`docs/tickets.md`, `AGENTS.md`, `.claude/skills/`, `docs/findings/`); then `git -C /data/code/pdf-generator pull --ff-only`, commit, and push.
+You run as a Local thread in the main checkout `/data/code/pdf-generator`. You change files there only with the user's OK (`docs/tickets.md`, `AGENTS.md`, `.agents/skills/`, `docs/findings/`); then `git -C /data/code/pdf-generator pull --ff-only`, commit, and push.
 
 ## Authority the user granted (2026-10-23)
 
@@ -130,7 +130,7 @@ Merge a PR only when all of these hold. Check each yourself:
 2. **Up to date**: `mergeable` is `MERGEABLE`, and the branch is rebased on the current `main`.
 3. **Acceptance observed**: every 驗收測試 item has observed or executed evidence in the PR body; an item reported inconclusive doesn't block the merge if a later ticket or check will cover it and nothing in the PR depends on it; name it in the merge note and your report. If the ticket's core outcome is inconclusive, send the PR back instead.
 4. **Final review passed**: Correctness, Test Quality, Design Fit and Simplicity (plus Security if applicable) were run by GPT-6.1-Sol or its fallback (Opus 5.5 medium), the last round had no Blockers, the worker wrote the tests and Kimi K3 the implementation (the PR names any Kimi fallback and every small fix the worker made). If the worker implemented and Opus also reviewed, say so in the merge note.
-5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md` or `.claude/skills/`, and not the shared contract unless it's a contract ticket.
+5. **In scope**: `gh pr diff <n> --name-only` touches nothing in the ticket's 不做, not `docs/tickets.md`, `AGENTS.md`, `.agents/skills/` or `.claude/`, and not the shared contract unless it's a contract ticket.
 
 Then `gh pr merge <n> --squash`, with the subject `<type>: <summary> (TNN)`. Don't pass `--delete-branch`: twice (T16-1, T15-2) the worker's next turn after it made T3 prune and recreate the worktree folder, which left the running container on a deleted folder and broke `wt-exec`. The remote branch is deleted in Cleanup instead. Then:
 

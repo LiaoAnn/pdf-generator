@@ -33,7 +33,7 @@ Separately, **local projects** run on the user's Mac, not here: they cut a real 
 
 - `docs/tickets.md`: all tickets (Chinese): goal, Blocked by, Blocks, collision risk, acceptance tests, out of scope, estimated lines. **The source of truth for scope.**
 - Ticket status is not stored in the repo. A ticket is running when its T3 thread (`TNN …`) is open, and done when its PR (branch `tNN-…`) has merged.
-- `.claude/skills/`: this project's skills (below). General skills (`plan-it`, `implement-plan`, `tdd`, `review-change`, `verification-evidence`, `diagnose-bug`, `drizzle-orm`) are installed globally; the project skills add rules on top of them and win where they differ.
+- `.agents/skills/`: this project's skills (below; symlinked at `.claude/skills/` for Claude Code). General skills (`plan-it`, `implement-plan`, `tdd`, `review-change`, `verification-evidence`, `diagnose-bug`, `drizzle-orm`) are installed globally; the project skills add rules on top of them and win where they differ.
 - The platform is a pnpm monorepo. Every workspace package is named `@pdf-generator/<dir>`, is TypeScript source with no build step (`exports` points at `src/index.ts`), and has its own `tsconfig.json` (extending `tsconfig.base.json`), `vitest.config.ts` and tests next to the code (`src/**/*.test.ts`). Until its ticket fills it, a package holds only a placeholder export and test.
 
 | Path | Package | What it is | Filled by |
@@ -112,7 +112,7 @@ These hold for every ticket. A ticket's "不做" (out of scope) list adds to the
 - Build only what the ticket's 目標 says. Its 不做 list is binding. Something else that needs doing goes into your report as a proposed new ticket.
 - **The shared contract (T02's zod schemas) changes only in its own small ticket.** If your ticket needs a contract change, stop and report it; don't change it in a feature PR.
 - Template tickets (T22–T26) don't change platform code. A platform bug you find becomes a proposed ticket.
-- Don't edit `docs/tickets.md`, this file or `.claude/skills/`. Propose changes in your report; the coordinator applies them.
+- Don't edit `docs/tickets.md`, this file, `.agents/skills/` or `.claude/`. Propose changes in your report; the coordinator applies them.
 
 ### Generated files
 

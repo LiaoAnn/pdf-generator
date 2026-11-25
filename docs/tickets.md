@@ -42,7 +42,7 @@
 
 ### T01 專案骨架
 - **目標**：monorepo、TS v7、lint、測試工具、每個 worktree 用的 docker compose、CI；`AGENTS.md` + 開發用 skill（plan → slice → TDD → 多角度 review、Drizzle migration、撞車處理）
-  - `AGENTS.md` 與 `.claude/skills/`（`coordinate-tickets`、`work-ticket`、`cross-model-delegate`）已先寫好；T01 只補上實際的套件結構與指令（`AGENTS.md` 的「Where things are」「Commands」），流程規則的修改提給 coordinator
+  - `AGENTS.md` 與 `.agents/skills/`（`coordinate-tickets`、`work-ticket`、`cross-model-delegate`）已先寫好；T01 只補上實際的套件結構與指令（`AGENTS.md` 的「Where things are」「Commands」），流程規則的修改提給 coordinator
 - **Blocked by**：—
 - **Blocks**：T02
 - **撞車風險**：無（第一張）
