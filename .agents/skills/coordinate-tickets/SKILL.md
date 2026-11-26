@@ -1,6 +1,6 @@
 ---
 name: coordinate-tickets
-description: Use when you are the coordinator: tracking ticket status, starting worker threads, relaying their questions to the user, and merging their PRs.
+description: "Use when you are the coordinator: tracking ticket status, starting worker threads, relaying their questions to the user, and merging their PRs."
 ---
 
 # Coordinate Tickets
